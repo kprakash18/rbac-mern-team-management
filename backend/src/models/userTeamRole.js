@@ -14,7 +14,7 @@ const userTeamRoleSchema = new mongoose.Schema({
   role: {
     type: mongoose.Schema.Types.ObjectId,
     ref: "Role",
-    required: true
+    default: null
   }
 }, { timestamps: true });
 
