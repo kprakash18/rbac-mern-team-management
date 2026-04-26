@@ -4,6 +4,7 @@ import teamRoutes from "./routes/teamRoutes.js";
 import permissionRoutes from './routes/permissionRoutes.js' ;
 import roleRoutes from './routes/roleRoute.js' ;
 import teamMemberRole from "./routes/teamMemberRoleRouter.js" ;
+import permissionServiceRoutes from "./routes/permission_serviceRoute.js";
 
 const app = express();
 
@@ -14,5 +15,6 @@ app.use('/api/teams', teamRoutes) ;
 app.use('/api/permissions', permissionRoutes) ;
 app.use('/api/roles', roleRoutes) ;
 app.use('/api/teammemberrole', teamMemberRole) ;
+app.use('/api/permission-service', permissionServiceRoutes);
 
 export default app;
