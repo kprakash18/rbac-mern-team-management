@@ -1,8 +1,8 @@
 import express from "express";
-import { issueToken } from "../controllers/authController.js";
+import { login } from "../controllers/authController.js";
 
 const router = express.Router();
 
-router.post("/token", issueToken);
+router.post("/login", login);
 
 export default router;

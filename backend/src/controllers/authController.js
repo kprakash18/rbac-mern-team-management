@@ -1,11 +1,11 @@
 import jwt from "jsonwebtoken";
 
-export const issueToken = async (req, res) => {
+export const login = async (req, res) => {
   try {
-    const { userId, email } = req.body;
+    const { email } = req.body;
 
-    if (!userId) {
-      return res.status(400).json({ error: "userId is required" });
+    if (!email) {
+      return res.status(400).json({ error: "email is required" });
     }
 
     const jwtSecret = process.env.JWT_SECRET;
@@ -14,13 +14,11 @@ export const issueToken = async (req, res) => {
       return res.status(500).json({ error: "JWT_SECRET is not configured" });
     }
 
-    const token = jwt.sign(
-      { userId, email },
-      jwtSecret,
-      { expiresIn: "1d" }
-    );
+    const token = jwt.sign({ userId: email, email }, jwtSecret, {
+      expiresIn: "1d"
+    });
 
-    return res.status(200).json({ token });
+    return res.status(200).json({ token, email });
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }

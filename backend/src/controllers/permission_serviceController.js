@@ -3,10 +3,14 @@ import { getUserPermissions } from "../services/permissionService.js";
 export const getUserPermissionsController = async (req, res) => {
   try {
     const teamId = req.query.teamId;
-    const userId = req.query.userId || req.user?.id;
+    const userId = req.user?.id;
 
-    if (!userId || !teamId) {
-      return res.status(400).json({ error: "userId and teamId required" });
+    if (!teamId) {
+      return res.status(400).json({ error: "teamId required" });
+    }
+
+    if (!userId) {
+      return res.status(401).json({ error: "Unauthenticated user" });
     }
 
     const permissions = await getUserPermissions(userId, teamId);

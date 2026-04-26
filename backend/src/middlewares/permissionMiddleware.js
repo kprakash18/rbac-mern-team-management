@@ -3,7 +3,7 @@ import { getUserPermissions } from "../services/permissionService.js";
 export const requirePermission = (requiredPermission) => {
   return async (req, res, next) => {
     try {
-      const userId = req.user?.id;
+      const userId = req.user.id;
       const teamId = req.body.teamId || req.query.teamId || req.params.teamId;
 
       if (!userId) {
