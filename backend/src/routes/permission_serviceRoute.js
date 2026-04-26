@@ -4,6 +4,7 @@ import { authenticateJwt } from "../middlewares/authMiddleware.js";
 
 const router = express.Router();
 
+router.get("/", authenticateJwt, getUserPermissionsController);
 router.get("/user", authenticateJwt, getUserPermissionsController);
 
 export default router;
