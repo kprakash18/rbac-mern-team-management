@@ -16,3 +16,19 @@ export async function disconnectDatabase() {
 
   console.log("MongoDB disconnected");
 }
+
+
+export async function gracefulShutdown(signal){
+  const shutdown = async(signal) =>{
+    console.log(`\nReceived ${signal}.Shutting down gracefully...`);
+    httpServer.close(async() =>{
+      console.log("Http server closed");
+      await disconnectDatabase() ;
+      process.exit(0) ;
+      
+    });
+  };
+
+  process.on("SIGINT", ()=> shutdown("SIGINT")) ;
+  process.on("SIGTERM", ()=> shutdown("SIGTERM")) ;
+}
