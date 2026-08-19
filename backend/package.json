@@ -8,10 +8,13 @@
   "main": "server.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start" : "node src/server.js",
-    "seed" : "node src/database/seed/seed.js"
+    "start": "node src/server.js",
+    "seed": "node src/database/seed/seed.js",
+    "seed:fresh": "node src/database/seed/seed.js --fresh",
+    "seed:system": "node src/database/seed/seed.js --system"
   },
   "dependencies": {
+    "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
