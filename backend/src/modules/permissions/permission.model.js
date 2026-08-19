@@ -7,7 +7,7 @@ const permissionSchema = new mongoose.Schema(
       required: true,
       unique: true,
       trim: true,
-      uppercase: false,
+      lowercase: true,
     },
 
     resource: {
@@ -20,6 +20,21 @@ const permissionSchema = new mongoose.Schema(
       type: String,
       required: true,
       trim: true,
+    },
+
+    category: {
+      type: String,
+      required: true,
+      enum: [
+        "USER_MANAGEMENT",
+        "TEAM_MANAGEMENT",
+        "AUTHORIZATION",
+        "ACCESS_CONTROL",
+        "NOTIFICATION",
+        "SECURITY",
+        "TASK_MANAGEMENT",
+      ],
+      index: true,
     },
 
     description: {
