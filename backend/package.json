@@ -11,7 +11,9 @@
     "start": "node src/server.js",
     "seed": "node src/database/seed/seed.js",
     "seed:fresh": "node src/database/seed/seed.js --fresh",
-    "seed:system": "node src/database/seed/seed.js --system"
+    "seed:system": "node src/database/seed/seed.js --system",
+    "test:auth": "node src/modules/auth/auth.test.js",
+    "test": "npm run test:auth"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
