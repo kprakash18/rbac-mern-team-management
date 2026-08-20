@@ -1,11 +1,15 @@
 import User from "../users/user.model.js";
-import { comparePassword } from "../../common/security/password.js";
+import { comparePassword, hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
-import { validateLoginInput } from "./auth.validation.js";
+import {
+  validateLoginInput,
+  validatePasswordChangeInput,
+} from "./auth.validation.js";
 import {
   BadRequestError,
   UnauthorizedError,
   ForbiddenError,
+  NotFoundError,
 } from "../../common/errors/index.js";
 
 export async function login({ email, password }) {
@@ -63,5 +67,69 @@ export async function login({ email, password }) {
     accessToken,
     requiresPasswordChange: Boolean(user.mustChangePassword),
   };
-
 }
+
+export async function getCurrentUser(userId) {
+  const user = await User.findById(userId);
+  if (!user) {
+    throw new NotFoundError("User not found.", "USER_NOT_FOUND");
+  }
+
+  return {
+    id: user._id,
+    name: user.name,
+    email: user.email,
+    accountStatus: user.accountStatus,
+    mustChangePassword: user.mustChangePassword,
+    lastLoginAt: user.lastLoginAt,
+    createdAt: user.createdAt,
+  };
+}
+
+export async function changePassword(userId, { currentPassword, newPassword }) {
+  const validation = validatePasswordChangeInput({ currentPassword, newPassword });
+  if (!validation.isValid) {
+    throw new BadRequestError(validation.errors.join(" "));
+  }
+
+  const user = await User.findById(userId).select("+hashedPassword");
+  if (!user) {
+    throw new NotFoundError("User not found.", "USER_NOT_FOUND");
+  }
+
+  const isCurrentValid = await comparePassword(currentPassword, user.hashedPassword);
+  if (!isCurrentValid) {
+    throw new BadRequestError("Current password is incorrect.", "INVALID_CURRENT_PASSWORD");
+  }
+
+  user.hashedPassword = await hashPassword(newPassword);
+  user.mustChangePassword = false;
+  user.passwordChangedAt = new Date();
+
+  // If user was INVITED, transition to ACTIVE upon first password change
+  if (user.accountStatus === "INVITED") {
+    user.accountStatus = "ACTIVE";
+  }
+
+  await user.save();
+
+  return {
+    message: "Password changed successfully.",
+    user: {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      accountStatus: user.accountStatus,
+      mustChangePassword: user.mustChangePassword,
+    },
+  };
+}
+
+export async function logout(userId) {
+  // In stateless JWT auth, server acknowledges logout
+  // Future phases: refresh token invalidation / audit log
+  return {
+    message: "Logged out successfully.",
+  };
+}
+
