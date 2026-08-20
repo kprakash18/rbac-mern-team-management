@@ -18,10 +18,10 @@ export async function disconnectDatabase() {
 }
 
 
-export async function gracefulShutdown(signal){
+export async function gracefulShutdown(server){
   const shutdown = async(signal) =>{
     console.log(`\nReceived ${signal}.Shutting down gracefully...`);
-    httpServer.close(async() =>{
+    server.close(async() =>{
       console.log("Http server closed");
       await disconnectDatabase() ;
       process.exit(0) ;
