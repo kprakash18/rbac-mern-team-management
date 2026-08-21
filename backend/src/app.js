@@ -1,6 +1,7 @@
 import express from "express";
 import cors from "cors";
 import authRouter from "./modules/auth/auth.routes.js";
+import authorizationRouter from "./modules/authorization/authorization.routes.js";
 import { errorHandler } from "./common/middleware/error-handler.js";
 
 const app = express();
@@ -17,6 +18,7 @@ app.get("/health", (req, res) => {
 
 // Routes
 app.use("/api/auth", authRouter);
+app.use("/api/authorization", authorizationRouter);
 
 // Global Error Handler
 app.use(errorHandler);
