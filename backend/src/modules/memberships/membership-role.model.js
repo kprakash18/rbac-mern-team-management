@@ -29,6 +29,15 @@ const membershipRoleSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+    revokedAt : {
+      type: Date,
+      default : null
+    },
+    revokedBy : {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default : null,
+    }
   },
   {
     timestamps: true,
@@ -37,7 +46,7 @@ const membershipRoleSchema = new mongoose.Schema(
 
 membershipRoleSchema.index(
   { membershipId: 1, roleId: 1 },
-  { unique: true }
+  { unique: true , partialFilterExpression: {revokedAt: null} }
 );
 
 const MembershipRole = mongoose.model(
