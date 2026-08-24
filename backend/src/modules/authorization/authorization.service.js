@@ -21,6 +21,7 @@ export async function getActiveRoleIds(membershipId) {
 
   const membershipRoles = await MembershipRole.find({
     membershipId,
+    revokedAt: null,
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   }).select("roleId");
 
