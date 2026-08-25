@@ -1,0 +1,783 @@
+openapi: 3.0.3
+info:
+  title: Multi-Tenant Team Management & Dynamic RBAC API
+  description: >
+    Production-grade RESTful API providing Multi-Tenant Team Management, Dynamic Role-Based Access Control (RBAC),
+    Hierarchical Permission Scoping, and Context-Aware Access Evaluation.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8000
+    description: Local Development Server
+
+tags:
+  - name: Authentication
+    description: Identity verification, JWT generation, and password lifecycle management
+  - name: Authorization Engine
+    description: Dynamic, context-aware policy evaluation across teams and resources
+  - name: Permissions Catalog
+    description: Canonical system permission discovery and category filtering
+  - name: Roles & Permissions
+    description: Dynamic role CRUD, system role immutability, and role-permission junction management
+  - name: Team Membership Roles
+    description: Team-scoped role assignments, TTL expiration management, and soft-revocation
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Enter your JWT Bearer token obtained from `/api/auth/login`.
+
+  schemas:
+    # Error Model
+    ErrorResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        error:
+          type: object
+          properties:
+            message:
+              type: string
+              example: "Role not found or is not active."
+            code:
+              type: string
+              example: "NOT_FOUND"
+            statusCode:
+              type: integer
+              example: 404
+            details:
+              nullable: true
+              example: null
+
+    # User Profile Model
+    User:
+      type: object
+      properties:
+        id:
+          type: string
+          example: "65b8c1e6c87881daf598bb12"
+        name:
+          type: string
+          example: "Alice Johnson"
+        email:
+          type: string
+          example: "alice@example.com"
+        accountStatus:
+          type: string
+          enum: [INVITED, ACTIVE, SUSPENDED, DISABLED]
+          example: "ACTIVE"
+        mustChangePassword:
+          type: boolean
+          example: false
+
+    # Permission Model
+    Permission:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb34"
+        key:
+          type: string
+          example: "task.create"
+        resource:
+          type: string
+          example: "task"
+        action:
+          type: string
+          example: "create"
+        category:
+          type: string
+          enum: [TEAM_MANAGEMENT, TASK_MANAGEMENT, ROLE_MANAGEMENT, PERMISSION_MANAGEMENT, ACCESS_REQUESTS, AUDIT_SECURITY, NOTIFICATIONS, SYSTEM_ADMIN]
+          example: "TASK_MANAGEMENT"
+        description:
+          type: string
+          example: "Ability to create new tasks within a team"
+
+    # Role Model
+    Role:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb56"
+        name:
+          type: string
+          example: "QA Reviewer"
+        description:
+          type: string
+          example: "Custom quality assurance role"
+        isSystemRole:
+          type: boolean
+          example: false
+        status:
+          type: string
+          enum: [ACTIVE, DISABLED, ARCHIVED]
+          example: "ACTIVE"
+        createdBy:
+          type: string
+          example: "65b8c1e6c87881daf598bb12"
+        permissions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Permission'
+
+    # Membership Role Model
+    MembershipRole:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb78"
+        membershipId:
+          type: string
+          example: "65b8c1e6c87881daf598bb60"
+        roleId:
+          $ref: '#/components/schemas/Role'
+        assignedBy:
+          type: object
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+        assignedAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedAt:
+          type: string
+          format: date-time
+          nullable: true
+        revokedBy:
+          type: string
+          nullable: true
+        derivedState:
+          type: string
+          enum: [ACTIVE, EXPIRED, REVOKED]
+          example: "ACTIVE"
+
+paths:
+  # ============================================================================
+  # 1. AUTHENTICATION
+  # ============================================================================
+  /api/auth/login:
+    post:
+      tags: [Authentication]
+      summary: User Login & JWT Issuance
+      description: Authenticates user credentials and returns a signed JWT access token.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email:
+                  type: string
+                  example: "alice@example.com"
+                password:
+                  type: string
+                  example: "Password123!"
+      responses:
+        200:
+          description: Login successful
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      user:
+                        $ref: '#/components/schemas/User'
+                      accessToken:
+                        type: string
+                        example: "eyJhbGciOiJIUzI1NiIsIn..."
+                      requiresPasswordChange:
+                        type: boolean
+                        example: false
+        400:
+          description: Invalid input format
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        401:
+          description: Invalid email or password
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        403:
+          description: Account suspended or disabled
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+
+  /api/auth/me:
+    get:
+      tags: [Authentication]
+      summary: Get Current Authenticated Profile
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Current user profile retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+        401:
+          description: Unauthorized / Missing token
+
+  /api/auth/change-password:
+    post:
+      tags: [Authentication]
+      summary: Change User Password
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword:
+                  type: string
+                  example: "OldPassword123!"
+                newPassword:
+                  type: string
+                  example: "NewStrongPass123!"
+      responses:
+        200:
+          description: Password changed successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Password changed successfully."
+        400:
+          description: Invalid password format or incorrect current password
+
+  # ============================================================================
+  # 2. AUTHORIZATION ENGINE
+  # ============================================================================
+  /api/authorization/can:
+    post:
+      tags: [Authorization Engine]
+      summary: Evaluate Single Permission
+      description: Real-time decision check evaluating team roles, membership status, and direct grants.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [teamId, permissionKey]
+              properties:
+                teamId:
+                  type: string
+                  example: "65b8c1e6c87881daf598bb80"
+                permissionKey:
+                  type: string
+                  example: "task.create"
+                resource:
+                  type: string
+                  nullable: true
+                  example: "task:65b8c1e6c87881daf598bb90"
+      responses:
+        200:
+          description: Authorization evaluation result
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  allowed:
+                    type: boolean
+                    example: true
+                  userId:
+                    type: string
+                  teamId:
+                    type: string
+                  permissionKey:
+                    type: string
+
+  /api/authorization/permissions:
+    get:
+      tags: [Authorization Engine]
+      summary: List Resolved Permissions for User in Team
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Deduplicated list of resolved permission keys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: string
+                    example: ["task.create", "task.read", "team.update"]
+
+  # ============================================================================
+  # 3. PERMISSIONS CATALOG
+  # ============================================================================
+  /api/permissions:
+    get:
+      tags: [Permissions Catalog]
+      summary: List Canonical Permissions
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+            enum: [TEAM_MANAGEMENT, TASK_MANAGEMENT, ROLE_MANAGEMENT, PERMISSION_MANAGEMENT, ACCESS_REQUESTS, AUDIT_SECURITY, NOTIFICATIONS, SYSTEM_ADMIN]
+        - name: resource
+          in: query
+          schema:
+            type: string
+        - name: action
+          in: query
+          schema:
+            type: string
+      responses:
+        200:
+          description: Filtered permissions list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Permission'
+                  count:
+                    type: integer
+
+  /api/permissions/{permissionId}:
+    get:
+      tags: [Permissions Catalog]
+      summary: Get Single Permission by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: permissionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Permission details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Permission'
+
+  # ============================================================================
+  # 4. ROLES & ROLE-PERMISSIONS
+  # ============================================================================
+  /api/roles:
+    post:
+      tags: [Roles & Permissions]
+      summary: Create Dynamic Custom Role
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name:
+                  type: string
+                  example: "QA Lead"
+                description:
+                  type: string
+                  example: "Quality Assurance team lead role"
+                permissionIds:
+                  type: array
+                  items:
+                    type: string
+                  example: ["65b8c1e6c87881daf598bb34"]
+      responses:
+        201:
+          description: Custom role created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Role'
+
+    get:
+      tags: [Roles & Permissions]
+      summary: List Roles
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [ACTIVE, DISABLED, ARCHIVED]
+      responses:
+        200:
+          description: Roles list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Role'
+                  count:
+                    type: integer
+
+  /api/roles/{roleId}:
+    get:
+      tags: [Roles & Permissions]
+      summary: Get Role Details by ID
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Role details with attached permissions
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    $ref: '#/components/schemas/Role'
+
+    patch:
+      tags: [Roles & Permissions]
+      summary: Update Role Metadata or Status
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+                status:
+                  type: string
+                  enum: [ACTIVE, DISABLED]
+      responses:
+        200:
+          description: Role updated
+
+    delete:
+      tags: [Roles & Permissions]
+      summary: Soft Archive Role
+      description: Soft-archives a custom role. System roles cannot be deleted.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Role archived
+
+  /api/roles/{roleId}/permissions:
+    post:
+      tags: [Roles & Permissions]
+      summary: Assign Permissions to Role
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [permissionIds]
+              properties:
+                permissionIds:
+                  type: array
+                  items:
+                    type: string
+      responses:
+        200:
+          description: Permissions attached to role
+
+    get:
+      tags: [Roles & Permissions]
+      summary: List Permissions for Role
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of permissions attached to the role
+
+  /api/roles/{roleId}/permissions/{permissionId}:
+    delete:
+      tags: [Roles & Permissions]
+      summary: Remove Permission from Role
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: roleId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: permissionId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Permission removed from role
+
+  # ============================================================================
+  # 5. TEAM MEMBERSHIP ROLES
+  # ============================================================================
+  /api/teams/{teamId}/members/{userId}/roles:
+    post:
+      tags: [Team Membership Roles]
+      summary: Assign Role to Team Member
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [roleId]
+              properties:
+                roleId:
+                  type: string
+                  example: "65b8c1e6c87881daf598bb56"
+                expiresAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2026-12-31T23:59:59.000Z"
+      responses:
+        201:
+          description: Role assigned to team member
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/MembershipRole'
+
+    get:
+      tags: [Team Membership Roles]
+      summary: List Member Roles with Derived States
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of member role assignments
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/MembershipRole'
+                  count:
+                    type: integer
+
+  /api/teams/{teamId}/members/{userId}/roles/{assignmentId}:
+    patch:
+      tags: [Team Membership Roles]
+      summary: Update Role Assignment TTL Expiration
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [expiresAt]
+              properties:
+                expiresAt:
+                  type: string
+                  format: date-time
+                  nullable: true
+                  example: "2027-01-01T00:00:00.000Z"
+      responses:
+        200:
+          description: Assignment TTL updated
+
+    delete:
+      tags: [Team Membership Roles]
+      summary: Soft Revoke Role Assignment
+      description: Sets revokedAt and revokedBy without destroying the MongoDB audit history.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: assignmentId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Role assignment revoked successfully
