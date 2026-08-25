@@ -14,7 +14,8 @@
     "seed:system": "node src/database/seed/seed.js --system",
     "test:auth": "node src/modules/auth/auth.test.js",
     "test:authz": "node src/modules/authorization/authorization.test.js",
-    "test": "npm run test:auth && npm run test:authz"
+    "test:rbac": "node src/modules/roles/rbac.test.js",
+    "test": "npm run test:auth && npm run test:authz && npm run test:rbac"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
