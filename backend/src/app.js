@@ -1,5 +1,6 @@
 import express from "express";
 import cors from "cors";
+import {swaggerDocs} from "./docs/swagger.js";
 import authRouter from "./modules/auth/auth.routes.js";
 import authorizationRouter from "./modules/authorization/authorization.routes.js";
 import { errorHandler } from "./common/middleware/error-handler.js";
@@ -20,6 +21,7 @@ app.get("/health", (req, res) => {
 });
 
 // Routes
+app.use("/api-docs", swaggerDocs.serve, swaggerDocs.setup);
 app.use("/api/auth", authRouter);
 app.use("/api/authorization", authorizationRouter);
 app.use("/api/permissions", permissionRouter) ;
