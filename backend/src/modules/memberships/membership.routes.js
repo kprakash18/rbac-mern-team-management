@@ -9,5 +9,9 @@ const router = Router({ mergeParams: true });
 router.post("/", authenticate, requirePermission("membership.create"), membershipController.addMember);
 router.get("/", authenticate, requirePermission("membership.read"), membershipController.getTeamMembers);
 router.get("/:membershipId", authenticate, requirePermission("membership.read"), membershipController.getMemberById);
+router.patch("/:membershipId/suspend", authenticate, requirePermission("membership.update"), membershipController.suspendMember);
+router.patch("/:membershipId/reactivate", authenticate, requirePermission("membership.update"), membershipController.reactivateMember);
+router.delete("/:membershipId", authenticate, requirePermission("membership.remove"), membershipController.removeMember);
+
 
 export default router;
