@@ -8,6 +8,9 @@ import permissionRouter from "./modules/permissions/permission.routes.js";
 import roleRouter from "./modules/roles/role.routes.js";
 import membershipRoleRouter from "./modules/memberships/membership-role.routes.js";
 import teamRouter from "./modules/teams/team.routes.js";
+import membershipRouter from "./modules/memberships/membership.routes.js";
+import userRouter from "./modules/users/user.routes.js";
+
 
 const app = express();
 
@@ -29,6 +32,8 @@ app.use("/api/permissions", permissionRouter) ;
 app.use("/api/roles", roleRouter);
 app.use("/api/teams/:teamId/members/:userId/roles", membershipRoleRouter);
 app.use("/api/teams", teamRouter);
+app.use("/api/teams/:teamId/members", membershipRouter);
+app.use("/api/users", userRouter);
 
 // Global Error Handler
 app.use(errorHandler);
