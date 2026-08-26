@@ -7,6 +7,7 @@ import { errorHandler } from "./common/middleware/error-handler.js";
 import permissionRouter from "./modules/permissions/permission.routes.js";
 import roleRouter from "./modules/roles/role.routes.js";
 import membershipRoleRouter from "./modules/memberships/membership-role.routes.js";
+import teamRouter from "./modules/teams/team.routes.js";
 
 const app = express();
 
@@ -27,6 +28,7 @@ app.use("/api/authorization", authorizationRouter);
 app.use("/api/permissions", permissionRouter) ;
 app.use("/api/roles", roleRouter);
 app.use("/api/teams/:teamId/members/:userId/roles", membershipRoleRouter);
+app.use("/api/teams", teamRouter);
 
 // Global Error Handler
 app.use(errorHandler);
