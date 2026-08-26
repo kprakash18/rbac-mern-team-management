@@ -1,4 +1,4 @@
-import { resolvePermissions, can } from "./authorization.service.js";
+import { resolvePermissions, can , getAllUserPermissions} from "./authorization.service.js";
 import { BadRequestError } from "../../common/errors/index.js";
 
 /**
@@ -6,16 +6,21 @@ import { BadRequestError } from "../../common/errors/index.js";
  */
 export async function getMyPermissionsController(req, res, next) {
   try {
-    const teamId = req.query.teamId || req.params.teamId || req.headers["x-team-id"];
-    if (!teamId) {
-      throw new BadRequestError("Query parameter 'teamId' is required.");
+    const teamId = req.query.teamId ;
+    if (teamId) {
+      const permissions = await resolvePermissions(req.user.id, teamId);
+      return res.status(200).json({
+        success: true,
+        data: { teamId, permissions },
+      });
     }
-
-    const permissions = await resolvePermissions(req.user.id, teamId);
-
+    const teams = await getAllUserPermissions(req.user.id);
     return res.status(200).json({
       success: true,
-      data: { teamId, permissions },
+      data: {
+        userId: req.user.id,
+        teams,
+      },
     });
   } catch (error) {
     next(error);

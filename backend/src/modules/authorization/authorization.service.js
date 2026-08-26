@@ -126,6 +126,29 @@ export async function can(userId, teamId, permissionKey, resource = null) {
   return hasValidDirectGrant({ userId, teamId, permissionKey, resource });
 }
 
+// get all permissions for a user across all teams
+export async function getAllUserPermissions(userId){
+  if(!userId) return [];
+  const memberships = await Membership.find({
+    userId,
+    status : "ACTIVE",
+  }).populate("teamId", "name description status");
+  
+  const results = [];
+  for (const membership of memberships) {
+    if (!membership.teamId || membership.teamId.status === "ARCHIVED") {
+      continue;
+    }
+    const teamPermissions = await resolvePermissions(userId, membership.teamId._id);
+    results.push({
+      teamId: membership.teamId._id,
+      teamName: membership.teamId.name,
+      permissions: teamPermissions,
+    });
+  }
+  return results;
+}
+
 export const authorizationService = {
   getMembership,
   getActiveRoleIds,
@@ -133,6 +156,7 @@ export const authorizationService = {
   hasValidDirectGrant,
   resolvePermissions,
   can,
+  getAllUserPermissions,
 };
 
 export default authorizationService;
