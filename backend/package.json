@@ -12,11 +12,11 @@
     "seed": "node src/database/seed/seed.js",
     "seed:fresh": "node src/database/seed/seed.js --fresh",
     "seed:system": "node src/database/seed/seed.js --system",
-    "test:auth": "node src/modules/auth/auth.test.js",
-    "test:authz": "node src/modules/authorization/authorization.test.js",
-    "test:rbac": "node src/modules/roles/rbac.test.js",
-    "test:team": "node src/modules/teams/team-membership.test.js",
-    "test": "npm run test:auth && npm run test:authz && npm run test:rbac && npm run test:team"
+    "test:auth": "node --test src/modules/auth/auth.test.js",
+    "test:authz": "node --test src/modules/authorization/authorization.test.js",
+    "test:rbac": "node --test src/modules/roles/rbac.test.js",
+    "test:team": "node --test src/modules/teams/team-membership.test.js",
+    "test": "node --test --test-concurrency=1 'src/**/*.test.js'"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
