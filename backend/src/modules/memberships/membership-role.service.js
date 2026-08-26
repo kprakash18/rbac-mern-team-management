@@ -8,52 +8,58 @@ import {
   NotFoundError,
   ConflictError,
 } from "../../common/errors/index.js";
-import mongoose from "mongoose";
+import { validateObjectId } from "../../common/utils/validators.js";
 
-export async function assignRoleToMember({
-  teamId,
-  userId,
-  roleId,
-  expiresAt = null,
-  assignedBy,
-}) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(userId) ||
-    !mongoose.Types.ObjectId.isValid(roleId)
-  ) {
-    throw new BadRequestError("Invalid teamId, userId, or roleId format.");
+/**
+ * Finds an active team membership or throws NotFoundError
+ */
+async function getActiveMembership({ userId, teamId }) {
+  validateObjectId(teamId, "teamId");
+  validateObjectId(userId, "userId");
+
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" });
+  if (!membership) {
+    throw new NotFoundError("Active team membership not found.");
   }
+  return membership;
+}
 
-  // 1. Verify Team exists & is active
+/**
+ * Finds an active unrevoked role assignment or throws NotFoundError
+ */
+async function getActiveAssignment({ assignmentId, membershipId }) {
+  validateObjectId(assignmentId, "assignmentId");
+  const assignment = await MembershipRole.findOne({
+    _id: assignmentId,
+    membershipId,
+    revokedAt: null,
+  });
+  if (!assignment) {
+    throw new NotFoundError("Active role assignment not found.");
+  }
+  return assignment;
+}
+
+export async function assignRoleToMember({ teamId, userId, roleId, expiresAt = null, assignedBy }) {
+  validateObjectId(roleId, "roleId");
+
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") {
     throw new NotFoundError("Team not found.");
   }
 
-  // 2. Verify User exists & is not disabled
   const user = await User.findById(userId);
   if (!user || user.accountStatus === "DISABLED") {
     throw new NotFoundError("User not found or account is disabled.");
   }
 
-  // 3. Verify Membership exists & is ACTIVE
-  const membership = await Membership.findOne({
-    userId,
-    teamId,
-    status: "ACTIVE",
-  });
-  if (!membership) {
-    throw new NotFoundError("Active team membership not found.");
-  }
+  const membership = await getActiveMembership({ userId, teamId });
 
-  // 4. Verify Role exists & is ACTIVE
   const role = await Role.findById(roleId);
   if (!role || role.status !== "ACTIVE") {
     throw new NotFoundError("Role not found or is not active.");
   }
 
-   // 1. Check if an active unrevoked assignment already exists
   const existingAssignment = await MembershipRole.findOne({
     membershipId: membership._id,
     roleId: role._id,
@@ -67,7 +73,6 @@ export async function assignRoleToMember({
     );
   }
 
-  // 2. Create new MembershipRole document
   const assignment = await MembershipRole.create({
     membershipId: membership._id,
     roleId: role._id,
@@ -77,41 +82,11 @@ export async function assignRoleToMember({
   });
 
   return getAssignmentById(assignment._id);
-
 }
 
-export async function updateRoleAssignmentTtl({
-  teamId,
-  userId,
-  assignmentId,
-  expiresAt,
-}) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(userId) ||
-    !mongoose.Types.ObjectId.isValid(assignmentId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-
-  const membership = await Membership.findOne({
-    userId,
-    teamId,
-    status: "ACTIVE",
-  });
-  if (!membership) {
-    throw new NotFoundError("Active team membership not found.");
-  }
-
-  const assignment = await MembershipRole.findOne({
-    _id: assignmentId,
-    membershipId: membership._id,
-    revokedAt: null,
-  });
-
-  if (!assignment) {
-    throw new NotFoundError("Active role assignment not found.");
-  }
+export async function updateRoleAssignmentTtl({ teamId, userId, assignmentId, expiresAt }) {
+  const membership = await getActiveMembership({ userId, teamId });
+  const assignment = await getActiveAssignment({ assignmentId, membershipId: membership._id });
 
   assignment.expiresAt = expiresAt ? new Date(expiresAt) : null;
   await assignment.save();
@@ -119,41 +94,10 @@ export async function updateRoleAssignmentTtl({
   return getAssignmentById(assignment._id);
 }
 
-export async function revokeRoleAssignment({
-  teamId,
-  userId,
-  assignmentId,
-  revokedBy,
-}) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(userId) ||
-    !mongoose.Types.ObjectId.isValid(assignmentId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
+export async function revokeRoleAssignment({ teamId, userId, assignmentId, revokedBy }) {
+  const membership = await getActiveMembership({ userId, teamId });
+  const assignment = await getActiveAssignment({ assignmentId, membershipId: membership._id });
 
-  const membership = await Membership.findOne({
-    userId,
-    teamId,
-    status: "ACTIVE",
-  });
-  if (!membership) {
-    throw new NotFoundError("Active team membership not found.");
-  }
-
-  // Find active assignment
-  const assignment = await MembershipRole.findOne({
-    _id: assignmentId,
-    membershipId: membership._id,
-    revokedAt: null,
-  });
-
-  if (!assignment) {
-    throw new NotFoundError("Active role assignment not found.");
-  }
-
-  // Soft-revoke
   assignment.revokedAt = new Date();
   assignment.revokedBy = revokedBy;
   await assignment.save();
@@ -165,21 +109,7 @@ export async function revokeRoleAssignment({
 }
 
 export async function listMemberRoles({ teamId, userId }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(userId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-
-  const membership = await Membership.findOne({
-    userId,
-    teamId,
-    status: "ACTIVE",
-  });
-  if (!membership) {
-    throw new NotFoundError("Active team membership not found.");
-  }
+  const membership = await getActiveMembership({ userId, teamId });
 
   const assignments = await MembershipRole.find({
     membershipId: membership._id,

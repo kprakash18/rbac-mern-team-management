@@ -2,100 +2,76 @@ import Membership from "./membership.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import MembershipRole from "./membership-role.model.js";
-import {
-  BadRequestError,
-  NotFoundError,
-  ConflictError,
-} from "../../common/errors/index.js";
-import mongoose from "mongoose";
+import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
+import { validateObjectId } from "../../common/utils/validators.js";
+import { getPaginationParams } from "../../common/utils/pagination.js";
+
+export async function getMembershipById({ teamId, membershipId }) {
+  validateObjectId(teamId, "team ID");
+  validateObjectId(membershipId, "membership ID");
+
+  const membership = await Membership.findOne({
+    _id: membershipId,
+    teamId,
+  }).populate("userId", "name email accountStatus");
+
+  if (!membership || membership.status === "REMOVED") {
+    throw new NotFoundError("Membership not found in this team.");
+  }
+  return membership;
+}
 
 export async function addMemberToTeam({ teamId, userId, addedBy }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(userId)
-  ) {
-    throw new BadRequestError("Invalid teamId or userId format.");
-  }
+  validateObjectId(teamId, "teamId");
+  validateObjectId(userId, "userId");
 
-  // 1. Verify Team exists & is active
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") {
     throw new NotFoundError("Team not found.");
   }
 
-  // 2. Verify User exists & is not disabled
   const user = await User.findById(userId);
   if (!user || user.accountStatus === "DISABLED") {
     throw new NotFoundError("User not found or account is disabled.");
   }
 
-  // 3. Check for existing membership record
-  const existingMembership = await Membership.findOne({ userId, teamId });
-
-  if (existingMembership) {
-    if (existingMembership.status === "ACTIVE") {
-      throw new ConflictError(
-        "User is already an active member of this team.",
-        "MEMBERSHIP_EXISTS"
-      );
+  const existing = await Membership.findOne({ userId, teamId });
+  if (existing) {
+    if (existing.status === "ACTIVE") {
+      throw new ConflictError("User is already an active member of this team.", "MEMBERSHIP_EXISTS");
     }
-    if (existingMembership.status === "SUSPENDED") {
-      throw new ConflictError(
-        "User membership is currently suspended. Please reactivate instead.",
-        "MEMBERSHIP_SUSPENDED"
-      );
+    if (existing.status === "SUSPENDED") {
+      throw new ConflictError("User membership is currently suspended. Please reactivate instead.", "MEMBERSHIP_SUSPENDED");
     }
 
-        if (existingMembership.status === "REMOVED") {
-            existingMembership.status = "ACTIVE";
-            existingMembership.joinedAt = new Date();
-            existingMembership.removedAt = null;
-            await existingMembership.save();
-
-            return getMembershipById({
-                teamId,
-                membershipId: existingMembership._id,
-      });
-    }
-
+    // Reactivate removed member
+    existing.status = "ACTIVE";
+    existing.joinedAt = new Date();
+    existing.removedAt = null;
+    await existing.save();
+    return getMembershipById({ teamId, membershipId: existing._id });
   }
 
-  // 4. Create brand new Membership document
-  const newMembership = await Membership.create({
+  const membership = await Membership.create({
     userId,
     teamId,
     status: "ACTIVE",
     joinedAt: new Date(),
   });
 
-  return getMembershipById({ teamId, membershipId: newMembership._id });
+  return getMembershipById({ teamId, membershipId: membership._id });
 }
 
-export async function listTeamMembers({
-  teamId,
-  status,
-  page = 1,
-  limit = 20,
-} = {}) {
-  if (!mongoose.Types.ObjectId.isValid(teamId)) {
-    throw new BadRequestError("Invalid teamId format.");
-  }
+export async function listTeamMembers({ teamId, status, page = 1, limit = 20 } = {}) {
+  validateObjectId(teamId, "teamId");
 
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") {
     throw new NotFoundError("Team not found.");
   }
 
-  const query = { teamId };
-  if (status) {
-    query.status = status;
-  } else {
-    query.status = { $ne: "REMOVED" };
-  }
-
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+  const query = { teamId, status: status || { $ne: "REMOVED" } };
+  const { page: pageNum, limit: limitNum, skip, calculateTotalPages } = getPaginationParams({ page, limit });
 
   const [members, total] = await Promise.all([
     Membership.find(query)
@@ -111,100 +87,57 @@ export async function listTeamMembers({
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: calculateTotalPages(total),
   };
 }
 
-export async function getMembershipById({ teamId, membershipId }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(membershipId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-
-  const membership = await Membership.findOne({
-    _id: membershipId,
-    teamId,
-  }).populate("userId", "name email accountStatus");
-
-  if (!membership) {
-    throw new NotFoundError("Membership not found in this team.");
-  }
-
-  return membership;
-}
-
 export async function suspendMembership({ teamId, membershipId, actorId }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(membershipId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-  const membership = await Membership.findOne({ _id: membershipId, teamId });
-  if (!membership || membership.status === "REMOVED") {
-    throw new NotFoundError("Active or suspended membership not found.");
-  }
+  const membership = await getMembershipById({ teamId, membershipId });
   if (membership.status === "SUSPENDED") {
     throw new BadRequestError("Membership is already suspended.");
   }
+
   membership.status = "SUSPENDED";
   await membership.save();
   return getMembershipById({ teamId, membershipId: membership._id });
 }
+
 export async function reactivateMembership({ teamId, membershipId, actorId }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(membershipId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-  const membership = await Membership.findOne({ _id: membershipId, teamId });
-  if (!membership || membership.status === "REMOVED") {
-    throw new NotFoundError("Membership not found.");
-  }
+  const membership = await getMembershipById({ teamId, membershipId });
   if (membership.status === "ACTIVE") {
     throw new BadRequestError("Membership is already active.");
   }
+
   membership.status = "ACTIVE";
   await membership.save();
   return getMembershipById({ teamId, membershipId: membership._id });
 }
+
 export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
-  if (
-    !mongoose.Types.ObjectId.isValid(teamId) ||
-    !mongoose.Types.ObjectId.isValid(membershipId)
-  ) {
-    throw new BadRequestError("Invalid ID format.");
-  }
-  const membership = await Membership.findOne({ _id: membershipId, teamId });
-  if (!membership || membership.status === "REMOVED") {
-    throw new NotFoundError("Membership not found in this team.");
-  }
-  // 1. Mark membership as REMOVED
+  const membership = await getMembershipById({ teamId, membershipId });
+
   membership.status = "REMOVED";
   membership.removedAt = new Date();
   await membership.save();
-  // 2. Cascade soft-revoke any active roles for this membership
+
   await MembershipRole.updateMany(
     { membershipId: membership._id, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedBy: actorId } }
   );
+
   return {
     success: true,
     message: "Member removed from team successfully.",
   };
 }
 
-
 export const membershipService = {
   addMemberToTeam,
   listTeamMembers,
   getMembershipById,
-  removeMemberFromTeam,
-  reactivateMembership,
   suspendMembership,
+  reactivateMembership,
+  removeMemberFromTeam,
 };
 
 export default membershipService;

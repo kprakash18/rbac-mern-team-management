@@ -1,4 +1,5 @@
 import User from "./user.model.js";
+import { getPaginationParams } from "../../common/utils/pagination.js";
 
 export async function searchUsers({ query = "", page = 1, limit = 20 } = {}) {
   const filter = { accountStatus: { $ne: "DISABLED" } };
@@ -11,9 +12,7 @@ export async function searchUsers({ query = "", page = 1, limit = 20 } = {}) {
     ];
   }
 
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, skip, calculateTotalPages } = getPaginationParams({ page, limit });
 
   const [users, total] = await Promise.all([
     User.find(filter)
@@ -29,7 +28,7 @@ export async function searchUsers({ query = "", page = 1, limit = 20 } = {}) {
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: calculateTotalPages(total),
   };
 }
 
