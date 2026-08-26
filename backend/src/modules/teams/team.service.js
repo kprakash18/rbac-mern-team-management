@@ -1,0 +1,161 @@
+import Team from "./team.model.js" ;
+import Membership from '../memberships/membership.model.js';
+import {
+  BadRequestError,
+  NotFoundError,
+  ConflictError,
+} from "../../common/errors/index.js";
+import mongoose from "mongoose";
+
+export async function createTeam({name, description= "", createdBy}){
+    // validate the incoming inputs
+    if(!name || typeof name !=="string" || name.trim().length === 0){
+        throw new BadRequestError("Team name is required");
+    }
+    // description validation
+    if(typeof description !== "string"){
+        throw new BadRequestError("Description must be string");
+    }
+
+    if(!mongoose.Types.ObjectId.isValid(createdBy)){
+        throw new BadRequestError("Invalid creator ID format");
+    }
+
+    const normalizedName = name.trim() ;
+    // check if the team name already exist with the same name
+    const existingTeam = await Team.findOne({
+        name : normalizedName,
+        status: {$ne : "ARCHIVED"},
+    });
+
+      if (existingTeam) {
+    throw new ConflictError(
+      "A team with this name already exists.",
+      "TEAM_NAME_EXISTS"
+    );
+  }
+
+
+    // create team
+    const team = await Team.create({
+        name : normalizedName,
+        description : description?.trim() ?? "",
+        createdBy,
+        status:"ACTIVE",
+    });
+
+    // automatically add creator as the first acitve member
+    await Membership.create({
+        userId : createdBy,
+        teamId : team._id,
+        status : "ACTIVE",
+        joinedAt : new Date(),
+    });
+
+    return getTeamById(team._id);
+}
+
+export async function listTeams({
+  status,
+  search,
+  page = 1,
+  limit = 20,
+} = {}) {
+  const query = {};
+  if (status) {
+    query.status = status;
+  } else {
+    query.status = { $ne: "ARCHIVED" };
+  }
+  if (search && typeof search === "string" && search.trim().length > 0) {
+    query.name = { $regex: search.trim(), $options: "i" };
+  }
+  const pageNum = Math.max(1, parseInt(page, 10) || 1);
+  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
+  const skip = (pageNum - 1) * limitNum;
+  const [teams, total] = await Promise.all([
+    Team.find(query)
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(limitNum),
+    Team.countDocuments(query),
+  ]);
+  return {
+    teams,
+    total,
+    page: pageNum,
+    limit: limitNum,
+    totalPages: Math.ceil(total / limitNum),
+  };
+}
+export async function getTeamById(teamId) {
+  if (!mongoose.Types.ObjectId.isValid(teamId)) {
+    throw new BadRequestError("Invalid team ID format.");
+  }
+  const team = await Team.findById(teamId).populate("createdBy", "name email");
+  if (!team || team.status === "ARCHIVED") {
+    throw new NotFoundError("Team not found.");
+  }
+  return team;
+}
+export async function updateTeam(teamId, { name, description }) {
+  if (!mongoose.Types.ObjectId.isValid(teamId)) {
+    throw new BadRequestError("Invalid team ID format.");
+  }
+  const team = await Team.findById(teamId);
+  if (!team || team.status === "ARCHIVED") {
+    throw new NotFoundError("Team not found.");
+  }
+  if (name && typeof name === "string" && name.trim().length > 0) {
+    const normalizedName = name.trim();
+    if (normalizedName !== team.name) {
+
+      const existingTeam = await Team.findOne({
+        _id: {$ne: team._id},
+        name : normalizedName,
+        status: {$ne : "ARCHIVED"},
+      });
+      if(existingTeam){
+        throw new ConflictError(
+          "A team with this name already exists.",
+          "TEAM_NAME_EXISTS"
+        )
+      }
+      team.name = normalizedName;
+    }
+  }
+  if (typeof description === "string") {
+    team.description = description.trim();
+  }
+  await team.save();
+  return getTeamById(team._id);
+}
+
+
+export async function archiveTeam(teamId) {
+  if (!mongoose.Types.ObjectId.isValid(teamId)) {
+    throw new BadRequestError("Invalid team ID format.");
+  }
+  const team = await Team.findById(teamId);
+  if (!team || team.status === "ARCHIVED") {
+    throw new NotFoundError("Team not found.");
+  }
+
+  team.status = "ARCHIVED";
+  await team.save();
+
+  return {
+    success: true,
+    message: "Team archived successfully.",
+  };
+}
+
+export const teamService = {
+  createTeam,
+  listTeams,
+  getTeamById,
+  updateTeam,
+  archiveTeam,
+};
+export default teamService;
