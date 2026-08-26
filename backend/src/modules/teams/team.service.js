@@ -1,78 +1,54 @@
-import Team from "./team.model.js" ;
-import Membership from '../memberships/membership.model.js';
+import Team from "./team.model.js";
+import Membership from "../memberships/membership.model.js";
+import { ConflictError, NotFoundError } from "../../common/errors/index.js";
 import {
-  BadRequestError,
-  NotFoundError,
-  ConflictError,
-} from "../../common/errors/index.js";
-import mongoose from "mongoose";
+  validateObjectId,
+  validateRequiredString,
+  validateOptionalString,
+} from "../../common/utils/validators.js";
+import { getPaginationParams } from "../../common/utils/pagination.js";
 
-export async function createTeam({name, description= "", createdBy}){
-    // validate the incoming inputs
-    if(!name || typeof name !=="string" || name.trim().length === 0){
-        throw new BadRequestError("Team name is required");
-    }
-    // description validation
-    if(typeof description !== "string"){
-        throw new BadRequestError("Description must be string");
-    }
-
-    if(!mongoose.Types.ObjectId.isValid(createdBy)){
-        throw new BadRequestError("Invalid creator ID format");
-    }
-
-    const normalizedName = name.trim() ;
-    // check if the team name already exist with the same name
-    const existingTeam = await Team.findOne({
-        name : normalizedName,
-        status: {$ne : "ARCHIVED"},
-    });
-
-      if (existingTeam) {
-    throw new ConflictError(
-      "A team with this name already exists.",
-      "TEAM_NAME_EXISTS"
-    );
+export async function getTeamById(teamId) {
+  validateObjectId(teamId, "team ID");
+  const team = await Team.findById(teamId).populate("createdBy", "name email");
+  if (!team || team.status === "ARCHIVED") {
+    throw new NotFoundError("Team not found.");
   }
-
-
-    // create team
-    const team = await Team.create({
-        name : normalizedName,
-        description : description?.trim() ?? "",
-        createdBy,
-        status:"ACTIVE",
-    });
-
-    // automatically add creator as the first acitve member
-    await Membership.create({
-        userId : createdBy,
-        teamId : team._id,
-        status : "ACTIVE",
-        joinedAt : new Date(),
-    });
-
-    return getTeamById(team._id);
+  return team;
 }
 
-export async function listTeams({
-  status,
-  search,
-  page = 1,
-  limit = 20,
-} = {}) {
-  const query = {};
-  if (status) {
-    query.status = status;
-  } else {
-    query.status = { $ne: "ARCHIVED" };
+export async function createTeam({ name, description = "", createdBy }) {
+  const normalizedName = validateRequiredString(name, "Team name");
+  const normalizedDesc = validateOptionalString(description, "Description");
+  validateObjectId(createdBy, "creator ID");
+
+  if (await Team.exists({ name: normalizedName, status: { $ne: "ARCHIVED" } })) {
+    throw new ConflictError("A team with this name already exists.", "TEAM_NAME_EXISTS");
   }
-  if (search && typeof search === "string" && search.trim().length > 0) {
-    query.name = { $regex: search.trim(), $options: "i" };
-  }
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+
+  const team = await Team.create({
+    name: normalizedName,
+    description: normalizedDesc,
+    createdBy,
+    status: "ACTIVE",
+  });
+
+  await Membership.create({
+    userId: createdBy,
+    teamId: team._id,
+    status: "ACTIVE",
+    joinedAt: new Date(),
+  });
+
+  return getTeamById(team._id);
+}
+
+export async function listTeams({ status, search, page = 1, limit = 20 } = {}) {
+  const query = { status: status || { $ne: "ARCHIVED" } };
+  if (search?.trim()) query.name = { $regex: search.trim(), $options: "i" };
+
+  const { page: pageNum, limit: limitNum, skip, calculateTotalPages } = getPaginationParams({ page, limit });
+
   const [teams, total] = await Promise.all([
     Team.find(query)
       .populate("createdBy", "name email")
@@ -81,74 +57,42 @@ export async function listTeams({
       .limit(limitNum),
     Team.countDocuments(query),
   ]);
+
   return {
     teams,
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: calculateTotalPages(total),
   };
 }
-export async function getTeamById(teamId) {
-  if (!mongoose.Types.ObjectId.isValid(teamId)) {
-    throw new BadRequestError("Invalid team ID format.");
-  }
-  const team = await Team.findById(teamId).populate("createdBy", "name email");
-  if (!team || team.status === "ARCHIVED") {
-    throw new NotFoundError("Team not found.");
-  }
-  return team;
-}
-export async function updateTeam(teamId, { name, description }) {
-  if (!mongoose.Types.ObjectId.isValid(teamId)) {
-    throw new BadRequestError("Invalid team ID format.");
-  }
-  const team = await Team.findById(teamId);
-  if (!team || team.status === "ARCHIVED") {
-    throw new NotFoundError("Team not found.");
-  }
-  if (name && typeof name === "string" && name.trim().length > 0) {
-    const normalizedName = name.trim();
-    if (normalizedName !== team.name) {
 
-      const existingTeam = await Team.findOne({
-        _id: {$ne: team._id},
-        name : normalizedName,
-        status: {$ne : "ARCHIVED"},
-      });
-      if(existingTeam){
-        throw new ConflictError(
-          "A team with this name already exists.",
-          "TEAM_NAME_EXISTS"
-        )
+export async function updateTeam(teamId, { name, description }) {
+  const team = await getTeamById(teamId);
+
+  if (name !== undefined) {
+    const normalizedName = validateRequiredString(name, "Team name");
+    if (normalizedName !== team.name) {
+      if (await Team.exists({ _id: { $ne: team._id }, name: normalizedName, status: { $ne: "ARCHIVED" } })) {
+        throw new ConflictError("A team with this name already exists.", "TEAM_NAME_EXISTS");
       }
       team.name = normalizedName;
     }
   }
-  if (typeof description === "string") {
-    team.description = description.trim();
+
+  if (description !== undefined) {
+    team.description = validateOptionalString(description, "Description");
   }
+
   await team.save();
   return getTeamById(team._id);
 }
 
-
 export async function archiveTeam(teamId) {
-  if (!mongoose.Types.ObjectId.isValid(teamId)) {
-    throw new BadRequestError("Invalid team ID format.");
-  }
-  const team = await Team.findById(teamId);
-  if (!team || team.status === "ARCHIVED") {
-    throw new NotFoundError("Team not found.");
-  }
-
+  const team = await getTeamById(teamId);
   team.status = "ARCHIVED";
   await team.save();
-
-  return {
-    success: true,
-    message: "Team archived successfully.",
-  };
+  return { success: true, message: "Team archived successfully." };
 }
 
 export const teamService = {
@@ -158,4 +102,5 @@ export const teamService = {
   updateTeam,
   archiveTeam,
 };
+
 export default teamService;
