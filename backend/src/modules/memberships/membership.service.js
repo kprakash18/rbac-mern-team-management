@@ -1,6 +1,7 @@
 import Membership from "./membership.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
+import MembershipRole from "./membership-role.model.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -134,10 +135,76 @@ export async function getMembershipById({ teamId, membershipId }) {
   return membership;
 }
 
+export async function suspendMembership({ teamId, membershipId, actorId }) {
+  if (
+    !mongoose.Types.ObjectId.isValid(teamId) ||
+    !mongoose.Types.ObjectId.isValid(membershipId)
+  ) {
+    throw new BadRequestError("Invalid ID format.");
+  }
+  const membership = await Membership.findOne({ _id: membershipId, teamId });
+  if (!membership || membership.status === "REMOVED") {
+    throw new NotFoundError("Active or suspended membership not found.");
+  }
+  if (membership.status === "SUSPENDED") {
+    throw new BadRequestError("Membership is already suspended.");
+  }
+  membership.status = "SUSPENDED";
+  await membership.save();
+  return getMembershipById({ teamId, membershipId: membership._id });
+}
+export async function reactivateMembership({ teamId, membershipId, actorId }) {
+  if (
+    !mongoose.Types.ObjectId.isValid(teamId) ||
+    !mongoose.Types.ObjectId.isValid(membershipId)
+  ) {
+    throw new BadRequestError("Invalid ID format.");
+  }
+  const membership = await Membership.findOne({ _id: membershipId, teamId });
+  if (!membership || membership.status === "REMOVED") {
+    throw new NotFoundError("Membership not found.");
+  }
+  if (membership.status === "ACTIVE") {
+    throw new BadRequestError("Membership is already active.");
+  }
+  membership.status = "ACTIVE";
+  await membership.save();
+  return getMembershipById({ teamId, membershipId: membership._id });
+}
+export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
+  if (
+    !mongoose.Types.ObjectId.isValid(teamId) ||
+    !mongoose.Types.ObjectId.isValid(membershipId)
+  ) {
+    throw new BadRequestError("Invalid ID format.");
+  }
+  const membership = await Membership.findOne({ _id: membershipId, teamId });
+  if (!membership || membership.status === "REMOVED") {
+    throw new NotFoundError("Membership not found in this team.");
+  }
+  // 1. Mark membership as REMOVED
+  membership.status = "REMOVED";
+  membership.removedAt = new Date();
+  await membership.save();
+  // 2. Cascade soft-revoke any active roles for this membership
+  await MembershipRole.updateMany(
+    { membershipId: membership._id, revokedAt: null },
+    { $set: { revokedAt: new Date(), revokedBy: actorId } }
+  );
+  return {
+    success: true,
+    message: "Member removed from team successfully.",
+  };
+}
+
+
 export const membershipService = {
   addMemberToTeam,
   listTeamMembers,
   getMembershipById,
+  removeMemberFromTeam,
+  reactivateMembership,
+  suspendMembership,
 };
 
 export default membershipService;

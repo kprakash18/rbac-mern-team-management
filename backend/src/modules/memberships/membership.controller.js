@@ -46,10 +46,55 @@ export async function getMemberById(req, res, next) {
   }
 }
 
+export async function suspendMember (req,res,next){
+    try {
+        const {teamId, membershipId} = req.params;
+        const updated = await membershipService.suspendMembership({
+            teamId,
+            membershipId,
+            actorId: req.user.id,
+        })
+        return res.status(200).json({success: true, data: updated});
+    } catch (error) {
+        next(error);
+    }
+}
+export async function reactivateMember(req, res, next) {
+  try {
+    const { teamId, membershipId } = req.params;
+    const updated = await membershipService.reactivateMembership({
+      teamId,
+      membershipId,
+      actorId: req.user.id,
+    });
+    return res.status(200).json({ success: true, data: updated });
+  } catch (error) {
+    next(error);
+  }
+}
+export async function removeMember(req, res, next) {
+  try {
+    const { teamId, membershipId } = req.params;
+    const result = await membershipService.removeMemberFromTeam({
+      teamId,
+      membershipId,
+      actorId: req.user.id,
+    });
+    return res.status(200).json(result);
+  } catch (error) {
+    next(error);
+  }
+}
+
+
+
 export const membershipController = {
   addMember,
   getTeamMembers,
   getMemberById,
+  removeMember,
+  suspendMember,
+  reactivateMember,
 };
 
 export default membershipController;
