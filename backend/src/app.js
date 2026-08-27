@@ -10,7 +10,7 @@ import membershipRoleRouter from "./modules/memberships/membership-role.routes.j
 import teamRouter from "./modules/teams/team.routes.js";
 import membershipRouter from "./modules/memberships/membership.routes.js";
 import userRouter from "./modules/users/user.routes.js";
-import invitationRouter from "./modules/invitations/invitation.router.js";
+import invitationRouter from "./modules/invitations/invitation.route.js";
 
 const app = express();
 

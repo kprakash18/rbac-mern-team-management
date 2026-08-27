@@ -9,7 +9,7 @@ import {
   NotFoundError,
   ConflictError,
 } from "../../common/errors/index.js";
-import mongoose, { mongo } from "mongoose";
+import mongoose from "mongoose";
 import { isValidEmail } from "../auth/auth.validation.js";
 
   export async function createInvitation({ teamId, email, roleIds = [], invitedByUserId }) {
@@ -40,12 +40,12 @@ import { isValidEmail } from "../auth/auth.validation.js";
       throw new BadRequestError("One or more role IDs have an invalid format.");
     }
 
-    const foundRoles = await Role.find({
+    const foundCount = await Role.countDocuments({
       _id: { $in: roleIds },
       isActive: true,
     });
 
-    if (foundRoles.length !== roleIds.length) {
+    if (foundCount !== roleIds.length) {
       throw new BadRequestError("One or more assigned roles are invalid or inactive.");
     }
   }
