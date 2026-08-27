@@ -22,6 +22,13 @@ const invitationSchema = new mongoose.Schema(
       ref: "Team",
       required: true,
     },
+        roleIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Role",
+      },
+    ],
+
 
     invitedBy: {
       type: mongoose.Schema.Types.ObjectId,
@@ -44,6 +51,7 @@ const invitationSchema = new mongoose.Schema(
     tokenHash: {
       type: String,
       required: true,
+      unique: true,
     },
 
     expiresAt: {
