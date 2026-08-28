@@ -30,6 +30,8 @@ tags:
     description: Cryptographic token-based team invitations, onboarding gateway, and invitation lifecycle management
   - name: Team Tasks
     description: Multi-tenant task CRUD, active-membership assignee verification, and fine-grained resource authorization
+  - name: Access Requests & Grants
+    description: Just-in-time privilege elevation, temporary direct grants, self-service request modifications, and reviewer decision control plane
 
 components:
   securitySchemes:
@@ -343,6 +345,150 @@ components:
           type: string
           format: date-time
           nullable: true
+
+    AccessRequest:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb97"
+        requesterId:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            email: { type: string }
+        targetUserId:
+          type: object
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            email: { type: string }
+        teamId:
+          type: string
+          example: "65b8c1e6c87881daf598bb90"
+        permissionId:
+          type: object
+          properties:
+            _id: { type: string }
+            key: { type: string, example: "task.delete" }
+        resource:
+          type: string
+          example: "task:65b8c1e6c87881daf598bb95"
+        reason:
+          type: string
+          example: "Need to clean up corrupted test task"
+        status:
+          type: string
+          enum: [PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED]
+          example: "PENDING"
+        reviewedBy:
+          type: object
+          nullable: true
+          properties:
+            _id: { type: string }
+            name: { type: string }
+            email: { type: string }
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AccessGrant:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb98"
+        userId:
+          type: string
+          example: "65b8c1e6c87881daf598bb92"
+        teamId:
+          type: string
+          example: "65b8c1e6c87881daf598bb90"
+        permissionId:
+          type: string
+          example: "65b8c1e6c87881daf598bb88"
+        resource:
+          type: string
+          example: "task:65b8c1e6c87881daf598bb95"
+        grantedBy:
+          type: string
+          example: "65b8c1e6c87881daf598bb91"
+        source:
+          type: string
+          enum: [MANUAL, ACCESS_REQUEST, DELEGATION, SYSTEM]
+          example: "ACCESS_REQUEST"
+        accessRequestId:
+          type: string
+          example: "65b8c1e6c87881daf598bb97"
+        status:
+          type: string
+          enum: [ACTIVE, REVOKED, EXPIRED]
+          example: "ACTIVE"
+        expiresAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    CreateAccessRequestInput:
+      type: object
+      required: [permissionKey, resource]
+      properties:
+        targetUserId:
+          type: string
+          description: Beneficiary User ID (defaults to authenticated requester)
+          example: "65b8c1e6c87881daf598bb92"
+        permissionKey:
+          type: string
+          example: "task.delete"
+        resource:
+          type: string
+          example: "task:65b8c1e6c87881daf598bb95"
+        reason:
+          type: string
+          maxLength: 1000
+          example: "Need to clean up corrupted test task"
+        durationHours:
+          type: number
+          example: 2
+
+    UpdateAccessRequestInput:
+      type: object
+      properties:
+        permissionKey:
+          type: string
+          example: "task.delete"
+        resource:
+          type: string
+          example: "task:65b8c1e6c87881daf598bb95"
+        reason:
+          type: string
+          example: "Updated justification reason"
+        durationHours:
+          type: number
+          example: 4
+
+    ApproveAccessRequestInput:
+      type: object
+      properties:
+        durationHours:
+          type: number
+          example: 2
+
+    RejectAccessRequestInput:
+      type: object
+      properties:
+        reason:
+          type: string
+          example: "Operation is too risky"
 
 paths:
   # ============================================================================
@@ -1802,5 +1948,349 @@ paths:
           description: Forbidden - Insufficient permissions (`task.delete`)
         404:
           description: Task not found in this team workspace
+
+  # ============================================================================
+  # 11. ACCESS REQUESTS & TEMPORARY GRANTS
+  # ============================================================================
+  /api/teams/{teamId}/access-requests:
+    post:
+      tags: [Access Requests & Grants]
+      summary: Submit Access Request
+      description: >
+        Submits a self-service request for temporary privilege elevation on a specific permission and resource.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Target team workspace ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateAccessRequestInput'
+      responses:
+        201:
+          description: Access request created in PENDING state
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/AccessRequest' }
+        400:
+          description: Target user not an active member or missing parameters
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`access_request.create`)
+        409:
+          description: Conflict - A pending access request already exists for this permission and resource
+
+    get:
+      tags: [Access Requests & Grants]
+      summary: List Team Access Requests
+      description: >
+        Retrieves a paginated list of access requests within the specified team workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED]
+        - name: targetUserId
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+      responses:
+        200:
+          description: Access requests retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AccessRequest' }
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer, example: 10 }
+                      page: { type: integer, example: 1 }
+                      limit: { type: integer, example: 20 }
+                      totalPages: { type: integer, example: 1 }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`access_request.read`)
+
+  /api/teams/{teamId}/access-requests/{requestId}:
+    get:
+      tags: [Access Requests & Grants]
+      summary: Get Single Access Request by ID
+      description: Retrieves details of a specific access request strictly scoped to the workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Access request retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/AccessRequest' }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`access_request.read`)
+        404:
+          description: Access request not found in this team
+
+    patch:
+      tags: [Access Requests & Grants]
+      summary: Edit Pending Access Request (Requester Self-Correction)
+      description: >
+        Allows the original requester to modify justification reason, resource, or requested duration
+        prior to review. Only permitted while status is `PENDING`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateAccessRequestInput'
+      responses:
+        200:
+          description: Access request updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/AccessRequest' }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Only original requester can modify request
+        404:
+          description: Access request not found in this team
+        409:
+          description: Conflict - Only pending access requests can be modified
+
+    delete:
+      tags: [Access Requests & Grants]
+      summary: Delete / Withdraw Pending Access Request
+      description: >
+        Allows the original requester to delete their pending access request. Only permitted while `PENDING`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Access request deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Access request deleted successfully" }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Only original requester can delete request
+        404:
+          description: Access request not found in this team
+        409:
+          description: Conflict - Only pending access requests can be deleted
+
+  /api/teams/{teamId}/access-requests/{requestId}/approve:
+    post:
+      tags: [Access Requests & Grants]
+      summary: Approve Access Request & Issue Temporary Grant
+      description: >
+        Approves a pending request and atomically issues an active `AccessGrant` document with TTL expiration.
+        Strictly enforces anti-self-approval (`reviewerId !== requesterId`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ApproveAccessRequestInput'
+      responses:
+        200:
+          description: Request approved and AccessGrant issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/AccessRequest' }
+                  grant: { $ref: '#/components/schemas/AccessGrant' }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions or self-approval violation
+        404:
+          description: Access request not found in this team
+        409:
+          description: Conflict - Only pending access requests can be approved
+
+  /api/teams/{teamId}/access-requests/{requestId}/reject:
+    post:
+      tags: [Access Requests & Grants]
+      summary: Reject Access Request
+      description: Rejects a pending access request and records reviewer decision metadata.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RejectAccessRequestInput'
+      responses:
+        200:
+          description: Access request rejected
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/AccessRequest' }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions or self-rejection violation
+        404:
+          description: Access request not found in this team
+        409:
+          description: Conflict - Only pending access requests can be rejected
+
+  /api/teams/{teamId}/access-requests/grants/{grantId}:
+    delete:
+      tags: [Access Requests & Grants]
+      summary: Revoke Active Access Grant
+      description: Soft-revokes an active direct access grant (`revokedAt = now`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: grantId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Access grant revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  message: { type: string, example: "Access grant revoked successfully" }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`access_request.approve`)
+        404:
+          description: Active access grant not found in this team
+
 
 
