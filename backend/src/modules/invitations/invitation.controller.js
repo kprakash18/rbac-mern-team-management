@@ -1,4 +1,9 @@
-import { createInvitation } from "./invitation.service.js";
+import {
+  createInvitation,
+  acceptInvitation,
+  getTeamInvitations,
+  revokeInvitation,
+} from "./invitation.service.js";
 
 export const invitationController = {
   createInvitation: async (req, res, next) => {
@@ -18,6 +23,57 @@ export const invitationController = {
         success: true,
         message: "Invitation created successfully.",
         data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  acceptInvitation: async (req, res, next) => {
+    try {
+      const { token, name, password } = req.body;
+      const data = await acceptInvitation({ token, name, password });
+
+      return res.status(200).json({
+        success: true,
+        message: "Invitation accepted successfully.",
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  getTeamInvitations: async (req, res, next) => {
+    try {
+      const { teamId } = req.params;
+      const { status } = req.query;
+
+      const data = await getTeamInvitations({ teamId, status });
+
+      return res.status(200).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
+  revokeInvitation: async (req, res, next) => {
+    try {
+      const { teamId, invitationId } = req.params;
+      const revokedByUserId = req.user.sub;
+
+      const result = await revokeInvitation({
+        teamId,
+        invitationId,
+        revokedByUserId,
+      });
+
+      return res.status(200).json({
+        success: true,
+        message: result.message,
       });
     } catch (error) {
       next(error);
