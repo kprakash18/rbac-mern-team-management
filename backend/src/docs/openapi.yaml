@@ -28,6 +28,8 @@ tags:
     description: Team-scoped role assignments, TTL expiration management, and soft-revocation
   - name: Workspace Invitations
     description: Cryptographic token-based team invitations, onboarding gateway, and invitation lifecycle management
+  - name: Team Tasks
+    description: Multi-tenant task CRUD, active-membership assignee verification, and fine-grained resource authorization
 
 components:
   securitySchemes:
@@ -237,6 +239,107 @@ components:
           type: string
           format: date-time
         removedAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    Task:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb95"
+        title:
+          type: string
+          example: "Implement Realtime Socket.IO Auth Middleware"
+        description:
+          type: string
+          example: "Setup JWT handshake parsing and channel authorization."
+        teamId:
+          type: string
+          example: "65b8c1e6c87881daf598bb90"
+        createdBy:
+          type: object
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+        assignedTo:
+          type: object
+          nullable: true
+          properties:
+            _id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+        status:
+          type: string
+          enum: [TODO, IN_PROGRESS, IN_REVIEW, DONE, CANCELLED]
+          example: "TODO"
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+          example: "HIGH"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    CreateTaskRequest:
+      type: object
+      required: [title]
+      properties:
+        title:
+          type: string
+          maxLength: 200
+          example: "Implement Realtime Socket.IO Auth Middleware"
+        description:
+          type: string
+          maxLength: 2000
+          example: "Setup JWT handshake parsing and channel authorization."
+        assignedTo:
+          type: string
+          nullable: true
+          example: "65b8c1e6c87881daf598bb92"
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+          example: "HIGH"
+        dueDate:
+          type: string
+          format: date-time
+          nullable: true
+
+    UpdateTaskRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 200
+        description:
+          type: string
+          maxLength: 2000
+        assignedTo:
+          type: string
+          nullable: true
+        status:
+          type: string
+          enum: [TODO, IN_PROGRESS, IN_REVIEW, DONE, CANCELLED]
+        priority:
+          type: string
+          enum: [LOW, MEDIUM, HIGH, URGENT]
+        dueDate:
           type: string
           format: date-time
           nullable: true
@@ -1452,4 +1555,252 @@ paths:
           description: Invitation token not found or target team archived
         409:
           description: Conflict - Invitation already accepted/revoked or user already active member
+
+  # ============================================================================
+  # 10. TEAM TASKS
+  # ============================================================================
+  /api/teams/{teamId}/tasks:
+    post:
+      tags: [Team Tasks]
+      summary: Create Task in Team Workspace
+      description: >
+        Creates a new task within the specified team workspace. Enforces active membership verification
+        for `assignedTo` users.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Target team workspace ID
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateTaskRequest'
+      responses:
+        201:
+          description: Task created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        400:
+          description: Validation error or assignee is not an active team member
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`task.create`)
+
+    get:
+      tags: [Team Tasks]
+      summary: List Tasks in Team Workspace
+      description: >
+        Retrieves a paginated list of tasks within the specified workspace. Supports filtering by status,
+        priority, and assignee.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Target team workspace ID
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [TODO, IN_PROGRESS, IN_REVIEW, DONE, CANCELLED]
+          description: Filter tasks by lifecycle status
+        - name: priority
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [LOW, MEDIUM, HIGH, URGENT]
+          description: Filter tasks by priority level
+        - name: assignedTo
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Filter tasks by assignee User ObjectId
+        - name: page
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 1
+          description: Page number for pagination
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 20
+          description: Number of tasks per page (capped at 100)
+      responses:
+        200:
+          description: Tasks retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Task'
+                  meta:
+                    type: object
+                    properties:
+                      total: { type: integer, example: 42 }
+                      page: { type: integer, example: 1 }
+                      limit: { type: integer, example: 20 }
+                      totalPages: { type: integer, example: 3 }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`task.read`)
+
+  /api/teams/{teamId}/tasks/{taskId}:
+    get:
+      tags: [Team Tasks]
+      summary: Get Single Task by ID
+      description: >
+        Retrieves full details of a single task strictly scoped to the workspace boundary (`teamId`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Task retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`task.read`)
+        404:
+          description: Task not found in this team workspace
+
+    patch:
+      tags: [Team Tasks]
+      summary: Update Task
+      description: >
+        Updates mutable fields of a task (status, priority, assignee, description, dueDate).
+        Supports dynamic resource-level grants (`task:<taskId>`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateTaskRequest'
+      responses:
+        200:
+          description: Task updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/Task'
+        400:
+          description: Validation error or invalid assignee
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`task.update`)
+        404:
+          description: Task not found in this team workspace
+
+    delete:
+      tags: [Team Tasks]
+      summary: Delete Task
+      description: >
+        Permanently deletes a task strictly scoped to the workspace boundary.
+        Supports dynamic resource-level grants (`task:<taskId>`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: taskId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Task deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Task deleted successfully"
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`task.delete`)
+        404:
+          description: Task not found in this team workspace
+
 
