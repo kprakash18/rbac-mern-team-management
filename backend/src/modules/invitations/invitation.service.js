@@ -3,16 +3,20 @@ import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import Role from "../roles/role.model.js";
 import Membership from "../memberships/membership.model.js";
-import { generateInvitationToken } from "./invitations.utils.js";
+import MembershipRole from "../memberships/membership-role.model.js";
+import { generateInvitationToken, hashToken } from "./invitations.utils.js";
+import { hashPassword } from "../../common/security/password.js";
+import { signAccessToken } from "../../common/security/jwt.js";
 import {
   BadRequestError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from "../../common/errors/index.js";
 import mongoose from "mongoose";
 import { isValidEmail } from "../auth/auth.validation.js";
 
-  export async function createInvitation({ teamId, email, roleIds = [], invitedByUserId }) {
+export async function createInvitation({ teamId, email, roleIds = [], invitedByUserId }) {
   // 1. Validate IDs
   if (!mongoose.Types.ObjectId.isValid(teamId) || !mongoose.Types.ObjectId.isValid(invitedByUserId)) {
     throw new BadRequestError("Invalid teamId or invitedByUserId format.");
@@ -42,7 +46,7 @@ import { isValidEmail } from "../auth/auth.validation.js";
 
     const foundCount = await Role.countDocuments({
       _id: { $in: roleIds },
-      isActive: true,
+      status: "ACTIVE",
     });
 
     if (foundCount !== roleIds.length) {
@@ -74,9 +78,9 @@ import { isValidEmail } from "../auth/auth.validation.js";
     throw new ConflictError("A pending invitation already exists for this email in this team.");
   }
 
-  // 7. Generate Token & Save Invitation
+  // 7. Generate Token & Save Invitation (1-hour TTL)
   const { rawToken, tokenHash } = generateInvitationToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000);
 
   const invitation = await Invitation.create({
     email: normalizedEmail,
@@ -89,7 +93,6 @@ import { isValidEmail } from "../auth/auth.validation.js";
     status: "PENDING",
   });
 
-  // 8. Return Sanitized Response
   return {
     invitationId: invitation._id,
     email: invitation.email,
@@ -99,4 +102,201 @@ import { isValidEmail } from "../auth/auth.validation.js";
     expiresAt: invitation.expiresAt,
     token: rawToken,
   };
+}
+
+export async function acceptInvitation({ token, name, password }) {
+  // 1. Validation & Hash Lookup
+  if (!token || typeof token !== "string") {
+    throw new BadRequestError("Invitation token is required.");
+  }
+
+  const tokenHash = hashToken(token);
+  const invitation = await Invitation.findOne({ tokenHash });
+
+  if (!invitation) {
+    throw new NotFoundError("Invitation not found or invalid token.");
+  }
+
+  if (invitation.status !== "PENDING") {
+    throw new ConflictError("Invitation has already been used or revoked.");
+  }
+
+  if (invitation.expiresAt < new Date()) {
+    throw new BadRequestError("Invitation token has expired.");
+  }
+
+  // 2. Transaction Session Setup
+  const session = await mongoose.startSession();
+  let resolvedUser = null;
+  let targetTeam = null;
+
+  try {
+    await session.withTransaction(async () => {
+      // Step A: Fetch & Validate Team
+      targetTeam = await Team.findById(invitation.teamId).session(session);
+      if (!targetTeam || targetTeam.status === "ARCHIVED") {
+        throw new NotFoundError("Team not found or is archived.");
+      }
+
+      // Step B: Resolve Existing vs New User
+      const existingUser = await User.findOne({ email: invitation.email }).session(session);
+
+      if (existingUser) {
+        if (existingUser.accountStatus === "DISABLED" || existingUser.accountStatus === "SUSPENDED") {
+          throw new ForbiddenError("Your account is suspended or disabled.");
+        }
+        if (existingUser.accountStatus === "INVITED") {
+          existingUser.accountStatus = "ACTIVE";
+          await existingUser.save({ session });
+        }
+        resolvedUser = existingUser;
+      } else {
+        if (!name || typeof name !== "string" || !password || typeof password !== "string") {
+          throw new BadRequestError("Name and password are required for new user registration.");
+        }
+
+        const hashedPassword = await hashPassword(password);
+        const [newUser] = await User.create(
+          [
+            {
+              name: name.trim(),
+              email: invitation.email,
+              hashedPassword,
+              accountStatus: "ACTIVE",
+              mustChangePassword: false,
+            },
+          ],
+          { session }
+        );
+        resolvedUser = newUser;
+      }
+
+      // Step C: Create or Activate Membership
+      let membership = await Membership.findOne({
+        userId: resolvedUser._id,
+        teamId: invitation.teamId,
+      }).session(session);
+
+      if (membership) {
+        if (membership.status === "ACTIVE") {
+          throw new ConflictError("User is already an active member of this team.");
+        }
+        membership.status = "ACTIVE";
+        membership.removedAt = null;
+        await membership.save({ session });
+      } else {
+        const [newMembership] = await Membership.create(
+          [
+            {
+              userId: resolvedUser._id,
+              teamId: invitation.teamId,
+              status: "ACTIVE",
+            },
+          ],
+          { session }
+        );
+        membership = newMembership;
+      }
+
+      // Step D: Batch Assign Roles
+      if (Array.isArray(invitation.roleIds) && invitation.roleIds.length > 0) {
+        const roleDocs = invitation.roleIds.map((roleId) => ({
+          membershipId: membership._id,
+          roleId,
+          assignedBy: invitation.invitedBy,
+          assignedAt: new Date(),
+        }));
+        await MembershipRole.insertMany(roleDocs, { session });
+      }
+
+      // Step E: Transition Invitation Status
+      invitation.status = "ACCEPTED";
+      invitation.acceptedAt = new Date();
+      invitation.userId = resolvedUser._id;
+      await invitation.save({ session });
+    });
+  } finally {
+    await session.endSession();
+  }
+
+  // 3. Post-Transaction Token Issuance
+  const accessToken = signAccessToken({ sub: resolvedUser._id.toString() });
+
+  return {
+    token: accessToken,
+    user: {
+      id: resolvedUser._id,
+      name: resolvedUser.name,
+      email: resolvedUser.email,
+      accountStatus: resolvedUser.accountStatus,
+    },
+    team: {
+      id: targetTeam._id,
+      name: targetTeam.name,
+      slug: targetTeam.slug,
+    },
+    invitationId: invitation._id,
+  };
+}
+
+export async function getTeamInvitations({ teamId, status }) {
+  // 1. Validate teamId
+  if (!mongoose.Types.ObjectId.isValid(teamId)) {
+    throw new BadRequestError("Invalid teamId format.");
+  }
+
+  // 2. Verify Team
+  const team = await Team.findOne({ _id: teamId, status: { $ne: "ARCHIVED" } });
+  if (!team) {
+    throw new NotFoundError("Team not found or is archived.");
+  }
+
+  // 3. Build filter & fetch
+  const filter = { teamId };
+  if (status) {
+    filter.status = status;
+  }
+
+  const invitations = await Invitation.find(filter)
+    .populate("roleIds", "name isSystemRole")
+    .populate("invitedBy", "name email")
+    .sort({ createdAt: -1 });
+
+  return invitations.map((inv) => ({
+    id: inv._id,
+    email: inv.email,
+    teamId: inv.teamId,
+    roles: inv.roleIds,
+    invitedBy: inv.invitedBy,
+    status: inv.status,
+    expiresAt: inv.expiresAt,
+    acceptedAt: inv.acceptedAt,
+    revokedAt: inv.revokedAt,
+    createdAt: inv.createdAt,
+  }));
+}
+
+export async function revokeInvitation({ teamId, invitationId, revokedByUserId }) {
+  // 1. Validate ObjectIds
+  if (!mongoose.Types.ObjectId.isValid(teamId) || !mongoose.Types.ObjectId.isValid(invitationId)) {
+    throw new BadRequestError("Invalid teamId or invitationId format.");
+  }
+
+  // 2. Find invitation
+  const invitation = await Invitation.findOne({ _id: invitationId, teamId });
+  if (!invitation) {
+    throw new NotFoundError("Invitation not found.");
+  }
+
+  // 3. Ensure status is PENDING
+  if (invitation.status !== "PENDING") {
+    throw new ConflictError("Only pending invitations can be revoked.");
+  }
+
+  // 4. Update status and save
+  invitation.status = "REVOKED";
+  invitation.revokedAt = new Date();
+  await invitation.save();
+
+  return { message: "Invitation revoked successfully." };
 }

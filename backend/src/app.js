@@ -10,7 +10,10 @@ import membershipRoleRouter from "./modules/memberships/membership-role.routes.j
 import teamRouter from "./modules/teams/team.routes.js";
 import membershipRouter from "./modules/memberships/membership.routes.js";
 import userRouter from "./modules/users/user.routes.js";
-import invitationRouter from "./modules/invitations/invitation.route.js";
+import {
+  teamInvitationRouter,
+  publicInvitationRouter,
+} from "./modules/invitations/invitation.routes.js";
 
 const app = express();
 
@@ -34,7 +37,8 @@ app.use("/api/teams/:teamId/members/:userId/roles", membershipRoleRouter);
 app.use("/api/teams", teamRouter);
 app.use("/api/teams/:teamId/members", membershipRouter);
 app.use("/api/users", userRouter);
-app.use("/api/teams/:teamId/invitations", invitationRouter);
+app.use("/api/teams/:teamId/invitations", teamInvitationRouter);
+app.use("/api/invitations", publicInvitationRouter);
 
 // Global Error Handler
 app.use(errorHandler);
