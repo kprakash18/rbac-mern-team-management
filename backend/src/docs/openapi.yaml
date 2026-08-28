@@ -26,6 +26,8 @@ tags:
     description: User discovery and safe catalog search
   - name: Team Membership Roles
     description: Team-scoped role assignments, TTL expiration management, and soft-revocation
+  - name: Workspace Invitations
+    description: Cryptographic token-based team invitations, onboarding gateway, and invitation lifecycle management
 
 components:
   securitySchemes:
@@ -363,13 +365,35 @@ paths:
         400:
           description: Invalid password format or incorrect current password
 
+  /api/auth/logout:
+    post:
+      tags: [Authentication]
+      summary: User Logout
+      description: Acknowledges stateless user logout and invalidates client session.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Logged out successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Logged out successfully."
+
   # ============================================================================
   # 2. AUTHORIZATION ENGINE
   # ============================================================================
-  /api/authorization/can:
+  /api/authorization/check:
     post:
       tags: [Authorization Engine]
-      summary: Evaluate Single Permission
+      summary: Evaluate Single Permission Check
       description: Real-time decision check evaluating team roles, membership status, and direct grants.
       security:
         - bearerAuth: []
@@ -379,12 +403,12 @@ paths:
           application/json:
             schema:
               type: object
-              required: [teamId, permissionKey]
+              required: [teamId, permission]
               properties:
                 teamId:
                   type: string
                   example: "65b8c1e6c87881daf598bb80"
-                permissionKey:
+                permission:
                   type: string
                   example: "task.create"
                 resource:
@@ -399,28 +423,37 @@ paths:
               schema:
                 type: object
                 properties:
-                  allowed:
+                  success:
                     type: boolean
                     example: true
-                  userId:
-                    type: string
-                  teamId:
-                    type: string
-                  permissionKey:
-                    type: string
+                  data:
+                    type: object
+                    properties:
+                      teamId:
+                        type: string
+                      permission:
+                        type: string
+                      resource:
+                        type: string
+                        nullable: true
+                      allowed:
+                        type: boolean
+                        example: true
 
   /api/authorization/permissions:
     get:
       tags: [Authorization Engine]
       summary: List Resolved Permissions for User in Team
+      description: Returns active deduplicated permissions for user in a specified team or all user teams.
       security:
         - bearerAuth: []
       parameters:
         - name: teamId
           in: query
-          required: true
+          required: false
           schema:
             type: string
+            example: "65b8c1e6c87881daf598bb80"
       responses:
         200:
           description: Deduplicated list of resolved permission keys
@@ -433,10 +466,15 @@ paths:
                     type: boolean
                     example: true
                   data:
-                    type: array
-                    items:
-                      type: string
-                    example: ["task.create", "task.read", "team.update"]
+                    type: object
+                    properties:
+                      teamId:
+                        type: string
+                      permissions:
+                        type: array
+                        items:
+                          type: string
+                        example: ["task.create", "task.read", "team.update"]
 
   # ============================================================================
   # 3. PERMISSIONS CATALOG
@@ -1234,3 +1272,184 @@ paths:
       responses:
         200:
           description: Users list retrieved successfully
+
+  # ============================================================================
+  # 9. WORKSPACE INVITATIONS
+  # ============================================================================
+  /api/teams/{teamId}/invitations:
+    post:
+      tags: [Workspace Invitations]
+      summary: Create Workspace Invitation
+      description: >
+        Issues a 1-hour cryptographic single-use invitation token with pre-assigned workspace roles.
+        Requires dynamic permission `membership.create`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "65b8c1e6c87881daf598bb90"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateInvitationRequest'
+      responses:
+        201:
+          description: Invitation created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Invitation created successfully."
+                  data:
+                    $ref: '#/components/schemas/Invitation'
+        400:
+          description: Invalid email format or inactive roles assigned
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        403:
+          description: Forbidden - Lacks required permission `membership.create`
+        404:
+          description: Team not found or is archived
+        409:
+          description: Conflict - User is already an active member or pending invite exists
+
+    get:
+      tags: [Workspace Invitations]
+      summary: List Team Invitations
+      description: >
+        Retrieves all invitations created for this workspace with populated inviter and role metadata.
+        Requires dynamic permission `membership.read`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "65b8c1e6c87881daf598bb90"
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [PENDING, ACCEPTED, EXPIRED, REVOKED]
+            example: "PENDING"
+      responses:
+        200:
+          description: Team invitations list retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Invitation'
+        403:
+          description: Forbidden - Lacks required permission `membership.read`
+        404:
+          description: Team not found
+
+  /api/teams/{teamId}/invitations/{invitationId}:
+    delete:
+      tags: [Workspace Invitations]
+      summary: Revoke Pending Invitation
+      description: >
+        Revokes a pending workspace invitation, preventing the token from being accepted.
+        Requires dynamic permission `membership.delete`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "65b8c1e6c87881daf598bb90"
+        - name: invitationId
+          in: path
+          required: true
+          schema:
+            type: string
+            example: "65b8c1e6c87881daf598bba1"
+      responses:
+        200:
+          description: Invitation revoked successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Invitation revoked successfully."
+        403:
+          description: Forbidden - Lacks required permission `membership.delete`
+        404:
+          description: Invitation not found
+        409:
+          description: Conflict - Only pending invitations can be revoked
+
+  /api/invitations/accept:
+    post:
+      tags: [Workspace Invitations]
+      summary: Accept Workspace Invitation (Public Onboarding Gateway)
+      description: >
+        Public onboarding entry point. Validates cryptographic single-use token, executes atomic ACID
+        transaction to provision user (if new), creates active team Membership, assigns pre-configured
+        MembershipRoles, transitions invitation to ACCEPTED, and issues an immediate authenticated JWT.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AcceptInvitationRequest'
+      responses:
+        200:
+          description: Invitation accepted successfully; returns active JWT session
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  message:
+                    type: string
+                    example: "Invitation accepted successfully."
+                  data:
+                    $ref: '#/components/schemas/AcceptInvitationResponse'
+        400:
+          description: Token missing, token expired, or missing name/password for new user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        404:
+          description: Invitation token not found or target team archived
+        409:
+          description: Conflict - Invitation already accepted/revoked or user already active member
+
