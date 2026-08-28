@@ -17,7 +17,9 @@
     "test:rbac": "node src/modules/roles/rbac.test.js",
     "test:team": "node src/modules/teams/team-membership.test.js",
     "test:invitation": "node src/modules/invitations/invitation.test.js",
-    "test": "npm run test:auth && npm run test:authz && npm run test:rbac && npm run test:team && npm run test:invitation"  },
+    "test:task": "node src/modules/tasks/task.test.js",
+    "test": "npm run test:auth && npm run test:authz && npm run test:rbac && npm run test:team && npm run test:invitation && npm run test:task"
+  },
   "dependencies": {
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
