@@ -14,7 +14,7 @@ import {
   teamInvitationRouter,
   publicInvitationRouter,
 } from "./modules/invitations/invitation.routes.js";
-
+import taskRouter from "./modules/tasks/task.routes.js";
 const app = express();
 
 // Global Middlewares
@@ -39,6 +39,7 @@ app.use("/api/teams/:teamId/members", membershipRouter);
 app.use("/api/users", userRouter);
 app.use("/api/teams/:teamId/invitations", teamInvitationRouter);
 app.use("/api/invitations", publicInvitationRouter);
+app.use("/api/teams/:teamId/tasks", taskRouter);
 
 // Global Error Handler
 app.use(errorHandler);

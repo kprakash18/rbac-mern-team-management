@@ -10,12 +10,15 @@ const openApiDocument = YAML.load(path.join(__dirname, "openapi.yaml"));
 
 export const swaggerDocs = {
   serve: swaggerUi.serve,
-  setup: swaggerUi.setup(openApiDocument, {
-    customSiteTitle: "Team Management & RBAC API Docs",
-    swaggerOptions: {
-      persistAuthorization: true, // Remembers your JWT token on browser reload
-    },
-  }),
+  setup: (req, res, next) => {
+    const document = YAML.load(path.join(__dirname, "openapi.yaml"));
+    return swaggerUi.setup(document, {
+      customSiteTitle: "Team Management & RBAC API Docs",
+      swaggerOptions: {
+        persistAuthorization: true, // Remembers your JWT token on browser reload
+      },
+    })(req, res, next);
+  },
 };
 
 export default swaggerDocs;
