@@ -76,7 +76,7 @@ import { isValidEmail } from "../auth/auth.validation.js";
 
   // 7. Generate Token & Save Invitation
   const { rawToken, tokenHash } = generateInvitationToken();
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const expiresAt = new Date(Date.now() + 1 * 60 * 60 * 1000); // expires in 1 hr
 
   const invitation = await Invitation.create({
     email: normalizedEmail,
