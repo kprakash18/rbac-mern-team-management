@@ -15,6 +15,8 @@ import {
   publicInvitationRouter,
 } from "./modules/invitations/invitation.routes.js";
 import taskRouter from "./modules/tasks/task.routes.js";
+import accessRouter from "./modules/access/access.routes.js";
+
 const app = express();
 
 // Global Middlewares
@@ -40,6 +42,7 @@ app.use("/api/users", userRouter);
 app.use("/api/teams/:teamId/invitations", teamInvitationRouter);
 app.use("/api/invitations", publicInvitationRouter);
 app.use("/api/teams/:teamId/tasks", taskRouter);
+app.use("/api/teams/:teamId/access-requests", accessRouter);
 
 // Global Error Handler
 app.use(errorHandler);

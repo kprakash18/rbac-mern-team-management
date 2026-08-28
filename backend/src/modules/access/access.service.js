@@ -1,0 +1,262 @@
+import AccessRequest from "./access-request.model.js";
+import AccessGrant from "./access-grant.model.js";
+import Membership from "../memberships/membership.model.js";
+import Permission from "../permissions/permission.model.js";
+import {
+  BadRequestError,
+  NotFoundError,
+  ForbiddenError,
+  ConflictError,
+} from "../../common/errors/index.js";
+
+export async function createAccessRequest({
+  requesterId,
+  targetUserId,
+  teamId,
+  permissionKey,
+  resource,
+  reason,
+  durationHours,
+}) {
+  const target = targetUserId || requesterId;
+
+  const activeMembership = await Membership.findOne({
+    teamId,
+    userId: target,
+    status: "ACTIVE",
+  });
+
+  if (!activeMembership) {
+    throw new BadRequestError("Target user must be an active member of this team");
+  }
+
+  if (!permissionKey) {
+    throw new BadRequestError("Permission key is required");
+  }
+
+  const normalizedKey = permissionKey.toLowerCase().trim();
+  const permission = await Permission.findOne({ key: normalizedKey });
+
+  if (!permission) {
+    throw new NotFoundError("Permission not found");
+  }
+
+  const existingPending = await AccessRequest.findOne({
+    targetUserId: target,
+    teamId,
+    permissionId: permission._id,
+    resource,
+    status: "PENDING",
+  });
+
+  if (existingPending) {
+    throw new ConflictError("A pending access request already exists for this permission and resource");
+  }
+
+  const expiresAt = durationHours ? new Date(Date.now() + durationHours * 3600000) : null;
+
+  const accessRequest = await AccessRequest.create({
+    requesterId,
+    targetUserId: target,
+    teamId,
+    permissionId: permission._id,
+    resource,
+    reason,
+    durationHours,
+    expiresAt,
+    status: "PENDING",
+  });
+
+  return accessRequest;
+}
+
+export async function getAccessRequestsByTeam({ teamId, query = {} }) {
+  const { status, targetUserId, page = 1, limit = 20 } = query;
+
+  const filter = { teamId };
+  if (status) filter.status = status;
+  if (targetUserId) filter.targetUserId = targetUserId;
+
+  const pageNumber = Math.max(Number(page) || 1, 1);
+  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  const skip = (pageNumber - 1) * pageSize;
+
+  const [requests, total] = await Promise.all([
+    AccessRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize)
+      .populate("requesterId targetUserId permissionId reviewedBy", "name email key"),
+    AccessRequest.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    total,
+    page: pageNumber,
+    limit: pageSize,
+    totalPages: Math.ceil(total / pageSize),
+  };
+}
+
+export async function updateAccessRequest({ teamId, requestId, requesterId, updates = {} }) {
+  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+
+  if (!request) {
+    throw new NotFoundError("Access request not found in this team");
+  }
+
+  if (request.requesterId.toString() !== requesterId.toString()) {
+    throw new ForbiddenError("You can only edit your own access requests");
+  }
+
+  if (request.status !== "PENDING") {
+    throw new ConflictError("Only pending access requests can be modified");
+  }
+
+  if (updates.reason !== undefined) {
+    request.reason = updates.reason;
+  }
+
+  if (updates.resource !== undefined) {
+    request.resource = updates.resource;
+  }
+
+  if (updates.permissionKey) {
+    const normalizedKey = updates.permissionKey.toLowerCase().trim();
+    const permission = await Permission.findOne({ key: normalizedKey });
+
+    if (!permission) {
+      throw new NotFoundError("Permission not found");
+    }
+
+    request.permissionId = permission._id;
+  }
+
+  if (updates.durationHours !== undefined) {
+    request.durationHours = updates.durationHours;
+    request.expiresAt = updates.durationHours
+      ? new Date(Date.now() + updates.durationHours * 3600000)
+      : null;
+  }
+
+  await request.save();
+  return request;
+}
+
+export async function deleteAccessRequest({ teamId, requestId, requesterId }) {
+  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+
+  if (!request) {
+    throw new NotFoundError("Access request not found in this team");
+  }
+
+  if (request.requesterId.toString() !== requesterId.toString()) {
+    throw new ForbiddenError("You can only delete your own access requests");
+  }
+
+  if (request.status !== "PENDING") {
+    throw new ConflictError("Only pending access requests can be deleted");
+  }
+
+  await AccessRequest.findOneAndDelete({ _id: requestId, teamId });
+
+  return {
+    success: true,
+    message: "Access request deleted successfully",
+  };
+}
+
+export async function approveAccessRequest({ teamId, requestId, reviewerId, durationHours }) {
+  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+
+  if (!request) {
+    throw new NotFoundError("Access request not found in this team");
+  }
+
+  if (request.requesterId.toString() === reviewerId.toString()) {
+    throw new ForbiddenError("Self-approval of access requests is strictly prohibited");
+  }
+
+  if (request.status !== "PENDING") {
+    throw new ConflictError("Only pending access requests can be approved");
+  }
+
+  const effectiveDuration = durationHours !== undefined ? durationHours : request.durationHours;
+  const finalExpiresAt = effectiveDuration
+    ? new Date(Date.now() + effectiveDuration * 3600000)
+    : request.expiresAt;
+
+  request.status = "APPROVED";
+  request.reviewedBy = reviewerId;
+  request.reviewedAt = new Date();
+  await request.save();
+
+  const grant = await AccessGrant.create({
+    userId: request.targetUserId,
+    teamId: request.teamId,
+    permissionId: request.permissionId,
+    resource: request.resource,
+    grantedBy: reviewerId,
+    source: "ACCESS_REQUEST",
+    accessRequestId: request._id,
+    status: "ACTIVE",
+    expiresAt: finalExpiresAt,
+  });
+
+  return { request, grant };
+}
+
+export async function rejectAccessRequest({ teamId, requestId, reviewerId, reason }) {
+  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+
+  if (!request) {
+    throw new NotFoundError("Access request not found in this team");
+  }
+
+  if (request.requesterId.toString() === reviewerId.toString()) {
+    throw new ForbiddenError("Self-rejection is not allowed; use cancel/delete instead");
+  }
+
+  if (request.status !== "PENDING") {
+    throw new ConflictError("Only pending access requests can be rejected");
+  }
+
+  request.status = "REJECTED";
+  request.reviewedBy = reviewerId;
+  request.reviewedAt = new Date();
+  if (reason) {
+    request.rejectionReason = reason;
+  }
+
+  await request.save();
+  return request;
+}
+
+export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
+  const grant = await AccessGrant.findOne({ _id: grantId, teamId, status: "ACTIVE" });
+
+  if (!grant) {
+    throw new NotFoundError("Active access grant not found in this team");
+  }
+
+  grant.status = "REVOKED";
+  grant.revokedBy = revokedBy;
+  grant.revokedAt = new Date();
+
+  await grant.save();
+
+  return {
+    success: true,
+    message: "Access grant revoked successfully",
+  };
+}
+
+export async function getAccessRequestById({ teamId, requestId }) {
+  const request = await AccessRequest.findOne({ _id: requestId, teamId })
+    .populate("requesterId targetUserId permissionId reviewedBy", "name email key");
+  if (!request) {
+    throw new NotFoundError("Access request not found in this team");
+  }
+  return request;
+}
