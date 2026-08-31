@@ -1,6 +1,7 @@
 import Task from "./task.model.js";
 import Membership from "../memberships/membership.model.js";
 import { NotFoundError, ValidationError } from "../../common/errors/error.js";
+import { emitToTeam, emitToUser } from "../../realtime/event-emitter.js";
 
 export async function createTask({ teamId, creatorUserId, title, description, assignedTo, priority, dueDate }) {
   if (assignedTo) {
@@ -19,6 +20,17 @@ export async function createTask({ teamId, creatorUserId, title, description, as
     priority,
     dueDate
   });
+
+  // Real-time Event Emissions
+  emitToTeam(teamId, "task:created", { task });
+  if (task.assignedTo) {
+    emitToUser(task.assignedTo, "notification:new", {
+      type: "TASK_ASSIGNED",
+      title: `You were assigned task: ${task.title}`,
+      taskId: task._id,
+      teamId,
+    });
+  }
 
   return task;
 }
@@ -103,9 +115,19 @@ export async function updateTask({ teamId, taskId, updates = {} }) {
     throw new NotFoundError("Task not found in this team");
   }
 
+  // Real-time Event Emissions
+  emitToTeam(teamId, "task:updated", { task: updatedTask });
+  if (allowedUpdates.assignedTo) {
+    emitToUser(allowedUpdates.assignedTo, "notification:new", {
+      type: "TASK_ASSIGNED",
+      title: `You were assigned task: ${updatedTask.title}`,
+      taskId: updatedTask._id,
+      teamId,
+    });
+  }
+
   return updatedTask;
 }
-
 
 export async function deleteTask({ teamId, taskId }) {
   // 1. Find and remove task scoped by taskId AND teamId
@@ -115,6 +137,9 @@ export async function deleteTask({ teamId, taskId }) {
   if (!deletedTask) {
     throw new NotFoundError("Task not found in this team");
   }
+
+  // Real-time Event Emission
+  emitToTeam(teamId, "task:deleted", { taskId, teamId });
 
   // 3. Return confirmation response
   return {
