@@ -1,3 +1,4 @@
+import { emitToTeam, emitToUser } from "../../realtime/event-emitter.js";
 import AccessRequest from "./access-request.model.js";
 import AccessGrant from "./access-grant.model.js";
 import Membership from "../memberships/membership.model.js";
@@ -66,6 +67,9 @@ export async function createAccessRequest({
     expiresAt,
     status: "PENDING",
   });
+
+  // Real-time Event Emission
+  emitToTeam(teamId, "access_request:created", { accessRequest });
 
   return accessRequest;
 }
@@ -204,6 +208,18 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     expiresAt: finalExpiresAt,
   });
 
+  // Real-time Event Emissions
+  emitToUser(request.requesterId, "access_request:resolved", {
+    requestId: request._id,
+    teamId: request.teamId,
+    status: "APPROVED",
+    expiresAt: finalExpiresAt,
+  });
+  emitToTeam(teamId, "access_request:resolved", {
+    requestId: request._id,
+    status: "APPROVED",
+  });
+
   return { request, grant };
 }
 
@@ -230,6 +246,18 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
   }
 
   await request.save();
+
+  // Real-time Event Emissions
+  emitToUser(request.requesterId, "access_request:resolved", {
+    requestId: request._id,
+    teamId: request.teamId,
+    status: "REJECTED",
+  });
+  emitToTeam(teamId, "access_request:resolved", {
+    requestId: request._id,
+    status: "REJECTED",
+  });
+
   return request;
 }
 
