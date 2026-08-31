@@ -1,3 +1,4 @@
+import { registerTeamRoomHandlers } from "./team-room.handler.js";
 import { Server as SocketIOServer } from "socket.io";
 import { socketAuthMiddleware } from "./socket-auth.middleware.js";
 import { env } from "../config/env.js";
@@ -23,7 +24,7 @@ export function initSocketServer(httpServer) {
       socket.join(`user:${userId}`);
       console.log(`User connected: ${userId} (Socket ID: ${socket.id})`);
     }
-
+    registerTeamRoomHandlers(io, socket);
     socket.on("disconnect", (reason) => {
       console.log(`User ${userId || "Unknown"} disconnected (Socket ID: ${socket.id}). Reason: ${reason}`);
     });
