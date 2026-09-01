@@ -2,10 +2,12 @@ import User from "../users/user.model.js";
 import { comparePassword, hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
 import { logAuditEvent } from "../audit/audit.service.js";
+import { disconnectUserSockets } from "../../realtime/event-emitter.js";
 import {
   validateLoginInput,
   validatePasswordChangeInput,
 } from "./auth.validation.js";
+
 import {
   BadRequestError,
   UnauthorizedError,
@@ -139,9 +141,14 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
     throw new BadRequestError("Current password is incorrect.", "INVALID_CURRENT_PASSWORD");
   }
 
+  if (currentPassword === newPassword) {
+    throw new BadRequestError("New password must be different from your current password.", "PASSWORD_REUSED");
+  }
+
   user.hashedPassword = await hashPassword(newPassword);
   user.mustChangePassword = false;
   user.passwordChangedAt = new Date();
+  user.lastLogoutAt = new Date();
 
   // If user was INVITED, transition to ACTIVE upon first password change
   if (user.accountStatus === "INVITED") {
@@ -150,6 +157,9 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
 
   await user.save();
 
+  // Invalidate all active WebSockets across all tabs
+  disconnectUserSockets(userId);
+
   logAuditEvent({
     actorId: user._id,
     action: "auth.password_changed",
@@ -157,6 +167,7 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
     targetId: user._id,
     result: "SUCCESS",
   });
+
 
   return {
     message: "Password changed successfully.",
@@ -171,10 +182,30 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
 }
 
 export async function logout(userId) {
-  // In stateless JWT auth, server acknowledges logout
-  // Future phases: refresh token invalidation / audit log
+  if (!userId) {
+    return { message: "Logged out successfully." };
+  }
+
+  // 1. Update lastLogoutAt in DB to invalidate tokens issued prior to this timestamp
+  await User.findByIdAndUpdate(userId, {
+    $set: { lastLogoutAt: new Date() },
+  });
+
+  // 2. Force-disconnect all live WebSockets across open tabs/devices for this user
+  disconnectUserSockets(userId);
+
+  // 3. Record audit log
+  logAuditEvent({
+    actorId: userId,
+    action: "auth.logout",
+    targetType: "User",
+    targetId: userId,
+    result: "SUCCESS",
+  });
+
   return {
     message: "Logged out successfully.",
   };
 }
+
 

@@ -13,3 +13,11 @@ export function emitToUser(userId, event, payload) {
     io.to(`user:${userId.toString()}`).emit(event, payload);
   } catch (error) {}
 }
+
+export function disconnectUserSockets(userId) {
+  try {
+    const io = getIO();
+    io.in(`user:${userId.toString()}`).disconnectSockets(true);
+  } catch (error) {}
+}
+
