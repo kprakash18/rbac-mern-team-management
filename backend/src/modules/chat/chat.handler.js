@@ -4,8 +4,9 @@ import {
   getTeamChatHistory,
   editChatMessage,
   deleteChatMessage,
-} from "../modules/chat/chat.service.js";
-import { getMembership, hasValidDirectGrant } from "../modules/authorization/authorization.service.js";
+} from "./chat.service.js";
+import { getMembership, hasValidDirectGrant } from "../authorization/authorization.service.js";
+
 
 async function verifyUserTeamAccess(userId, teamId) {
   const isMember = await getMembership(userId, teamId);

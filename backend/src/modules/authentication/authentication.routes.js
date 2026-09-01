@@ -4,7 +4,8 @@ import {
   meController,
   changePasswordController,
   logoutController,
-} from "./auth.controller.js";
+} from "./authentication.controller.js";
+
 import { authenticate } from "../../common/middleware/authenticate.js";
 
 const authRouter = Router();
