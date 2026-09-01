@@ -1,15 +1,49 @@
 import mongoose from "mongoose";
-import ChatMessage from "../modules/chat/chat-message.model.js";
-import Membership from "../modules/memberships/membership.model.js";
-import AccessGrant from "../modules/access/access-grant.model.js";
+import {
+  saveChatMessage,
+  getTeamChatHistory,
+  editChatMessage,
+  deleteChatMessage,
+} from "../modules/chat/chat.service.js";
+import { getMembership, hasValidDirectGrant } from "../modules/authorization/authorization.service.js";
+
+async function verifyUserTeamAccess(userId, teamId) {
+  const isMember = await getMembership(userId, teamId);
+  if (isMember) return true;
+
+  return hasValidDirectGrant({
+    userId,
+    teamId,
+    permissionKey: "team.read",
+  });
+}
 
 export function registerChatHandlers(io, socket) {
   const user = socket.data.user;
+  const messageTimestamps = [];
 
+  // Simple sliding-window rate limiter (10 messages per 3 seconds per socket)
+  function isRateLimited() {
+    const now = Date.now();
+    while (messageTimestamps.length > 0 && messageTimestamps[0] < now - 3000) {
+      messageTimestamps.shift();
+    }
+    if (messageTimestamps.length >= 10) {
+      return true;
+    }
+    messageTimestamps.push(now);
+    return false;
+  }
+
+  // 1. Send Message
   socket.on("chat:send", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
     try {
+      if (isRateLimited()) {
+        return respond({ ok: false, error: "Too many messages. Please slow down." });
+      }
+
       const { teamId, content } = data || {};
 
       if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
@@ -27,22 +61,15 @@ export function registerChatHandlers(io, socket) {
         });
       }
 
-      const isMember = await Membership.findOne({ teamId, userId: user.id, status: "ACTIVE" });
-      const hasGrant = isMember ? true : await AccessGrant.findOne({
-        teamId,
-        userId: user.id,
-        status: "ACTIVE",
-        expiresAt: { $gt: new Date() },
-      });
-
-      if (!isMember && !hasGrant) {
+      const hasAccess = await verifyUserTeamAccess(user.id, teamId);
+      if (!hasAccess) {
         return respond({ ok: false, error: "Forbidden: You are not authorized to chat in this team." });
       }
 
-      const message = await ChatMessage.create({
+      const message = await saveChatMessage({
         teamId,
         senderId: user.id,
-        content: content.trim(),
+        content,
       });
 
       const messagePayload = {
@@ -55,7 +82,9 @@ export function registerChatHandlers(io, socket) {
         },
         content: message.content,
         messageType: message.messageType,
+        isEdited: message.isEdited || false,
         createdAt: message.createdAt,
+        updatedAt: message.updatedAt,
       };
 
       io.to(`team:${teamId}`).emit("chat:message", messagePayload);
@@ -67,54 +96,108 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
+  // 2. Fetch Chat History (Cursor-based)
   socket.on("chat:history", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
     try {
-      const { teamId, limit = 50 } = data || {};
+      const { teamId, limit = 50, before = null } = data || {};
 
       if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
         return respond({ ok: false, error: "Invalid team ID format." });
       }
 
-      // Verify access
-      const isMember = await Membership.findOne({ teamId, userId: user.id, status: "ACTIVE" });
-      const hasGrant = isMember ? true : await AccessGrant.findOne({
-        teamId,
-        userId: user.id,
-        status: "ACTIVE",
-        expiresAt: { $gt: new Date() },
-      });
-
-      if (!isMember && !hasGrant) {
+      const hasAccess = await verifyUserTeamAccess(user.id, teamId);
+      if (!hasAccess) {
         return respond({ ok: false, error: "Forbidden: You cannot view chat history for this team." });
       }
 
-      const parsedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
+      const result = await getTeamChatHistory({ teamId, limit, before });
 
-      const rawMessages = await ChatMessage.find({ teamId })
-        .sort({ createdAt: -1 })
-        .limit(parsedLimit)
-        .populate("senderId", "_id name email")
-        .lean();
-
-      const messages = rawMessages.reverse().map((msg) => ({
-        _id: msg._id,
-        teamId: msg.teamId,
-        sender: {
-          id: msg.senderId?._id || msg.senderId,
-          name: msg.senderId?.name || "Unknown",
-          email: msg.senderId?.email || "",
-        },
-        content: msg.content,
-        messageType: msg.messageType,
-        createdAt: msg.createdAt,
-      }));
-
-      respond({ ok: true, messages });
+      respond({ ok: true, ...result });
     } catch (error) {
       console.error("Error fetching chat history:", error);
       respond({ ok: false, error: "Failed to fetch chat history." });
+    }
+  });
+
+  // 3. Typing Indicators
+  socket.on("chat:typing", async (data) => {
+    const { teamId, isTyping } = data || {};
+    if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) return;
+
+    socket.to(`team:${teamId}`).emit("chat:typing", {
+      userId: user.id,
+      name: user.name,
+      isTyping: Boolean(isTyping),
+    });
+  });
+
+  // 4. Edit Message
+  socket.on("chat:edit", async (data, callback) => {
+    const respond = typeof callback === "function" ? callback : () => {};
+
+    try {
+      const { teamId, messageId, content } = data || {};
+
+      if (!teamId || !messageId || typeof content !== "string" || content.trim().length < 1) {
+        return respond({ ok: false, error: "Invalid edit parameters." });
+      }
+
+      const updatedMessage = await editChatMessage({
+        messageId,
+        senderId: user.id,
+        content,
+      });
+
+      if (!updatedMessage) {
+        return respond({ ok: false, error: "Message not found or you are not the author." });
+      }
+
+      io.to(`team:${teamId}`).emit("chat:message_updated", {
+        messageId: updatedMessage._id,
+        teamId,
+        content: updatedMessage.content,
+        isEdited: true,
+        updatedAt: updatedMessage.updatedAt,
+      });
+
+      respond({ ok: true, message: updatedMessage });
+    } catch (error) {
+      console.error("Error in chat:edit:", error);
+      respond({ ok: false, error: "Failed to edit message." });
+    }
+  });
+
+  // 5. Delete Message
+  socket.on("chat:delete", async (data, callback) => {
+    const respond = typeof callback === "function" ? callback : () => {};
+
+    try {
+      const { teamId, messageId } = data || {};
+
+      if (!teamId || !messageId) {
+        return respond({ ok: false, error: "Invalid delete parameters." });
+      }
+
+      const deleted = await deleteChatMessage({
+        messageId,
+        senderId: user.id,
+      });
+
+      if (!deleted) {
+        return respond({ ok: false, error: "Message not found or unauthorized to delete." });
+      }
+
+      io.to(`team:${teamId}`).emit("chat:message_deleted", {
+        messageId,
+        teamId,
+      });
+
+      respond({ ok: true, messageId });
+    } catch (error) {
+      console.error("Error in chat:delete:", error);
+      respond({ ok: false, error: "Failed to delete message." });
     }
   });
 }
