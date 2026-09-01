@@ -1,7 +1,8 @@
 import Membership from "./membership.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
-import MembershipRole from "./membership-role.model.js";
+import MembershipRole from "../member-roles/member-role.model.js";
+
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createNotification } from "../notifications/notification.service.js";

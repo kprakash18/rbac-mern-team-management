@@ -1,5 +1,6 @@
 import { Router } from "express";
-import { membershipRoleController } from "./membership-role.controller.js";
+import { membershipRoleController } from "./member-role.controller.js";
+
 import { authenticate } from "../../common/middleware/authenticate.js";
 import { requirePermission } from "../../common/middleware/authorize.js";
 

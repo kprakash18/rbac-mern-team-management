@@ -1,6 +1,7 @@
-import Membership from "./membership.model.js";
-import MembershipRole from "./membership-role.model.js";
+import Membership from "../memberships/membership.model.js";
+import MembershipRole from "./member-role.model.js";
 import Role from "../roles/role.model.js";
+
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import {

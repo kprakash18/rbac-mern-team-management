@@ -1,13 +1,15 @@
 import express from "express";
 import cors from "cors";
 import {swaggerDocs} from "./docs/swagger.js";
-import authRouter from "./modules/auth/auth.routes.js";
+import authRouter from "./modules/authentication/authentication.routes.js";
 import authorizationRouter from "./modules/authorization/authorization.routes.js";
+
 import { errorHandler } from "./common/middleware/error-handler.js";
 import permissionRouter from "./modules/permissions/permission.routes.js";
 import roleRouter from "./modules/roles/role.routes.js";
-import membershipRoleRouter from "./modules/memberships/membership-role.routes.js";
+import membershipRoleRouter from "./modules/member-roles/member-role.routes.js";
 import teamRouter from "./modules/teams/team.routes.js";
+
 import membershipRouter from "./modules/memberships/membership.routes.js";
 import userRouter from "./modules/users/user.routes.js";
 import {
