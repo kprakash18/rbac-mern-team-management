@@ -1,6 +1,7 @@
 import User from "../users/user.model.js";
 import { comparePassword, hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
+import { logAuditEvent } from "../audit/audit.service.js";
 import {
   validateLoginInput,
   validatePasswordChangeInput,
@@ -23,6 +24,13 @@ export async function login({ email, password }) {
   const user = await User.findOne({ email: normalizedEmail }).select("+hashedPassword");
 
   if (!user) {
+    logAuditEvent({
+      action: "auth.login_failed",
+      targetType: "User",
+      targetId: null,
+      result: "FAILURE",
+      metadata: { reason: "user_not_found", email },
+    });
     throw new UnauthorizedError("Invalid email or password.", "INVALID_CREDENTIALS");
   }
 
@@ -30,10 +38,24 @@ export async function login({ email, password }) {
   // Verify password 
   const isPasswordValid = await comparePassword(password, user.hashedPassword);
   if (!isPasswordValid) {
+    logAuditEvent({
+      action: "auth.login_failed",
+      targetType: "User",
+      targetId: user._id,
+      result: "FAILURE",
+      metadata: { reason: "invalid_password" },
+    });
     throw new UnauthorizedError("Invalid email or password.", "INVALID_CREDENTIALS");
   }
 
   if (user.accountStatus === "SUSPENDED") {
+    logAuditEvent({
+      action: "auth.login_failed",
+      targetType: "User",
+      targetId: user._id,
+      result: "FAILURE",
+      metadata: { reason: "account_suspended" },
+    });
     throw new ForbiddenError(
       "Your account is currently suspended. Please contact your administrator.",
       "ACCOUNT_SUSPENDED"
@@ -41,6 +63,13 @@ export async function login({ email, password }) {
   }
 
   if (user.accountStatus === "DISABLED") {
+    logAuditEvent({
+      action: "auth.login_failed",
+      targetType: "User",
+      targetId: user._id,
+      result: "FAILURE",
+      metadata: { reason: "account_disabled" },
+    });
     throw new ForbiddenError("Your account has been disabled.", "ACCOUNT_DISABLED");
   }
 
@@ -55,6 +84,14 @@ export async function login({ email, password }) {
   };
 
   const accessToken = signAccessToken(tokenPayload);
+
+  logAuditEvent({
+    actorId: user._id,
+    action: "auth.login",
+    targetType: "User",
+    targetId: user._id,
+    result: "SUCCESS",
+  });
 
   return {
     user: {
@@ -112,6 +149,14 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
   }
 
   await user.save();
+
+  logAuditEvent({
+    actorId: user._id,
+    action: "auth.password_changed",
+    targetType: "User",
+    targetId: user._id,
+    result: "SUCCESS",
+  });
 
   return {
     message: "Password changed successfully.",

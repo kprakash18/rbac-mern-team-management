@@ -8,6 +8,7 @@ import {
   NotFoundError,
   ConflictError,
 } from "../../common/errors/index.js";
+import { logAuditEvent } from "../audit/audit.service.js";
 import mongoose from "mongoose";
 
 export async function assignRoleToMember({
@@ -74,6 +75,21 @@ export async function assignRoleToMember({
     assignedBy,
     assignedAt: new Date(),
     expiresAt: expiresAt ? new Date(expiresAt) : null,
+  });
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: assignedBy,
+    action: "role.assigned",
+    targetType: "MembershipRole",
+    targetId: assignment._id,
+    teamId,
+    result: "SUCCESS",
+    metadata: {
+      userId,
+      roleId,
+      expiresAt,
+    },
   });
 
   return getAssignmentById(assignment._id);
@@ -157,6 +173,20 @@ export async function revokeRoleAssignment({
   assignment.revokedAt = new Date();
   assignment.revokedBy = revokedBy;
   await assignment.save();
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: revokedBy,
+    action: "role.revoked",
+    targetType: "MembershipRole",
+    targetId: assignment._id,
+    teamId,
+    result: "SUCCESS",
+    metadata: {
+      userId,
+      roleId: assignment.roleId,
+    },
+  });
 
   return {
     success: true,

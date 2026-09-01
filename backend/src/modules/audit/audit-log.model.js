@@ -36,6 +36,11 @@ const auditLogSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.Mixed,
       default: {},
     },
+    result: {
+      type: String,
+      enum: ["SUCCESS", "FAILURE"],
+      default: "SUCCESS",
+    },
 
     ipAddress: {
       type: String,
@@ -61,12 +66,14 @@ auditLogSchema.index({
   targetType: 1,
   targetId: 1,
   createdAt: -1,
+  
 });
 
 auditLogSchema.index({
   teamId: 1,
   createdAt: -1,
 });
+auditLogSchema.index({ teamId: 1, result: 1, createdAt: -1 });
 
 const AuditLog = mongoose.model(
   "AuditLog",
