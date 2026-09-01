@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
-import { getMembership } from "../modules/authorization/authorization.service.js";
-import { getActiveTemporaryGrant } from "../modules/access/access.service.js";
+import { getMembership } from "../authorization/authorization.service.js";
+import { getActiveTemporaryGrant } from "../access/access.service.js";
+
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 

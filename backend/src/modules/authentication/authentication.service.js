@@ -6,7 +6,8 @@ import { disconnectUserSockets } from "../../realtime/event-emitter.js";
 import {
   validateLoginInput,
   validatePasswordChangeInput,
-} from "./auth.validation.js";
+} from "./authentication.validation.js";
+
 
 import {
   BadRequestError,

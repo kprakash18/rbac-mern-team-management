@@ -1,6 +1,7 @@
 import Membership from "../memberships/membership.model.js";
-import MembershipRole from "../memberships/membership-role.model.js";
+import MembershipRole from "../member-roles/member-role.model.js";
 import RolePermission from "../roles/role-permission.model.js";
+
 import Role from "../roles/role.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
