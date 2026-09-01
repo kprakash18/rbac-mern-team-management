@@ -1,4 +1,5 @@
-import { membershipRoleService } from "./membership-role.service.js";
+import { membershipRoleService } from "./member-role.service.js";
+
 
 export async function assignRole(req, res, next) {
   try {

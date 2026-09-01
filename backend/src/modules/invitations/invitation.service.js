@@ -3,8 +3,9 @@ import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import Role from "../roles/role.model.js";
 import Membership from "../memberships/membership.model.js";
-import MembershipRole from "../memberships/membership-role.model.js";
+import MembershipRole from "../member-roles/member-role.model.js";
 import { generateInvitationToken, hashToken } from "./invitations.utils.js";
+
 import { hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
 import { logAuditEvent } from "../audit/audit.service.js";
@@ -21,7 +22,8 @@ import {
 
 
 import mongoose from "mongoose";
-import { isValidEmail } from "../auth/auth.validation.js";
+import { isValidEmail } from "../authentication/authentication.validation.js";
+
 
 export async function createInvitation({ teamId, email, roleIds = [], invitedByUserId }) {
   // 1. Validate IDs

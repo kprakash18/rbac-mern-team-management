@@ -4,8 +4,9 @@ import RolePermission from "../../modules/roles/role-permission.model.js";
 import User from "../../modules/users/user.model.js";
 import Team from "../../modules/teams/team.model.js";
 import Membership from "../../modules/memberships/membership.model.js";
-import MembershipRole from "../../modules/memberships/membership-role.model.js";
+import MembershipRole from "../../modules/member-roles/member-role.model.js";
 import Task from "../../modules/tasks/task.model.js";
+
 import Invitation from "../../modules/invitations/invitation.model.js";
 import AccessRequest from "../../modules/access/access-request.model.js";
 import AccessGrant from "../../modules/access/access-grant.model.js";
