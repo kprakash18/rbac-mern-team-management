@@ -79,12 +79,35 @@ export async function createTeam({ name, description = "", createdBy }) {
 }
 
 
+export async function getUserTeams(userId) {
+  if (!mongoose.Types.ObjectId.isValid(userId)) {
+    throw new BadRequestError("Invalid user ID format.");
+  }
+
+  const memberships = await Membership.find({
+    userId,
+    status: "ACTIVE",
+  }).select("teamId");
+
+  const teamIds = memberships.map((m) => m.teamId);
+
+  const teams = await Team.find({
+    _id: { $in: teamIds },
+    status: { $ne: "ARCHIVED" },
+  })
+    .populate("createdBy", "name email")
+    .sort({ name: 1 });
+
+  return teams;
+}
+
 export async function listTeams({
   status,
   search,
   page = 1,
   limit = 20,
 } = {}) {
+
   const query = {};
   if (status) {
     query.status = status;
