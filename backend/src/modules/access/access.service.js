@@ -4,12 +4,14 @@ import AccessGrant from "./access-grant.model.js";
 import Membership from "../memberships/membership.model.js";
 import Permission from "../permissions/permission.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
+import { createNotification } from "../notifications/notification.service.js";
 import {
   BadRequestError,
   NotFoundError,
   ForbiddenError,
   ConflictError,
 } from "../../common/errors/index.js";
+
 
 export async function createAccessRequest({
   requesterId,
@@ -227,17 +229,30 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     expiresAt: finalExpiresAt,
   });
 
-  // Real-time Event Emissions
+  // Real-time Event Emissions & Persistent Notification
   emitToUser(request.requesterId, "access_request:resolved", {
     requestId: request._id,
     teamId: request.teamId,
     status: "APPROVED",
     expiresAt: finalExpiresAt,
   });
+  emitToUser(request.targetUserId, "access:changed", {
+    teamId: request.teamId,
+    reason: "GRANT_APPROVED",
+  });
   emitToTeam(teamId, "access_request:resolved", {
     requestId: request._id,
     status: "APPROVED",
   });
+  createNotification({
+    recipientId: request.targetUserId,
+    type: "ACCESS_GRANTED",
+    title: "Access Request Approved",
+    message: "Your access request has been approved.",
+    teamId: request.teamId,
+    metadata: { grantId: grant._id, expiresAt: finalExpiresAt },
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
 
   // Audit Logging
   logAuditEvent({
@@ -279,7 +294,7 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
 
   await request.save();
 
-  // Real-time Event Emissions
+  // Real-time Event Emissions & Persistent Notification
   emitToUser(request.requesterId, "access_request:resolved", {
     requestId: request._id,
     teamId: request.teamId,
@@ -289,6 +304,13 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
     requestId: request._id,
     status: "REJECTED",
   });
+  createNotification({
+    recipientId: request.requesterId,
+    type: "ACCESS_REQUEST",
+    title: "Access Request Rejected",
+    message: `Your access request was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+    teamId: request.teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging
   logAuditEvent({
@@ -316,16 +338,29 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
 
   await grant.save();
 
-  // Real-time Event Emissions
+  // Real-time Event Emissions & Persistent Notification
   emitToUser(grant.userId, "access_grant:revoked", {
     grantId: grant._id,
     teamId,
     permissionId: grant.permissionId,
   });
+  emitToUser(grant.userId, "access:changed", {
+    teamId,
+    reason: "GRANT_REVOKED",
+  });
   emitToTeam(teamId, "access_grant:revoked", {
     grantId: grant._id,
     userId: grant.userId,
   });
+
+  createNotification({
+    recipientId: grant.userId,
+    type: "ACCESS_REVOKED",
+    title: "Access Grant Revoked",
+    message: "Your temporary/direct access grant has been revoked.",
+    teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
 
   // Audit Logging
   logAuditEvent({
@@ -349,4 +384,13 @@ export async function getAccessRequestById({ teamId, requestId }) {
     throw new NotFoundError("Access request not found in this team");
   }
   return request;
+}
+
+export async function getActiveTemporaryGrant({ teamId, userId }) {
+  return AccessGrant.findOne({
+    teamId,
+    userId,
+    status: "ACTIVE",
+    expiresAt: { $gt: new Date() },
+  });
 }
