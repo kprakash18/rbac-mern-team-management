@@ -14,7 +14,17 @@ export async function createTeam(req, res, next) {
   }
 }
 
+export async function getMyTeams(req, res, next) {
+  try {
+    const teams = await teamService.getUserTeams(req.user.id);
+    return res.status(200).json({ success: true, data: teams });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getTeams(req, res, next) {
+
   try {
     const { status, search, page, limit } = req.query;
     const result = await teamService.listTeams({ status, search, page, limit });
@@ -57,6 +67,7 @@ export async function archiveTeam(req, res, next) {
 
 export const teamController = {
   createTeam,
+  getMyTeams,
   getTeams,
   getTeamById,
   updateTeam,
@@ -64,3 +75,4 @@ export const teamController = {
 };
 
 export default teamController;
+

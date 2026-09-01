@@ -13,8 +13,10 @@ export const systemRolesData = [
     isSystemRole: true,
     status: "ACTIVE",
     permissionKeys: [
+      "user.read",
       "team.read",
       "team.update",
+
       "membership.read",
       "membership.create",
       "membership.update",
