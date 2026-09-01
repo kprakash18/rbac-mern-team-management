@@ -7,6 +7,7 @@ import MembershipRole from "../memberships/membership-role.model.js";
 import { generateInvitationToken, hashToken } from "./invitations.utils.js";
 import { hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
+import { logAuditEvent } from "../audit/audit.service.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -91,6 +92,20 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     tokenHash,
     expiresAt,
     status: "PENDING",
+  });
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: invitedByUserId,
+    action: "invitation.created",
+    targetType: "Invitation",
+    targetId: invitation._id,
+    teamId,
+    result: "SUCCESS",
+    metadata: {
+      email: normalizedEmail,
+      roleIds,
+    },
   });
 
   return {
@@ -219,6 +234,20 @@ export async function acceptInvitation({ token, name, password }) {
     await session.endSession();
   }
 
+  // Audit Logging
+  logAuditEvent({
+    actorId: resolvedUser._id,
+    action: "invitation.accepted",
+    targetType: "Invitation",
+    targetId: invitation._id,
+    teamId: targetTeam._id,
+    result: "SUCCESS",
+    metadata: {
+      userId: resolvedUser._id,
+      teamId: targetTeam._id,
+    },
+  });
+
   // 3. Post-Transaction Token Issuance
   const accessToken = signAccessToken({ sub: resolvedUser._id.toString() });
 
@@ -297,6 +326,16 @@ export async function revokeInvitation({ teamId, invitationId, revokedByUserId }
   invitation.status = "REVOKED";
   invitation.revokedAt = new Date();
   await invitation.save();
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: revokedByUserId,
+    action: "invitation.revoked",
+    targetType: "Invitation",
+    targetId: invitation._id,
+    teamId,
+    result: "SUCCESS",
+  });
 
   return { message: "Invitation revoked successfully." };
 }
