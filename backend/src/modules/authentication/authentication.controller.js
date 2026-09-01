@@ -3,7 +3,8 @@ import {
   getCurrentUser,
   changePassword,
   logout,
-} from "./auth.service.js";
+} from "./authentication.service.js";
+
 
 /**
  * Handle user login.

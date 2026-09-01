@@ -32,6 +32,11 @@ tags:
     description: Multi-tenant task CRUD, active-membership assignee verification, and fine-grained resource authorization
   - name: Access Requests & Grants
     description: Just-in-time privilege elevation, temporary direct grants, self-service request modifications, and reviewer decision control plane
+  - name: Audit Logs
+    description: Security audit ledger tracking system mutations, auth attempts, role assignments, and access evaluations
+  - name: Notifications
+    description: In-app notification inbox and real-time alerts
+
 
 components:
   securitySchemes:
@@ -490,7 +495,72 @@ components:
           type: string
           example: "Operation is too risky"
 
+    AuditLog:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb99"
+        actorId:
+          type: object
+          properties:
+            _id: { type: string, example: "65b8c1e6c87881daf598bb90" }
+            name: { type: string, example: "Alice Dev" }
+            email: { type: string, example: "alice@example.com" }
+        action:
+          type: string
+          example: "auth.login"
+        targetType:
+          type: string
+          example: "User"
+        targetId:
+          type: string
+          example: "65b8c1e6c87881daf598bb90"
+        teamId:
+          type: string
+          example: "65b8c1e6c87881daf598bb91"
+        result:
+          type: string
+          enum: [SUCCESS, FAILURE]
+          example: "SUCCESS"
+        metadata:
+          type: object
+        createdAt:
+          type: string
+          format: date-time
+
+    Notification:
+      type: object
+      properties:
+        _id:
+          type: string
+          example: "65b8c1e6c87881daf598bb9a"
+        recipientId:
+          type: string
+          example: "65b8c1e6c87881daf598bb90"
+        teamId:
+          type: string
+          example: "65b8c1e6c87881daf598bb91"
+        type:
+          type: string
+          enum: [INVITATION, ROLE_ASSIGNED, ROLE_REVOKED, ACCESS_GRANTED, ACCESS_REVOKED, ACCESS_REQUEST, TEAM_MEMBERSHIP, SYSTEM]
+          example: "INVITATION"
+        title:
+          type: string
+          example: "New Team Invitation"
+        message:
+          type: string
+          example: "You have been invited to join team Core Platform."
+        readAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
 paths:
+
   # ============================================================================
   # 1. AUTHENTICATION
   # ============================================================================
@@ -1146,7 +1216,31 @@ paths:
   # ============================================================================
   # 6. TEAMS (WORKSPACE MANAGEMENT)
   # ============================================================================
+  /api/teams/my-teams:
+    get:
+      tags: [Teams]
+      summary: Get Active User Teams
+      description: Returns list of active teams where the authenticated user is an active member or has an active access grant.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: List of user teams retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Team'
+        401:
+          description: Missing or invalid authentication token
+
   /api/teams:
+
     post:
       tags: [Teams]
       summary: Create New Team Workspace
@@ -2291,6 +2385,159 @@ paths:
           description: Forbidden - Insufficient permissions (`access_request.approve`)
         404:
           description: Active access grant not found in this team
+
+  # ============================================================================
+  # 12. AUDIT LOGS
+  # ============================================================================
+  /api/teams/{teamId}/audit-logs:
+    get:
+      tags: [Audit Logs]
+      summary: Get Team Audit Logs
+      description: Returns paginated security audit events for the team. Guarded by `audit.read`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: actorId
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: result
+          in: query
+          schema: { type: string, enum: [SUCCESS, FAILURE] }
+        - name: dateFrom
+          in: query
+          schema: { type: string, format: date-time }
+        - name: dateTo
+          in: query
+          schema: { type: string, format: date-time }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        200:
+          description: Audit logs retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/AuditLog' }
+                  pagination:
+                    type: object
+                    properties:
+                      total: { type: integer, example: 45 }
+                      page: { type: integer, example: 1 }
+                      limit: { type: integer, example: 20 }
+                      totalPages: { type: integer, example: 3 }
+        401:
+          description: Missing or invalid authentication token
+        403:
+          description: Forbidden - Insufficient permissions (`audit.read`)
+
+  # ============================================================================
+  # 13. NOTIFICATIONS
+  # ============================================================================
+  /api/notifications:
+    get:
+      tags: [Notifications]
+      summary: Get My Notifications
+      description: Returns paginated in-app notifications for the authenticated user.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        200:
+          description: Notifications retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: array
+                    items: { $ref: '#/components/schemas/Notification' }
+                  pagination:
+                    type: object
+                    properties:
+                      total: { type: integer, example: 5 }
+                      page: { type: integer, example: 1 }
+                      limit: { type: integer, example: 20 }
+                      totalPages: { type: integer, example: 1 }
+        401:
+          description: Missing or invalid authentication token
+
+  /api/notifications/{notificationId}/read:
+    patch:
+      tags: [Notifications]
+      summary: Mark Single Notification as Read
+      description: Marks a specific notification as read (`readAt = now`).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Notification marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data: { $ref: '#/components/schemas/Notification' }
+        401:
+          description: Missing or invalid authentication token
+        404:
+          description: Notification not found
+
+  /api/notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark All Notifications as Read
+      description: Marks all unread notifications for the authenticated user as read.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      updatedCount: { type: integer, example: 4 }
+        401:
+          description: Missing or invalid authentication token
+
 
 
 

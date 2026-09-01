@@ -1,8 +1,9 @@
-import { registerChatHandlers } from "./chat.handler.js";
-import { registerTeamRoomHandlers } from "./team-room.handler.js";
+import { registerChatHandlers } from "../modules/chat/chat.handler.js";
+import { registerTeamRoomHandlers } from "../modules/teams/team.handler.js";
 import { Server as SocketIOServer } from "socket.io";
 import { socketAuthMiddleware } from "./socket-auth.middleware.js";
 import { env } from "../config/env.js";
+
 
 
 let ioInstance = null;
