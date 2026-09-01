@@ -10,12 +10,15 @@ import { signAccessToken } from "../../common/security/jwt.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createNotification } from "../notifications/notification.service.js";
+import { sendInvitationEmail } from "../../common/email/email.service.js";
+import { env } from "../../config/env.js";
 import {
   BadRequestError,
   NotFoundError,
   ConflictError,
   ForbiddenError,
 } from "../../common/errors/index.js";
+
 
 import mongoose from "mongoose";
 import { isValidEmail } from "../auth/auth.validation.js";
@@ -115,6 +118,17 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     }).catch((err) => console.error("Failed to persist notification:", err));
   }
 
+  // Send invitation email asynchronously
+  const inviter = await User.findById(invitedByUserId).select("name");
+  const inviteUrl = `${env.clientUrl}/invite?token=${rawToken}`;
+  sendInvitationEmail({
+    to: normalizedEmail,
+    inviterName: inviter?.name || "A team administrator",
+    teamName: team.name,
+    inviteUrl,
+    expiresAt,
+  }).catch((err) => console.error("Email dispatch failed:", err));
+
   // Audit Logging
   logAuditEvent({
     actorId: invitedByUserId,
@@ -128,6 +142,7 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
       roleIds,
     },
   });
+
 
 
   return {
