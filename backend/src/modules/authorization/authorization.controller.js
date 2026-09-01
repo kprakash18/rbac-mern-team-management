@@ -1,4 +1,6 @@
-import { resolvePermissions, can , getAllUserPermissions} from "./authorization.service.js";
+import { resolvePermissions, can, getAllUserPermissions } from "./authorization.service.js";
+
+
 import { BadRequestError } from "../../common/errors/index.js";
 
 /**

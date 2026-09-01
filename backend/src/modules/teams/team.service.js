@@ -1,7 +1,8 @@
 import Team from "./team.model.js";
 import Membership from "../memberships/membership.model.js";
-import MembershipRole from "../memberships/membership-role.model.js";
+import MembershipRole from "../member-roles/member-role.model.js";
 import Role from "../roles/role.model.js";
+
 import { logAuditEvent } from "../audit/audit.service.js";
 import {
   BadRequestError,
