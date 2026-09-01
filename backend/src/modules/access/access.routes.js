@@ -62,8 +62,9 @@ accessRouter.post(
 accessRouter.delete(
   "/grants/:grantId",
   authenticate,
-  requirePermission("access_request.approve"),
+  requirePermission("access_grant.revoke"),
   accessController.revokeAccessGrantController
 );
+
 
 export default accessRouter;

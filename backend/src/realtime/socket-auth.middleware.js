@@ -16,7 +16,7 @@ export async function socketAuthMiddleware(socket, next){
     }
     try{
         const decoded = verifyAccessToken(token);
-        const user = await User.findById(decoded.sub).select("_id email accountStatus name");
+        const user = await User.findById(decoded.sub).select("_id email accountStatus name mustChangePassword lastLogoutAt");
         if(!user){
             return next(new Error("Authentication Error: user account no longer exists"));
         }
@@ -24,6 +24,19 @@ export async function socketAuthMiddleware(socket, next){
         if (user.accountStatus === "SUSPENDED" || user.accountStatus === "DISABLED") {
             return next(new Error("Authorization error: Account is inactive or suspended."));
         }
+
+        if (user.mustChangePassword) {
+            return next(new Error("Authorization error: Password change required before connecting."));
+        }
+
+        if (user.lastLogoutAt && decoded.iat) {
+            const tokenIssuedAtMs = decoded.iat * 1000;
+            if (tokenIssuedAtMs < user.lastLogoutAt.getTime() - 1000) {
+                return next(new Error("Authentication error: Session has been logged out."));
+            }
+        }
+
+
 
 
         socket.data.user = {

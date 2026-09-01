@@ -1,5 +1,8 @@
-import Team from "./team.model.js" ;
-import Membership from '../memberships/membership.model.js';
+import Team from "./team.model.js";
+import Membership from "../memberships/membership.model.js";
+import MembershipRole from "../memberships/membership-role.model.js";
+import Role from "../roles/role.model.js";
+import { logAuditEvent } from "../audit/audit.service.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -7,53 +10,74 @@ import {
 } from "../../common/errors/index.js";
 import mongoose from "mongoose";
 
-export async function createTeam({name, description= "", createdBy}){
-    // validate the incoming inputs
-    if(!name || typeof name !=="string" || name.trim().length === 0){
-        throw new BadRequestError("Team name is required");
-    }
-    // description validation
-    if(typeof description !== "string"){
-        throw new BadRequestError("Description must be string");
-    }
+export async function createTeam({ name, description = "", createdBy }) {
+  // validate the incoming inputs
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    throw new BadRequestError("Team name is required");
+  }
+  // description validation
+  if (typeof description !== "string") {
+    throw new BadRequestError("Description must be string");
+  }
 
-    if(!mongoose.Types.ObjectId.isValid(createdBy)){
-        throw new BadRequestError("Invalid creator ID format");
-    }
+  if (!mongoose.Types.ObjectId.isValid(createdBy)) {
+    throw new BadRequestError("Invalid creator ID format");
+  }
 
-    const normalizedName = name.trim() ;
-    // check if the team name already exist with the same name
-    const existingTeam = await Team.findOne({
-        name : normalizedName,
-        status: {$ne : "ARCHIVED"},
-    });
+  const normalizedName = name.trim();
+  // check if the team name already exist with the same name
+  const existingTeam = await Team.findOne({
+    name: normalizedName,
+    status: { $ne: "ARCHIVED" },
+  });
 
-      if (existingTeam) {
+  if (existingTeam) {
     throw new ConflictError(
       "A team with this name already exists.",
       "TEAM_NAME_EXISTS"
     );
   }
 
+  // create team
+  const team = await Team.create({
+    name: normalizedName,
+    description: description?.trim() ?? "",
+    createdBy,
+    status: "ACTIVE",
+  });
 
-    // create team
-    const team = await Team.create({
-        name : normalizedName,
-        description : description?.trim() ?? "",
-        createdBy,
-        status:"ACTIVE",
+  // automatically add creator as the first active member
+  const membership = await Membership.create({
+    userId: createdBy,
+    teamId: team._id,
+    status: "ACTIVE",
+    joinedAt: new Date(),
+  });
+
+  // automatically assign the Team Admin role to the creator
+  const adminRole = await Role.findOne({ name: "Team Admin", isSystemRole: true });
+  if (adminRole) {
+    await MembershipRole.create({
+      membershipId: membership._id,
+      roleId: adminRole._id,
+      assignedBy: createdBy,
+      assignedAt: new Date(),
     });
+  }
 
-    // automatically add creator as the first acitve member
-    await Membership.create({
-        userId : createdBy,
-        teamId : team._id,
-        status : "ACTIVE",
-        joinedAt : new Date(),
-    });
+  logAuditEvent({
+    actorId: createdBy,
+    action: "team.created",
+    targetType: "Team",
+    targetId: team._id,
+    teamId: team._id,
+    result: "SUCCESS",
+    metadata: { name: team.name },
+  });
 
-    return getTeamById(team._id);
+  return getTeamById(team._id);
 }
+
 
 export async function listTeams({
   status,

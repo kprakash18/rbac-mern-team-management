@@ -2,12 +2,16 @@ import Membership from "./membership.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import MembershipRole from "./membership-role.model.js";
+import { logAuditEvent } from "../audit/audit.service.js";
+import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
+import { createNotification } from "../notifications/notification.service.js";
 import {
   BadRequestError,
   NotFoundError,
   ConflictError,
 } from "../../common/errors/index.js";
 import mongoose from "mongoose";
+
 
 export async function addMemberToTeam({ teamId, userId, addedBy }) {
   if (
@@ -151,8 +155,37 @@ export async function suspendMembership({ teamId, membershipId, actorId }) {
   }
   membership.status = "SUSPENDED";
   await membership.save();
+
+  // Real-time Event Emissions & Notification
+  emitToUser(membership.userId, "access:changed", {
+    teamId,
+    reason: "MEMBERSHIP_SUSPENDED",
+  });
+  emitToTeam(teamId, "member:suspended", {
+    userId: membership.userId,
+    membershipId: membership._id,
+  });
+  createNotification({
+    recipientId: membership.userId,
+    type: "TEAM_MEMBERSHIP",
+    title: "Membership Suspended",
+    message: "Your team membership has been suspended.",
+    teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
+  // Audit Logging
+  logAuditEvent({
+    actorId,
+    action: "membership.suspended",
+    targetType: "Membership",
+    targetId: membership._id,
+    teamId,
+    result: "SUCCESS",
+  });
+
   return getMembershipById({ teamId, membershipId: membership._id });
 }
+
 export async function reactivateMembership({ teamId, membershipId, actorId }) {
   if (
     !mongoose.Types.ObjectId.isValid(teamId) ||
@@ -169,8 +202,37 @@ export async function reactivateMembership({ teamId, membershipId, actorId }) {
   }
   membership.status = "ACTIVE";
   await membership.save();
+
+  // Real-time Event Emissions & Notification
+  emitToUser(membership.userId, "access:changed", {
+    teamId,
+    reason: "MEMBERSHIP_ACTIVATED",
+  });
+  emitToTeam(teamId, "member:reactivated", {
+    userId: membership.userId,
+    membershipId: membership._id,
+  });
+  createNotification({
+    recipientId: membership.userId,
+    type: "TEAM_MEMBERSHIP",
+    title: "Membership Reactivated",
+    message: "Your team membership has been reactivated.",
+    teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
+  // Audit Logging
+  logAuditEvent({
+    actorId,
+    action: "membership.reactivated",
+    targetType: "Membership",
+    targetId: membership._id,
+    teamId,
+    result: "SUCCESS",
+  });
+
   return getMembershipById({ teamId, membershipId: membership._id });
 }
+
 export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
   if (
     !mongoose.Types.ObjectId.isValid(teamId) ||
@@ -182,20 +244,51 @@ export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
   if (!membership || membership.status === "REMOVED") {
     throw new NotFoundError("Membership not found in this team.");
   }
+
   // 1. Mark membership as REMOVED
   membership.status = "REMOVED";
   membership.removedAt = new Date();
   await membership.save();
+
   // 2. Cascade soft-revoke any active roles for this membership
   await MembershipRole.updateMany(
     { membershipId: membership._id, revokedAt: null },
     { $set: { revokedAt: new Date(), revokedBy: actorId } }
   );
+
+  // 3. Real-time Event Emissions & Notification
+  emitToUser(membership.userId, "access:changed", {
+    teamId,
+    reason: "MEMBERSHIP_REMOVED",
+  });
+  emitToTeam(teamId, "member:removed", {
+    userId: membership.userId,
+    membershipId: membership._id,
+  });
+  createNotification({
+    recipientId: membership.userId,
+    type: "TEAM_MEMBERSHIP",
+    title: "Removed from Team",
+    message: "You have been removed from the team.",
+    teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
+  // 4. Audit Logging
+  logAuditEvent({
+    actorId,
+    action: "membership.removed",
+    targetType: "Membership",
+    targetId: membership._id,
+    teamId,
+    result: "SUCCESS",
+  });
+
   return {
     success: true,
     message: "Member removed from team successfully.",
   };
 }
+
 
 
 export const membershipService = {

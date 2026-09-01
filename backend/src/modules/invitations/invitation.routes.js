@@ -6,11 +6,12 @@ import { requirePermission } from "../../common/middleware/authorize.js";
 // Team-scoped router (mounted at /api/teams/:teamId/invitations)
 const teamInvitationRouter = Router({ mergeParams: true });
 
-teamInvitationRouter.post("/",authenticate,requirePermission("membership.create"),invitationController.createInvitation);
+teamInvitationRouter.post("/", authenticate, requirePermission("invitation.create"), invitationController.createInvitation);
 
-teamInvitationRouter.get("/", authenticate,requirePermission("membership.read"),invitationController.getTeamInvitations);
+teamInvitationRouter.get("/", authenticate, requirePermission("invitation.read"), invitationController.getTeamInvitations);
 
-teamInvitationRouter.delete("/:invitationId", authenticate, requirePermission("membership.delete"), invitationController.revokeInvitation);
+teamInvitationRouter.delete("/:invitationId", authenticate, requirePermission("invitation.revoke"), invitationController.revokeInvitation);
+
 
 // Public router (mounted at /api/invitations)
 const publicInvitationRouter = Router();
