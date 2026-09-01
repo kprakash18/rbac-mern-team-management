@@ -3,6 +3,7 @@ import AccessRequest from "./access-request.model.js";
 import AccessGrant from "./access-grant.model.js";
 import Membership from "../memberships/membership.model.js";
 import Permission from "../permissions/permission.model.js";
+import { logAuditEvent } from "../audit/audit.service.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -70,6 +71,15 @@ export async function createAccessRequest({
 
   // Real-time Event Emission
   emitToTeam(teamId, "access_request:created", { accessRequest });
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: requesterId,
+    action: "access_request.created",
+    targetType: "AccessRequest",
+    targetId: accessRequest._id,
+    teamId,
+  });
 
   return accessRequest;
 }
@@ -179,6 +189,15 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   }
 
   if (request.requesterId.toString() === reviewerId.toString()) {
+    logAuditEvent({
+      actorId: reviewerId,
+      action: "access_request.approve_attempted",
+      targetType: "AccessRequest",
+      targetId: request._id,
+      teamId,
+      result: "FAILURE",
+      metadata: { reason: "self_approval_attempt" },
+    });
     throw new ForbiddenError("Self-approval of access requests is strictly prohibited");
   }
 
@@ -220,6 +239,19 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     status: "APPROVED",
   });
 
+  // Audit Logging
+  logAuditEvent({
+    actorId: reviewerId,
+    action: "access_request.approved",
+    targetType: "AccessRequest",
+    targetId: request._id,
+    teamId,
+    metadata: {
+      grantId: grant._id,
+      expiresAt: finalExpiresAt,
+    },
+  });
+
   return { request, grant };
 }
 
@@ -258,6 +290,16 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
     status: "REJECTED",
   });
 
+  // Audit Logging
+  logAuditEvent({
+    actorId: reviewerId,
+    action: "access_request.rejected",
+    targetType: "AccessRequest",
+    targetId: request._id,
+    teamId,
+    metadata: { reason },
+  });
+
   return request;
 }
 
@@ -273,6 +315,26 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
   grant.revokedAt = new Date();
 
   await grant.save();
+
+  // Real-time Event Emissions
+  emitToUser(grant.userId, "access_grant:revoked", {
+    grantId: grant._id,
+    teamId,
+    permissionId: grant.permissionId,
+  });
+  emitToTeam(teamId, "access_grant:revoked", {
+    grantId: grant._id,
+    userId: grant.userId,
+  });
+
+  // Audit Logging
+  logAuditEvent({
+    actorId: revokedBy,
+    action: "access_grant.revoked",
+    targetType: "AccessGrant",
+    targetId: grant._id,
+    teamId,
+  });
 
   return {
     success: true,
