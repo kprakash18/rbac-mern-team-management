@@ -39,6 +39,30 @@ export async function authenticate(req, res, next) {
       throw new ForbiddenError("Your account has been disabled.", "ACCOUNT_DISABLED");
     }
 
+    if (user.lastLogoutAt && decoded.iat) {
+      const tokenIssuedAtMs = decoded.iat * 1000;
+      if (tokenIssuedAtMs < user.lastLogoutAt.getTime() - 1000) {
+        throw new UnauthorizedError(
+          "Session has been logged out. Please log in again.",
+          "SESSION_REVOKED"
+        );
+      }
+    }
+
+    // Enforce mandatory password change before accessing general resources
+    if (user.mustChangePassword) {
+      const allowedAuthEndpoints = ["/api/auth/change-password", "/api/auth/me", "/api/auth/logout"];
+      const currentUrl = req.originalUrl || req.baseUrl + req.path;
+      const isAllowed = allowedAuthEndpoints.some((endpoint) => currentUrl.startsWith(endpoint));
+
+      if (!isAllowed) {
+        throw new ForbiddenError(
+          "Password change is required before accessing this resource.",
+          "PASSWORD_CHANGE_REQUIRED"
+        );
+      }
+    }
+
     // Attach minimal identity representation to req.user
     req.user = {
       id: user._id,
@@ -47,8 +71,8 @@ export async function authenticate(req, res, next) {
       mustChangePassword: Boolean(user.mustChangePassword),
     };
 
-
     next();
+
   } catch (error) {
     next(error);
   }
