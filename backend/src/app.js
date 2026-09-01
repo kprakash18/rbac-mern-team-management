@@ -17,6 +17,7 @@ import {
 import taskRouter from "./modules/tasks/task.routes.js";
 import accessRouter from "./modules/access/access.routes.js";
 import auditRouter from "./modules/audit/audit.routes.js";
+import notificationRouter from "./modules/notifications/notification.routes.js";
 
 const app = express();
 
@@ -45,6 +46,8 @@ app.use("/api/invitations", publicInvitationRouter);
 app.use("/api/teams/:teamId/tasks", taskRouter);
 app.use("/api/teams/:teamId/access-requests", accessRouter);
 app.use("/api/teams/:teamId/audit-logs", auditRouter);
+app.use("/api/notifications", notificationRouter);
+
 // Global Error Handler
 app.use(errorHandler);
 

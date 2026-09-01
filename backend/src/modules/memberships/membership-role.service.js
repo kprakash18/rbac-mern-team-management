@@ -9,7 +9,10 @@ import {
   ConflictError,
 } from "../../common/errors/index.js";
 import { logAuditEvent } from "../audit/audit.service.js";
+import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
+import { createNotification } from "../notifications/notification.service.js";
 import mongoose from "mongoose";
+
 
 export async function assignRoleToMember({
   teamId,
@@ -77,6 +80,29 @@ export async function assignRoleToMember({
     expiresAt: expiresAt ? new Date(expiresAt) : null,
   });
 
+  // Real-time Event Emissions & Persistent Notification
+  emitToUser(userId, "access:changed", {
+    teamId,
+    reason: "ROLE_ASSIGNED",
+    roleId: role._id,
+  });
+  emitToUser(userId, "role:assigned", {
+    teamId,
+    role: { id: role._id, name: role.name },
+  });
+  emitToTeam(teamId, "member:role_assigned", {
+    userId,
+    roleId: role._id,
+  });
+  createNotification({
+    recipientId: userId,
+    type: "ROLE_ASSIGNED",
+    title: "New Role Assigned",
+    message: `You were assigned the role '${role.name}'.`,
+    teamId,
+    metadata: { roleId: role._id, expiresAt },
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
   // Audit Logging
   logAuditEvent({
     actorId: assignedBy,
@@ -93,6 +119,7 @@ export async function assignRoleToMember({
   });
 
   return getAssignmentById(assignment._id);
+
 
 }
 
@@ -174,6 +201,28 @@ export async function revokeRoleAssignment({
   assignment.revokedBy = revokedBy;
   await assignment.save();
 
+  // Real-time Event Emissions & Persistent Notification
+  emitToUser(userId, "access:changed", {
+    teamId,
+    reason: "ROLE_REVOKED",
+    roleId: assignment.roleId,
+  });
+  emitToUser(userId, "role:revoked", {
+    teamId,
+    assignmentId: assignment._id,
+  });
+  emitToTeam(teamId, "member:role_revoked", {
+    userId,
+    assignmentId: assignment._id,
+  });
+  createNotification({
+    recipientId: userId,
+    type: "ROLE_REVOKED",
+    title: "Role Revoked",
+    message: "One of your assigned team roles has been revoked.",
+    teamId,
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
   // Audit Logging
   logAuditEvent({
     actorId: revokedBy,
@@ -192,6 +241,7 @@ export async function revokeRoleAssignment({
     success: true,
     message: "Role assignment revoked successfully.",
   };
+
 }
 
 export async function listMemberRoles({ teamId, userId }) {

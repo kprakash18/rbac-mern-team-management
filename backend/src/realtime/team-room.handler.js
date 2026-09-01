@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
-import Membership from "../modules/memberships/membership.model.js";
-import AccessGrant from "../modules/access/access-grant.model.js";
+import { getMembership } from "../modules/authorization/authorization.service.js";
+import { getActiveTemporaryGrant } from "../modules/access/access.service.js";
 
 const TEN_MINUTES_MS = 10 * 60 * 1000;
 
@@ -27,18 +27,13 @@ export function registerTeamRoomHandlers(io, socket) {
         return respond({ ok: false, error: "Invalid team ID format." });
       }
 
-      const activeMembership = await Membership.findOne({
+      const activeMembership = await getMembership(user.id, teamId);
+
+      const activeGrant = activeMembership ? null : await getActiveTemporaryGrant({
         teamId,
         userId: user.id,
-        status: "ACTIVE",
       });
 
-      const activeGrant = activeMembership ? null : await AccessGrant.findOne({
-        teamId,
-        userId: user.id,
-        status: "ACTIVE",
-        expiresAt: { $gt: new Date() },
-      });
 
       if (!activeMembership && !activeGrant) {
         return respond({ ok: false, error: "Forbidden: No active membership or temporary grant found." });

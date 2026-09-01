@@ -8,12 +8,15 @@ import { generateInvitationToken, hashToken } from "./invitations.utils.js";
 import { hashPassword } from "../../common/security/password.js";
 import { signAccessToken } from "../../common/security/jwt.js";
 import { logAuditEvent } from "../audit/audit.service.js";
+import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
+import { createNotification } from "../notifications/notification.service.js";
 import {
   BadRequestError,
   NotFoundError,
   ConflictError,
   ForbiddenError,
 } from "../../common/errors/index.js";
+
 import mongoose from "mongoose";
 import { isValidEmail } from "../auth/auth.validation.js";
 
@@ -94,6 +97,24 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     status: "PENDING",
   });
 
+  // Real-time Event Emissions & Persistent Notification (if invited user has existing account)
+  if (invitation.userId) {
+    emitToUser(invitation.userId, "notification:new", {
+      type: "INVITATION",
+      title: "New Team Invitation",
+      teamId,
+      invitationId: invitation._id,
+    });
+    createNotification({
+      recipientId: invitation.userId,
+      type: "INVITATION",
+      title: "New Team Invitation",
+      message: `You have been invited to join team ${team.name}.`,
+      teamId,
+      metadata: { invitationId: invitation._id },
+    }).catch((err) => console.error("Failed to persist notification:", err));
+  }
+
   // Audit Logging
   logAuditEvent({
     actorId: invitedByUserId,
@@ -107,6 +128,7 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
       roleIds,
     },
   });
+
 
   return {
     invitationId: invitation._id,
@@ -234,6 +256,27 @@ export async function acceptInvitation({ token, name, password }) {
     await session.endSession();
   }
 
+  // Real-time Event Emissions & Persistent Notification
+  emitToTeam(targetTeam._id, "team:member_joined", {
+    userId: resolvedUser._id,
+    name: resolvedUser.name,
+    email: resolvedUser.email,
+  });
+  emitToUser(invitation.invitedBy, "notification:new", {
+    type: "TEAM_MEMBERSHIP",
+    title: "Invitation Accepted",
+    teamId: targetTeam._id,
+    userId: resolvedUser._id,
+  });
+  createNotification({
+    recipientId: invitation.invitedBy,
+    type: "TEAM_MEMBERSHIP",
+    title: "Invitation Accepted",
+    message: `${resolvedUser.name} accepted your invitation to join ${targetTeam.name}.`,
+    teamId: targetTeam._id,
+    metadata: { userId: resolvedUser._id },
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
   // Audit Logging
   logAuditEvent({
     actorId: resolvedUser._id,
@@ -247,6 +290,7 @@ export async function acceptInvitation({ token, name, password }) {
       teamId: targetTeam._id,
     },
   });
+
 
   // 3. Post-Transaction Token Issuance
   const accessToken = signAccessToken({ sub: resolvedUser._id.toString() });

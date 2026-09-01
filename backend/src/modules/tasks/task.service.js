@@ -1,9 +1,15 @@
 import Task from "./task.model.js";
 import Membership from "../memberships/membership.model.js";
-import { NotFoundError, ValidationError } from "../../common/errors/error.js";
+import { NotFoundError, ValidationError, ForbiddenError } from "../../common/errors/error.js";
 import { emitToTeam, emitToUser } from "../../realtime/event-emitter.js";
+import { createNotification } from "../notifications/notification.service.js";
 
 export async function createTask({ teamId, creatorUserId, title, description, assignedTo, priority, dueDate }) {
+  const isMember = await Membership.findOne({ teamId, userId: creatorUserId, status: "ACTIVE" });
+  if (!isMember) {
+    throw new ForbiddenError("You must be an active team member to create tasks.");
+  }
+
   if (assignedTo) {
     const activeMembership = await Membership.findOne({ teamId, userId: assignedTo, status: "ACTIVE" });
     if (!activeMembership) {
@@ -21,15 +27,24 @@ export async function createTask({ teamId, creatorUserId, title, description, as
     dueDate
   });
 
-  // Real-time Event Emissions
+  // Real-time Event Emissions & Persistent Notification
   emitToTeam(teamId, "task:created", { task });
   if (task.assignedTo) {
-    emitToUser(task.assignedTo, "notification:new", {
+    const notificationPayload = {
       type: "TASK_ASSIGNED",
       title: `You were assigned task: ${task.title}`,
       taskId: task._id,
       teamId,
-    });
+    };
+    emitToUser(task.assignedTo, "notification:new", notificationPayload);
+    createNotification({
+      recipientId: task.assignedTo,
+      type: "SYSTEM",
+      title: "New Task Assigned",
+      message: `You were assigned to task: ${task.title}`,
+      teamId,
+      resource: `task:${task._id}`,
+    }).catch((err) => console.error("Failed to persist notification:", err));
   }
 
   return task;
@@ -115,7 +130,7 @@ export async function updateTask({ teamId, taskId, updates = {} }) {
     throw new NotFoundError("Task not found in this team");
   }
 
-  // Real-time Event Emissions
+  // Real-time Event Emissions & Persistent Notification
   emitToTeam(teamId, "task:updated", { task: updatedTask });
   if (allowedUpdates.assignedTo) {
     emitToUser(allowedUpdates.assignedTo, "notification:new", {
@@ -124,6 +139,14 @@ export async function updateTask({ teamId, taskId, updates = {} }) {
       taskId: updatedTask._id,
       teamId,
     });
+    createNotification({
+      recipientId: allowedUpdates.assignedTo,
+      type: "SYSTEM",
+      title: "Task Reassigned",
+      message: `You were assigned to task: ${updatedTask.title}`,
+      teamId,
+      resource: `task:${updatedTask._id}`,
+    }).catch((err) => console.error("Failed to persist notification:", err));
   }
 
   return updatedTask;
