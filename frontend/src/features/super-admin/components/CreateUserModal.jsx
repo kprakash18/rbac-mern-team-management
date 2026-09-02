@@ -1,19 +1,110 @@
 import { useState } from 'react';
+import {
+  WORKSPACE_ROLES_MAP,
+  DEFAULT_WORKSPACE,
+} from '../constants/superAdmin.constants';
 
-export default function CreateUserModal({ isOpen, onClose, onInvite }) {
-  const [fullName, setFullName] = useState('Alice Vance');
-  const [email, setEmail] = useState('alice@company.com');
-  const [workspace, setWorkspace] = useState('Research & Development');
-  const [role, setRole] = useState('Developer');
+export default function CreateUserModal({ isOpen, onClose, onInvite, existingUsers = [] }) {
+  const [fullName, setFullName] = useState('');
+  const [email, setEmail] = useState('');
+  const [assignments, setAssignments] = useState([
+    {
+      workspace: DEFAULT_WORKSPACE,
+      role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+    },
+  ]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
+  const resetForm = () => {
+    setFullName('');
+    setEmail('');
+    setAssignments([
+      {
+        workspace: DEFAULT_WORKSPACE,
+        role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+      },
+    ]);
+    setIsSuperAdmin(false);
+  };
+
+  const handleClose = () => {
+    resetForm();
+    onClose();
+  };
+
+  // Check if entered email already belongs to an existing user
+  const matchedUser = existingUsers.find(
+    (u) => u.email.toLowerCase() === email.trim().toLowerCase()
+  );
+
+  const isExistingUser = Boolean(matchedUser);
+
+  const handleEmailChange = (newEmail) => {
+    setEmail(newEmail);
+    const match = existingUsers.find(
+      (u) => u.email.toLowerCase() === newEmail.trim().toLowerCase()
+    );
+    if (match && match.name) {
+      setFullName(match.name);
+    }
+  };
+
   if (!isOpen) return null;
+
+  const handleAddAssignment = () => {
+    const nextWorkspace = Object.keys(WORKSPACE_ROLES_MAP).find(
+      (ws) => !assignments.some((a) => a.workspace === ws)
+    ) || 'Production';
+
+    setAssignments((prev) => [
+      ...prev,
+      {
+        workspace: nextWorkspace,
+        role: WORKSPACE_ROLES_MAP[nextWorkspace][0] || 'Viewer',
+      },
+    ]);
+  };
+
+  const handleRemoveAssignment = (index) => {
+    if (assignments.length <= 1) return;
+    setAssignments((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  const handleWorkspaceChange = (index, newWorkspace) => {
+    const availableRoles = WORKSPACE_ROLES_MAP[newWorkspace] || ['Viewer'];
+    setAssignments((prev) =>
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              workspace: newWorkspace,
+              role: availableRoles.includes(item.role) ? item.role : availableRoles[0],
+            }
+          : item
+      )
+    );
+  };
+
+  const handleRoleChange = (index, newRole) => {
+    setAssignments((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, role: newRole } : item))
+    );
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
     if (onInvite) {
-      onInvite({ fullName, email, workspace, role, isSuperAdmin });
+      onInvite({
+        fullName,
+        email,
+        assignments,
+        workspace: assignments[0]?.workspace || DEFAULT_WORKSPACE,
+        role: assignments[0]?.role || 'Viewer',
+        isSuperAdmin,
+        isExistingUser,
+      });
     }
+    resetForm();
     onClose();
   };
 
@@ -31,7 +122,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
             </h2>
           </div>
           <button
-            onClick={onClose}
+            onClick={handleClose}
             className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
@@ -43,12 +134,18 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
           {/* User Identity Details */}
           <div className="flex flex-col gap-md">
             <div className="flex items-center justify-between">
-              <h3 className="font-label-bold text-label-bold text-on-surface uppercase tracking-wider text-[11px] text-on-surface-variant">
+              <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
                 User Identity Details
               </h3>
-              <span className="bg-success-bg text-success-text px-2 py-0.5 rounded-full font-label-sm text-[10px] flex items-center gap-1">
-                <span className="material-symbols-outlined text-[12px]">check_circle</span> New User Available
-              </span>
+              {isExistingUser ? (
+                <span className="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-label-sm text-[10px] flex items-center gap-1 shadow-sm font-semibold">
+                  <span className="material-symbols-outlined text-[12px]">how_to_reg</span> Existing User — Will add cross-workspace access
+                </span>
+              ) : (
+                <span className="bg-success-bg text-success-text px-2 py-0.5 rounded-full font-label-sm text-[10px] flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[12px]">check_circle</span> New User Available
+                </span>
+              )}
             </div>
             <div className="flex flex-col gap-sm">
               <label className="font-label-sm text-label-sm text-on-surface-variant">Full Name</label>
@@ -64,7 +161,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
               <label className="font-label-sm text-label-sm text-on-surface-variant">Email Address</label>
               <input
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => handleEmailChange(e.target.value)}
                 className="w-full h-10 px-sm bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
                 placeholder="e.g. user@company.com"
                 type="email"
@@ -76,47 +173,77 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
 
           {/* Workspace & Role Assignment */}
           <div className="flex flex-col gap-md">
-            <h3 className="font-label-bold text-label-bold text-on-surface uppercase tracking-wider text-[11px] text-on-surface-variant">
+            <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
               Workspace &amp; Role Assignment
             </h3>
-            <div className="flex gap-md">
-              <div className="flex-1 flex flex-col gap-sm relative">
-                <label className="font-label-sm text-label-sm text-on-surface-variant">Assign to Workspace</label>
-                <div className="relative">
-                  <select
-                    value={workspace}
-                    onChange={(e) => setWorkspace(e.target.value)}
-                    className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                  >
-                    <option>Research &amp; Development</option>
-                    <option>Production</option>
-                    <option>Staging</option>
-                  </select>
-                  <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                    expand_more
-                  </span>
-                </div>
-              </div>
-              <div className="flex-1 flex flex-col gap-sm relative">
-                <label className="font-label-sm text-label-sm text-on-surface-variant">Assigned Role</label>
-                <div className="relative">
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                  >
-                    <option>Developer</option>
-                    <option>Viewer</option>
-                    <option>Admin</option>
-                  </select>
-                  <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                    expand_more
-                  </span>
-                </div>
-              </div>
+
+            <div className="flex flex-col gap-md">
+              {assignments.map((item, index) => {
+                const availableRoles = WORKSPACE_ROLES_MAP[item.workspace] || ['Viewer'];
+                return (
+                  <div key={index} className="flex gap-md items-end">
+                    <div className="flex-1 flex flex-col gap-sm relative">
+                      <label className="font-label-sm text-label-sm text-on-surface-variant">
+                        Assign to Workspace {assignments.length > 1 ? `${index + 1}` : ''}
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={item.workspace}
+                          onChange={(e) => handleWorkspaceChange(index, e.target.value)}
+                          className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
+                        >
+                          {Object.keys(WORKSPACE_ROLES_MAP).map((ws) => (
+                            <option key={ws} value={ws}>
+                              {ws}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
+                          expand_more
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 flex flex-col gap-sm relative">
+                      <label className="font-label-sm text-label-sm text-on-surface-variant">
+                        Assigned Role
+                      </label>
+                      <div className="relative">
+                        <select
+                          value={item.role}
+                          onChange={(e) => handleRoleChange(index, e.target.value)}
+                          className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
+                        >
+                          {availableRoles.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
+                        </select>
+                        <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
+                          expand_more
+                        </span>
+                      </div>
+                    </div>
+
+                    {assignments.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveAssignment(index)}
+                        className="h-10 w-10 flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-bg rounded-lg transition-colors cursor-pointer"
+                        title="Remove assignment"
+                      >
+                        <span className="material-symbols-outlined text-[20px]">delete</span>
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
+
             <button
               type="button"
+              onClick={handleAddAssignment}
               className="self-start text-primary font-label-bold text-label-sm hover:underline flex items-center gap-xs mt-xs cursor-pointer"
             >
               <span className="material-symbols-outlined text-[16px]">add</span> Assign to another workspace
@@ -127,7 +254,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
 
           {/* Platform Authority */}
           <div className="flex flex-col gap-md">
-            <h3 className="font-label-bold text-label-bold text-on-surface uppercase tracking-wider text-[11px] text-on-surface-variant">
+            <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
               Platform Authority
             </h3>
             <div className="flex items-start gap-sm bg-warning-bg border border-warning-text/20 p-md rounded-lg">
@@ -165,7 +292,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite }) {
         <div className="p-lg border-t border-border-subtle flex items-center justify-end gap-sm bg-surface-container-low rounded-b-xl">
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="px-md h-10 rounded-lg font-label-bold text-label-sm text-on-surface border border-border-subtle bg-surface-container-lowest hover:bg-surface-container-high transition-colors cursor-pointer"
           >
             Cancel

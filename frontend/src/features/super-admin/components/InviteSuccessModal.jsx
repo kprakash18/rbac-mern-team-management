@@ -8,6 +8,7 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
   const {
     fullName = 'Alice Vance',
     email = 'alice@company.com',
+    assignments = [{ workspace: 'Research & Development', role: 'Developer' }],
     workspace = 'Research & Development',
     role = 'Developer',
     inviteLink = 'https://app.company.com/invite/tok_8f92a4b1c3d5e7',
@@ -82,13 +83,25 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
               </div>
               <div className="flex flex-col">
                 <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Initial Team</span>
-                <span className="font-label-bold text-body-sm text-on-surface">{workspace}</span>
+                <span className="font-label-bold text-body-sm text-on-surface">
+                  {assignments.map((a) => a.workspace).join(', ') || workspace}
+                </span>
               </div>
               <div className="flex flex-col">
                 <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Assigned Role</span>
-                <div className="flex items-center gap-xs mt-0.5">
-                  <div className="w-2 h-2 rounded-full bg-primary"></div>
-                  <span className="font-label-bold text-body-sm text-on-surface">{role}</span>
+                <div className="flex items-center gap-xs mt-0.5 flex-wrap">
+                  {assignments.length > 1 ? (
+                    assignments.map((a, idx) => (
+                      <span key={idx} className="font-label-bold text-body-sm text-on-surface">
+                        {a.role} ({a.workspace}){idx < assignments.length - 1 ? ', ' : ''}
+                      </span>
+                    ))
+                  ) : (
+                    <>
+                      <div className="w-2 h-2 rounded-full bg-primary"></div>
+                      <span className="font-label-bold text-body-sm text-on-surface">{assignments[0]?.role || role}</span>
+                    </>
+                  )}
                 </div>
               </div>
               <div className="flex flex-col">
