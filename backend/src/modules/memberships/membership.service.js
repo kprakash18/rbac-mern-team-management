@@ -2,6 +2,7 @@ import Membership from "./membership.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
+import Role from "../roles/role.model.js";
 
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
@@ -13,6 +14,49 @@ import {
 } from "../../common/errors/index.js";
 import mongoose from "mongoose";
 
+// Helper to assert that a target membership is not the last admin
+async function assertNotLastAdmin(teamId, membershipId) {
+  // 1a. Find admin roles ("Team Admin", "Super Admin")
+  const adminRoles = await Role.find({
+    name: { $in: ["Team Admin", "Super Admin"] },
+    status: "ACTIVE",
+  }).select("_id");
+  const adminRoleIds = adminRoles.map((r) => r._id);
+
+  // 1b. Check if this specific membership holds any active admin role
+  const isTargetAnAdmin = await MembershipRole.findOne({
+    membershipId,
+    roleId: { $in: adminRoleIds },
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  });
+
+  // If the target member is not an admin, they can safely be suspended/removed
+  if (!isTargetAnAdmin) return;
+
+  // 1c. Find all active memberships in this team
+  const activeMemberships = await Membership.find({
+    teamId,
+    status: "ACTIVE",
+  }).select("_id");
+  const activeMembershipIds = activeMemberships.map((m) => m._id);
+
+  // 1d. Count total active admin assignments across the entire team
+  const totalActiveAdmins = await MembershipRole.countDocuments({
+    membershipId: { $in: activeMembershipIds },
+    roleId: { $in: adminRoleIds },
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  });
+
+  // 1e. If 1 or fewer, block the action
+  if (totalActiveAdmins <= 1) {
+    throw new ConflictError(
+      "Cannot suspend or remove the last remaining administrator in this team.",
+      "LAST_ADMIN_CANNOT_BE_REMOVED"
+    );
+  }
+}
 
 export async function addMemberToTeam({ teamId, userId, addedBy }) {
   if (
@@ -154,6 +198,10 @@ export async function suspendMembership({ teamId, membershipId, actorId }) {
   if (membership.status === "SUSPENDED") {
     throw new BadRequestError("Membership is already suspended.");
   }
+
+  // Guard against locking out the team if this member is the last active admin
+  await assertNotLastAdmin(teamId, membership._id);
+
   membership.status = "SUSPENDED";
   await membership.save();
 
@@ -245,6 +293,9 @@ export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
   if (!membership || membership.status === "REMOVED") {
     throw new NotFoundError("Membership not found in this team.");
   }
+
+  // Guard against locking out the team if this member is the last active admin
+  await assertNotLastAdmin(teamId, membership._id);
 
   // 1. Mark membership as REMOVED
   membership.status = "REMOVED";
