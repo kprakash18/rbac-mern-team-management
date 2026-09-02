@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import CreateUserModal from './CreateUserModal';
 import InviteSuccessModal from './InviteSuccessModal';
+import ManageUserModal from './ManageUserModal';
 
 const MOCK_USERS = [
   {
@@ -39,35 +40,101 @@ const MOCK_USERS = [
     avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuCOTWZJVnN8EJqWpM13QYoX_lDr7EQMLoFundxuVUk5Ey_3WjLB363Cl9NZBjmL1RtV0Rta2b_AV486ycT39a_4fserpNB1w-ZKyRA3MdCtpBtVYub2wRgCEKOjjgIwwcaKGutFKfxpN4WXitpLHmmcid0IgBbMCWhi2GlrgBoc8mXtQ9hgUpElrUuJNJeLGlh_V0KhEqENOvUwTIgycDWO_ugahe5lzdl0oTBy-FymbyNIRASP4TFq4w',
     initials: 'CD',
   },
+  {
+    id: 'usr-4',
+    name: 'Dana White',
+    email: 'dana.w@example.com',
+    status: 'Disabled',
+    statusType: 'disabled',
+    workspaces: [{ name: 'Engineering Core', isHigh: false, isOpacity: true }],
+    lastLogin: 'Jan 12, 2023',
+    avatar: '',
+    initials: 'DW',
+  },
 ];
 
 export default function UsersAccessView() {
   const [users, setUsers] = useState(MOCK_USERS);
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 10;
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [inviteSuccessData, setInviteSuccessData] = useState(null);
+  const [selectedUserForManage, setSelectedUserForManage] = useState(null);
 
   const filterTabs = ['All', 'Active', 'Invited', 'Suspended', 'Disabled'];
 
+  const handleFilterChange = (tab) => {
+    setActiveFilter(tab);
+    setCurrentPage(1);
+  };
+
+  const handleSearchChange = (query) => {
+    setSearchQuery(query);
+    setCurrentPage(1);
+  };
+
+  const handleSaveManagedUser = (updatedUser) => {
+    setUsers((prev) =>
+      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
+    );
+  };
+
   const handleInviteUser = (newUserData) => {
-    const newUser = {
-      id: `usr-${Date.now()}`,
-      name: newUserData.fullName,
-      email: newUserData.email,
-      status: 'Invited',
-      statusType: 'invited',
-      workspaces: [{ name: newUserData.workspace, isHigh: false }],
-      lastLogin: 'Never',
-      avatar: '',
-      initials: newUserData.fullName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'U',
-    };
-    setUsers((prev) => [newUser, ...prev]);
+    const assignedWorkspaces = newUserData.assignments?.map((a) => ({
+      name: a.workspace,
+      isHigh: false,
+    })) || [{ name: newUserData.workspace, isHigh: false }];
+
+    setUsers((prev) => {
+      const existingIndex = prev.findIndex(
+        (u) => u.email.toLowerCase() === newUserData.email.trim().toLowerCase()
+      );
+      if (existingIndex >= 0) {
+        // Append new workspace(s) to existing user
+        const existing = prev[existingIndex];
+        const existingNames = new Set(existing.workspaces.map((w) => w.name));
+        const newUniqueWorkspaces = assignedWorkspaces.filter(
+          (w) => !existingNames.has(w.name)
+        );
+        const updated = {
+          ...existing,
+          workspaces: [...existing.workspaces, ...newUniqueWorkspaces],
+          isSuperAdmin: newUserData.isSuperAdmin !== undefined ? newUserData.isSuperAdmin : existing.isSuperAdmin,
+        };
+        const nextList = [...prev];
+        nextList[existingIndex] = updated;
+        return nextList;
+      }
+
+      // Brand new user
+      const newUser = {
+        id: `usr-${Date.now()}`,
+        name: newUserData.fullName,
+        email: newUserData.email,
+        status: 'Invited',
+        statusType: 'invited',
+        workspaces: assignedWorkspaces,
+        isSuperAdmin: Boolean(newUserData.isSuperAdmin),
+        lastLogin: 'Never',
+        avatar: '',
+        initials:
+          newUserData.fullName
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase() || 'U',
+      };
+      return [newUser, ...prev];
+    });
 
     // Open success modal
     setInviteSuccessData({
       fullName: newUserData.fullName,
       email: newUserData.email,
+      assignments: newUserData.assignments,
       workspace: newUserData.workspace,
       role: newUserData.role,
       inviteLink: `https://app.company.com/invite/tok_${Math.random().toString(36).substring(2, 12)}`,
@@ -75,13 +142,26 @@ export default function UsersAccessView() {
   };
 
   const filteredUsers = users.filter((u) => {
-    const matchesFilter = activeFilter === 'All' || u.status === activeFilter;
+    const matchesFilter =
+      activeFilter === 'All' ||
+      u.status.toLowerCase() === activeFilter.toLowerCase() ||
+      u.statusType?.toLowerCase() === activeFilter.toLowerCase();
     const matchesSearch =
       !searchQuery ||
       u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       u.email.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesFilter && matchesSearch;
   });
+
+  const totalItems = filteredUsers.length;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const safeCurrentPage = Math.min(currentPage, totalPages);
+  const startIndex = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
+  const endIndex = Math.min(safeCurrentPage * pageSize, totalItems);
+  const paginatedUsers = filteredUsers.slice(
+    (safeCurrentPage - 1) * pageSize,
+    safeCurrentPage * pageSize
+  );
 
   return (
     <div className="flex flex-col w-full h-full max-w-[1280px] mx-auto px-lg py-xl space-y-xl">
@@ -95,7 +175,7 @@ export default function UsersAccessView() {
           <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
           <input
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full bg-surface border-none rounded-lg pl-[40px] pr-md py-xs font-body-sm text-body-sm text-on-surface focus:ring-2 focus:ring-primary outline-none transition-all shadow-sm"
             placeholder="Search users by name or email..."
             type="text"
@@ -105,7 +185,7 @@ export default function UsersAccessView() {
           {filterTabs.map((tab) => (
             <button
               key={tab}
-              onClick={() => setActiveFilter(tab)}
+              onClick={() => handleFilterChange(tab)}
               className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors cursor-pointer ${
                 activeFilter === tab
                   ? 'bg-primary text-on-primary'
@@ -137,82 +217,128 @@ export default function UsersAccessView() {
             </tr>
           </thead>
           <tbody className="font-body-sm text-body-sm text-on-surface">
-            {filteredUsers.map((user) => (
-              <tr key={user.id} className="hover:bg-surface-container-lowest transition-colors border-b border-border-subtle group">
-                <td className="py-lg px-lg">
-                  <div className="flex items-center gap-md">
-                    {user.avatar ? (
-                      <img
-                        className={`w-10 h-10 rounded-full object-cover shadow-sm ${user.statusType === 'suspended' ? 'grayscale' : ''}`}
-                        src={user.avatar}
-                        alt={user.name}
-                        onError={(e) => {
-                          e.currentTarget.style.display = 'none';
-                          e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                        }}
-                      />
-                    ) : null}
-                    <div className={`${user.avatar ? 'hidden' : ''} w-10 h-10 rounded-full bg-primary-container text-on-primary font-label-bold flex items-center justify-center text-label-sm`}>
-                      {user.initials}
-                    </div>
-                    <div className="flex flex-col">
-                      <span className="font-label-bold text-label-bold text-on-surface">{user.name}</span>
-                      <span className="text-on-surface-variant">{user.email}</span>
-                    </div>
-                  </div>
-                </td>
-                <td className="py-lg px-lg">
-                  {user.statusType === 'active' && (
-                    <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-success-bg text-success-text font-label-sm text-label-sm shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-success-text mr-xs"></span>Active
-                    </span>
-                  )}
-                  {user.statusType === 'invited' && (
-                    <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-warning-bg text-warning-text font-label-sm text-label-sm shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-warning-text mr-xs"></span>Invited
-                    </span>
-                  )}
-                  {user.statusType === 'suspended' && (
-                    <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-error-bg text-error-text font-label-sm text-label-sm shadow-sm">
-                      <span className="w-1.5 h-1.5 rounded-full bg-error-text mr-xs"></span>Suspended
-                    </span>
-                  )}
-                </td>
-                <td className="py-lg px-lg">
-                  <div className="flex gap-xs flex-wrap">
-                    {user.workspaces.map((ws, i) => (
-                      <span
-                        key={i}
-                        className={`px-xs py-base rounded-md font-label-sm text-label-sm shadow-sm ${
-                          ws.isHigh
-                            ? 'bg-surface-container-high text-on-surface-variant'
-                            : 'bg-secondary-container text-on-secondary-container'
-                        } ${ws.isOpacity ? 'opacity-50' : ''}`}
-                      >
-                        {ws.name}
-                      </span>
-                    ))}
-                  </div>
-                </td>
-                <td className="py-lg px-lg text-on-surface-variant">{user.lastLogin}</td>
-                <td className="py-lg px-lg text-right">
-                  <button className="px-md py-xs bg-surface-container-high text-on-surface font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-primary hover:text-on-primary transition-all opacity-0 group-hover:opacity-100 cursor-pointer">
-                    Manage
-                  </button>
+            {paginatedUsers.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="py-xl px-lg text-center text-on-surface-variant">
+                  No users found matching your search and filter criteria.
                 </td>
               </tr>
-            ))}
+            ) : (
+              paginatedUsers.map((user) => (
+                <tr key={user.id} className="hover:bg-surface-container-lowest transition-colors border-b border-border-subtle group">
+                  <td className="py-lg px-lg">
+                    <div className="flex items-center gap-md">
+                      {user.avatar ? (
+                        <img
+                          className={`w-10 h-10 rounded-full object-cover shadow-sm ${
+                            user.statusType === 'suspended' || user.statusType === 'disabled'
+                              ? 'grayscale opacity-60'
+                              : ''
+                          }`}
+                          src={user.avatar}
+                          alt={user.name}
+                          onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                          }}
+                        />
+                      ) : null}
+                      <div className={`${user.avatar ? 'hidden' : ''} w-10 h-10 rounded-full bg-primary-container text-on-primary font-label-bold flex items-center justify-center text-label-sm`}>
+                        {user.initials}
+                      </div>
+                      <div className="flex flex-col">
+                        <div className="flex items-center gap-xs">
+                          <span className="font-label-bold text-label-bold text-on-surface">{user.name}</span>
+                          {user.isSuperAdmin && (
+                            <span className="material-symbols-outlined text-warning-text text-[16px]" title="Platform Super Admin">
+                              local_police
+                            </span>
+                          )}
+                        </div>
+                        <span className="text-on-surface-variant">{user.email}</span>
+                      </div>
+                    </div>
+                  </td>
+                  <td className="py-lg px-lg">
+                    {user.statusType === 'active' && (
+                      <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-success-bg text-success-text font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-success-text mr-xs"></span>Active
+                      </span>
+                    )}
+                    {user.statusType === 'invited' && (
+                      <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-warning-bg text-warning-text font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-warning-text mr-xs"></span>Invited
+                      </span>
+                    )}
+                    {user.statusType === 'suspended' && (
+                      <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-error-bg text-error-text font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-error-text mr-xs"></span>Suspended
+                      </span>
+                    )}
+                    {user.statusType === 'disabled' && (
+                      <span className="inline-flex items-center px-sm py-[2px] rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant mr-xs"></span>Disabled
+                      </span>
+                    )}
+                  </td>
+                  <td className="py-lg px-lg">
+                    <div className="flex gap-xs flex-wrap">
+                      {user.workspaces.map((ws, i) => (
+                        <span
+                          key={i}
+                          className={`px-xs py-base rounded-md font-label-sm text-label-sm shadow-sm ${
+                            ws.isHigh
+                              ? 'bg-surface-container-high text-on-surface-variant'
+                              : 'bg-secondary-container text-on-secondary-container'
+                          } ${ws.isOpacity ? 'opacity-50' : ''}`}
+                        >
+                          {ws.name}
+                        </span>
+                      ))}
+                    </div>
+                  </td>
+                  <td className="py-lg px-lg text-on-surface-variant">{user.lastLogin}</td>
+                  <td className="py-lg px-lg text-right">
+                    <button
+                      onClick={() => setSelectedUserForManage(user)}
+                      className="px-md py-xs bg-surface-container-high text-on-surface font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-primary hover:text-on-primary transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                    >
+                      Manage
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
         <div className="w-full flex items-center justify-between p-md bg-surface-container-low border-t border-border-subtle">
           <span className="font-body-sm text-body-sm text-on-surface-variant">
-            Showing 1 to {filteredUsers.length} of {filteredUsers.length} entries
+            Showing {startIndex} to {endIndex} of {totalItems} entries
           </span>
-          <div className="flex gap-sm">
-            <button className="px-md py-xs bg-surface text-on-surface font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-surface-container-high transition-colors opacity-50 cursor-not-allowed">
+          <div className="flex items-center gap-sm">
+            <button
+              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
+              disabled={safeCurrentPage <= 1}
+              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors ${
+                safeCurrentPage <= 1
+                  ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
+                  : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
+              }`}
+            >
               Previous
             </button>
-            <button className="px-md py-xs bg-surface text-on-surface font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-surface-container-high transition-colors cursor-pointer">
+            <span className="font-label-sm text-on-surface-variant px-xs">
+              Page {safeCurrentPage} of {totalPages}
+            </span>
+            <button
+              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
+              disabled={safeCurrentPage >= totalPages}
+              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors ${
+                safeCurrentPage >= totalPages
+                  ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
+                  : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
+              }`}
+            >
               Next
             </button>
           </div>
@@ -222,6 +348,7 @@ export default function UsersAccessView() {
       {/* 1. Create & Invite User Modal */}
       <CreateUserModal
         isOpen={isCreateModalOpen}
+        existingUsers={users}
         onClose={() => setIsCreateModalOpen(false)}
         onInvite={handleInviteUser}
       />
@@ -236,6 +363,17 @@ export default function UsersAccessView() {
           setIsCreateModalOpen(true);
         }}
       />
+
+      {/* 3. Manage User Modal */}
+      {selectedUserForManage && (
+        <ManageUserModal
+          key={selectedUserForManage.id}
+          isOpen={Boolean(selectedUserForManage)}
+          user={selectedUserForManage}
+          onClose={() => setSelectedUserForManage(null)}
+          onSaveUser={handleSaveManagedUser}
+        />
+      )}
     </div>
   );
 }
