@@ -197,6 +197,36 @@ export async function revokeRoleAssignment({
     throw new NotFoundError("Active role assignment not found.");
   }
 
+  // TODO 1: Fetch the Role document associated with assignment.roleId to inspect its name.
+  const targetRole = await Role.findById(assignment.roleId);
+
+  // TODO 2: Check if targetRole.name is "Team Admin" or "Super Admin"
+  if (targetRole && (targetRole.name === "Team Admin" || targetRole.name === "Super Admin")) {
+    // TODO 2a: Find all active membership IDs for this team
+    const activeMemberships = await Membership.find({
+      teamId,
+      status: "ACTIVE",
+    }).select("_id");
+    
+    const activeMembershipIds = activeMemberships.map((m) => m._id);
+
+    // TODO 2b: Count how many active, unexpired MembershipRoles exist for this roleId across those memberships
+    const activeAdminCount = await MembershipRole.countDocuments({
+      membershipId: { $in: activeMembershipIds },
+      roleId: targetRole._id,
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    });
+
+    // TODO 2c: If activeAdminCount <= 1, prevent the lockout
+    if (activeAdminCount <= 1) {
+      throw new ConflictError(
+        "Cannot revoke the role from the last remaining administrator in this team.",
+        "LAST_ADMIN_CANNOT_BE_REMOVED"
+      );
+    }
+  }
+
   // Soft-revoke
   assignment.revokedAt = new Date();
   assignment.revokedBy = revokedBy;
