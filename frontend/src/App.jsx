@@ -1,10 +1,5 @@
+import LoginPage from '@/features/auth/pages/LoginPage';
 
-
-function App() {
-
-  return (
-    <><h1>Hello</h1></>
-  )
+export default function App() {
+  return <LoginPage />;
 }
-
-export default App
