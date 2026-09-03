@@ -6,6 +6,7 @@ import RecentActivityFeed from '../components/RecentActivityFeed';
 import ActiveWorkspacesWidget from '../components/ActiveWorkspacesWidget';
 import UsersAccessView from '../components/UsersAccessView';
 import RolesView from '../components/RolesView';
+import JitAccessView from '../components/JitAccessView';
 
 export default function SuperAdminPage() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -28,6 +29,8 @@ export default function SuperAdminPage() {
             <UsersAccessView />
           ) : activeNav === 'roles-rbac' ? (
             <RolesView />
+          ) : activeNav === 'jit-access' ? (
+            <JitAccessView />
           ) : (
             <div className="flex flex-col w-full p-xl gap-xl">
               <div className="flex flex-col gap-xs">
