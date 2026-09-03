@@ -10,7 +10,7 @@ import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
 import SecurityAuditView from '../components/SecurityAuditView';
 
-export default function SuperAdminPage() {
+export default function SuperAdminPage({ currentUser, onLogout }) {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
@@ -21,11 +21,13 @@ export default function SuperAdminPage() {
         onSelectNav={setActiveNav}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen((prev) => !prev)}
+        onLogout={onLogout}
       />
       
       <div className={`w-full min-h-screen flex flex-col ${isSidebarOpen ? 'pl-72' : 'pl-20'}`}>
         <SuperAdminTopbar
           isSidebarOpen={isSidebarOpen}
+          currentUser={currentUser}
           onBroadcast={() => setActiveNav('system-broadcasts')}
         />
 

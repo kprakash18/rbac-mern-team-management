@@ -6,6 +6,14 @@ import SuperAdminPage from './features/super-admin/pages/SuperAdminPage';
 
 export default function App() {
   const [currentPath, setCurrentPath] = useState(window.location.pathname);
+  const [authUser, setAuthUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem('auth_session');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
 
   useEffect(() => {
     const handlePopState = () => setCurrentPath(window.location.pathname);
@@ -13,9 +21,10 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  if (currentPath === '/login') {
-    return <LoginPage />;
-  }
+  const handleLogout = () => {
+    localStorage.removeItem('auth_session');
+    setAuthUser(null);
+  };
 
   if (currentPath === '/invite') {
     return <AcceptInvitationPage />;
@@ -25,6 +34,11 @@ export default function App() {
     return <WorkspacePage />;
   }
 
-  // Mounted at /superadmin and default for superadmin branch
-  return <SuperAdminPage />;
+  // If not authenticated, render LoginPage
+  if (!authUser) {
+    return <LoginPage onLoginSuccess={(user) => setAuthUser(user)} />;
+  }
+
+  // If authenticated, render Super Admin Control Plane
+  return <SuperAdminPage currentUser={authUser} onLogout={handleLogout} />;
 }
