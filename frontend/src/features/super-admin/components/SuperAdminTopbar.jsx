@@ -1,6 +1,10 @@
-export default function SuperAdminTopbar({ onCreateTeam, onBroadcast }) {
+export default function SuperAdminTopbar({ onCreateTeam, onBroadcast, isSidebarOpen = true }) {
   return (
-    <header className="fixed top-0 left-72 right-0 h-16 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-xl">
+    <header
+      className={`fixed top-0 right-0 h-16 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-xl transition-all duration-300 ${
+        isSidebarOpen ? 'left-72' : 'left-20'
+      }`}
+    >
       <div className="flex-1 max-w-xl">
         <div className="relative group">
           <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">
