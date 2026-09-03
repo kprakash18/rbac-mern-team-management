@@ -1,0 +1,826 @@
+import { useState, useRef, useEffect } from 'react';
+
+const WORKSPACE_MEMBERS = [
+  { id: 'usr-dm', name: 'Diana Morales', role: 'Lead Architect', teamRole: 'Team Admin', initials: 'DM' },
+  { id: 'usr-cd', name: 'Charlie Davis', role: 'Senior Staff SRE', teamRole: 'Project Manager', initials: 'CD' },
+  { id: 'usr-aj', name: 'Alice Johnson', role: 'DevOps Engineer', teamRole: 'Developer', initials: 'AJ' },
+  { id: 'usr-er', name: 'Elena Rostova', role: 'Security Auditor', teamRole: 'Security Auditor', initials: 'ER' },
+  { id: 'usr-mv', name: 'Marcus Vance', role: 'Senior Backend Developer', teamRole: 'Developer', initials: 'MV' },
+  { id: 'usr-sl', name: 'Sophia Lin', role: 'Lead UI Engineer', teamRole: 'Developer', initials: 'SL' },
+];
+
+const INITIAL_GROUPS = [
+  {
+    id: 'grp-general',
+    name: 'general',
+    topic: 'Company-wide updates, announcements, and team banter',
+    createdBy: 'usr-dm',
+    memberIds: ['usr-dm', 'usr-cd', 'usr-aj', 'usr-er', 'usr-mv', 'usr-sl'],
+    isDefault: true,
+  },
+  {
+    id: 'grp-core-platform',
+    name: 'core-platform',
+    topic: 'Platform architecture, microservices, and database clustering',
+    createdBy: 'usr-dm',
+    memberIds: ['usr-dm', 'usr-cd', 'usr-mv'],
+    isDefault: false,
+  },
+  {
+    id: 'grp-sprint-releases',
+    name: 'sprint-releases',
+    topic: 'Active sprint tasks, code reviews, and CI/CD canary deployments',
+    createdBy: 'usr-dm',
+    memberIds: ['usr-dm', 'usr-aj', 'usr-mv', 'usr-sl'],
+    isDefault: false,
+  },
+  {
+    id: 'grp-secops-bridge',
+    name: 'secops-bridge',
+    topic: 'Incident response, SOC2 audit evidence, and security governance',
+    createdBy: 'usr-dm',
+    memberIds: ['usr-dm', 'usr-cd', 'usr-er'],
+    isDefault: false,
+  },
+];
+
+const INITIAL_MESSAGES = {
+  'grp-general': [
+    {
+      id: 'msg-1',
+      senderId: 'usr-dm',
+      senderName: 'Diana Morales',
+      senderRole: 'Lead Architect',
+      senderInitials: 'DM',
+      text: 'Good morning everyone! Reminder that our Q3 SOC2 audit evidence collection window starts this Friday.',
+      timestamp: '09:15 AM',
+    },
+    {
+      id: 'msg-2',
+      senderId: 'usr-er',
+      senderName: 'Elena Rostova',
+      senderRole: 'Security Auditor',
+      senderInitials: 'ER',
+      text: 'All audit evidence templates have been shared in the governance folder. Please ensure your JIT justification logs are linked.',
+      timestamp: '09:22 AM',
+    },
+    {
+      id: 'msg-3',
+      senderId: 'usr-mv',
+      senderName: 'Marcus Vance',
+      senderRole: 'Senior Backend Developer',
+      senderInitials: 'MV',
+      text: 'API service release v2.4.1 deployment completed with 0 errors.',
+      timestamp: '10:04 AM',
+    },
+  ],
+  'grp-core-platform': [
+    {
+      id: 'msg-201',
+      senderId: 'usr-cd',
+      senderName: 'Charlie Davis',
+      senderRole: 'Senior Staff SRE',
+      senderInitials: 'CD',
+      text: 'Aurora Postgres replica in US-East-1 IOPS baseline has fully stabilized after the buffer pool parameter adjustments.',
+      timestamp: '08:45 AM',
+    },
+    {
+      id: 'msg-202',
+      senderId: 'usr-dm',
+      senderName: 'Diana Morales',
+      senderRole: 'Lead Architect',
+      senderInitials: 'DM',
+      text: 'Great work Charlie. Let us monitor replication lag during peak traffic hours before closing ticket INC-8492.',
+      timestamp: '09:02 AM',
+    },
+  ],
+  'grp-sprint-releases': [
+    {
+      id: 'msg-301',
+      senderId: 'usr-sl',
+      senderName: 'Sophia Lin',
+      senderRole: 'Lead UI Engineer',
+      senderInitials: 'SL',
+      text: 'Design System color contrast tokens have been updated in PR #142 for WCAG AA compliance.',
+      timestamp: '11:10 AM',
+    },
+    {
+      id: 'msg-302',
+      senderId: 'usr-aj',
+      senderName: 'Alice Johnson',
+      senderRole: 'DevOps Engineer',
+      senderInitials: 'AJ',
+      text: 'Automated E2E frontend build pass was green. Ready to merge.',
+      timestamp: '11:32 AM',
+    },
+  ],
+  'grp-secops-bridge': [
+    {
+      id: 'msg-401',
+      senderId: 'usr-er',
+      senderName: 'Elena Rostova',
+      senderRole: 'Security Auditor',
+      senderInitials: 'ER',
+      text: 'SecOps bridge initialized. Standing by for Vault transit rotation attestation sign-off.',
+      timestamp: 'Yesterday',
+    },
+  ],
+};
+
+export default function ChatView({ currentUser }) {
+  const currentUserId = currentUser?.id || 'usr-dm';
+  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+
+  const [groups, setGroups] = useState(INITIAL_GROUPS);
+  const [activeGroupId, setActiveGroupId] = useState('grp-general');
+  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [inputText, setInputText] = useState('');
+  const [searchChannel, setSearchChannel] = useState('');
+
+  // Modals
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+
+  // New Group Form State
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupTopic, setNewGroupTopic] = useState('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState([currentUserId]);
+
+  // Invite Members to Active Group State
+  const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
+
+  const messagesEndRef = useRef(null);
+
+  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
+  const activeMessages = messages[activeGroupId] || [];
+
+  const scrollToBottom = () => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  useEffect(() => {
+    scrollToBottom();
+  }, [activeGroupId, messages]);
+
+  const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!inputText.trim()) return;
+
+    const newMsg = {
+      id: `msg-${Date.now()}`,
+      senderId: currentUserId,
+      senderName: currentUser?.name || 'Diana Morales',
+      senderRole: currentUser?.role || 'Lead Architect',
+      senderInitials: currentUser?.initials || 'DM',
+      text: inputText.trim(),
+      isSystemBroadcast: isTeamAdmin && isSystemBroadcastMode,
+      timestamp: 'Just now',
+    };
+
+    setMessages((prev) => ({
+      ...prev,
+      [activeGroupId]: [...(prev[activeGroupId] || []), newMsg],
+    }));
+
+    setInputText('');
+    setIsSystemBroadcastMode(false);
+  };
+
+  const handleOpenCreateModal = () => {
+    setNewGroupName('');
+    setNewGroupTopic('');
+    setSelectedMemberIds([currentUserId]);
+    setIsCreateModalOpen(true);
+  };
+
+  const handleToggleMember = (memberId) => {
+    if (memberId === currentUserId) return; // Creator is always included
+    setSelectedMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  };
+
+  const handleCreateGroup = (e) => {
+    e.preventDefault();
+    if (!newGroupName.trim()) return;
+
+    const formattedName = newGroupName
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]/g, '-')
+      .replace(/^-+|-+$/g, '');
+
+    const newGroup = {
+      id: `grp-${Date.now()}`,
+      name: formattedName,
+      topic: newGroupTopic.trim() || 'Team collaboration channel',
+      createdBy: currentUserId,
+      memberIds: Array.from(new Set([currentUserId, ...selectedMemberIds])),
+      isDefault: false,
+    };
+
+    setGroups((prev) => [...prev, newGroup]);
+    setMessages((prev) => ({
+      ...prev,
+      [newGroup.id]: [
+        {
+          id: `msg-welcome-${Date.now()}`,
+          senderId: currentUserId,
+          senderName: currentUser?.name || 'Diana Morales',
+          senderRole: currentUser?.role || 'Lead Architect',
+          senderInitials: currentUser?.initials || 'DM',
+          text: `👋 Created channel #${formattedName} with ${newGroup.memberIds.length} members.`,
+          timestamp: 'Just now',
+        },
+      ],
+    }));
+
+    setActiveGroupId(newGroup.id);
+    setIsCreateModalOpen(false);
+  };
+
+  const handleOpenInviteModal = () => {
+    setInviteSelectedIds([]);
+    setIsInviteModalOpen(true);
+  };
+
+  const handleToggleInviteMember = (memberId) => {
+    setInviteSelectedIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  };
+
+  const handleInviteMembers = (e) => {
+    e.preventDefault();
+    if (inviteSelectedIds.length === 0) return;
+
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === activeGroupId
+          ? { ...g, memberIds: Array.from(new Set([...g.memberIds, ...inviteSelectedIds])) }
+          : g
+      )
+    );
+
+    const invitedNames = WORKSPACE_MEMBERS.filter((m) => inviteSelectedIds.includes(m.id))
+      .map((m) => m.name)
+      .join(', ');
+
+    setMessages((prev) => ({
+      ...prev,
+      [activeGroupId]: [
+        ...(prev[activeGroupId] || []),
+        {
+          id: `msg-inv-${Date.now()}`,
+          senderId: currentUserId,
+          senderName: currentUser?.name || 'Diana Morales',
+          senderRole: currentUser?.role || 'Lead Architect',
+          senderInitials: currentUser?.initials || 'DM',
+          text: `🎉 Added ${invitedNames} to #${activeGroup.name}.`,
+          timestamp: 'Just now',
+        },
+      ],
+    }));
+
+    setIsInviteModalOpen(false);
+  };
+
+  // Filter channels the user has access to
+  const visibleGroups = groups.filter((g) => {
+    // If admin, see all. If member, see groups where member or default.
+    const hasMembership = isTeamAdmin || g.isDefault || g.memberIds.includes(currentUserId);
+    const matchesSearch = !searchChannel || g.name.toLowerCase().includes(searchChannel.toLowerCase());
+    return hasMembership && matchesSearch;
+  });
+
+  const activeGroupMembers = WORKSPACE_MEMBERS.filter((m) => activeGroup.memberIds.includes(m.id));
+  const availableToInvite = WORKSPACE_MEMBERS.filter((m) => !activeGroup.memberIds.includes(m.id));
+
+  return (
+    <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-md flex flex-col flex-1 h-[calc(100vh-80px)]">
+      {/* Main Split Layout */}
+      <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-sm flex flex-1 overflow-hidden">
+        {/* Left Panel: Channels & Groups */}
+        <aside className="w-64 sm:w-72 border-r border-border-subtle bg-surface-container-low/50 flex flex-col justify-between shrink-0">
+          <div>
+            {/* Header & New Group Button */}
+            <div className="p-3.5 border-b border-border-subtle flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-[20px] text-primary">forum</span>
+                <h2 className="font-headline-md text-[15px] font-bold text-on-surface">Team Chat</h2>
+              </div>
+
+              {isTeamAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleOpenCreateModal}
+                  className="p-1 rounded-md text-primary hover:bg-surface-container font-label-bold text-[12px] inline-flex items-center gap-0.5 cursor-pointer"
+                  title="Create new chat group"
+                >
+                  <span className="material-symbols-outlined text-[18px]">add</span>
+                  <span>Group</span>
+                </button>
+              ) : (
+                <span
+                  className="p-1 text-on-surface-variant/50 cursor-not-allowed"
+                  title="Only Team Admins can create chat groups"
+                >
+                  <span className="material-symbols-outlined text-[18px]">lock</span>
+                </span>
+              )}
+            </div>
+
+            {/* Channel Search */}
+            <div className="p-2.5 border-b border-border-subtle/70">
+              <div className="relative flex items-center">
+                <span className="material-symbols-outlined absolute left-2.5 text-on-surface-variant text-[16px]">
+                  search
+                </span>
+                <input
+                  type="text"
+                  value={searchChannel}
+                  onChange={(e) => setSearchChannel(e.target.value)}
+                  placeholder="Filter groups..."
+                  className="w-full pl-8 pr-2.5 py-1 text-[12px] bg-surface-container-lowest border border-border-subtle rounded-lg text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+            </div>
+
+            {/* Channels List */}
+            <div className="p-2 flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-320px)]">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant px-2.5 py-1 block">
+                Channels &amp; Groups ({visibleGroups.length})
+              </span>
+
+              {visibleGroups.map((group) => {
+                const isActive = group.id === activeGroupId;
+
+                return (
+                  <button
+                    key={group.id}
+                    type="button"
+                    onClick={() => setActiveGroupId(group.id)}
+                    className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
+                      isActive
+                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
+                        : 'text-on-surface hover:bg-surface-container-low'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`text-[15px] font-mono ${isActive ? 'text-on-primary' : 'text-on-surface-variant'}`}>
+                        #
+                      </span>
+                      <span className="text-[13px] truncate">{group.name}</span>
+                    </div>
+
+                    <span
+                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0 ${
+                        isActive ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
+                      }`}
+                    >
+                      {group.memberIds.length}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* User Profile Pill at Sidebar Bottom */}
+          <div className="p-3 border-t border-border-subtle bg-surface-container-lowest flex items-center justify-between">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-[11px] shrink-0">
+                {currentUser?.initials || 'DM'}
+              </div>
+              <div className="min-w-0">
+                <span className="text-[12px] font-semibold text-on-surface block truncate">
+                  {currentUser?.name || 'Diana Morales'}
+                </span>
+                <span className="text-[10px] text-on-surface-variant block truncate">
+                  {isTeamAdmin ? '👑 Team Admin' : currentUser?.role || 'Developer'}
+                </span>
+              </div>
+            </div>
+          </div>
+        </aside>
+
+        {/* Right Panel: Active Chat Stream */}
+        <main className="flex-1 flex flex-col justify-between bg-surface-container-lowest overflow-hidden">
+          {/* Chat Header */}
+          <div className="p-3.5 border-b border-border-subtle flex items-center justify-between bg-surface-container-lowest/90 backdrop-blur z-10 shrink-0">
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <h3 className="font-label-bold text-[16px] text-on-surface font-semibold flex items-center gap-1">
+                  <span className="font-mono text-on-surface-variant text-[16px]">#</span>
+                  <span>{activeGroup.name}</span>
+                </h3>
+
+                {activeGroup.isDefault && (
+                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-surface-container-high text-on-surface-variant font-medium">
+                    Default
+                  </span>
+                )}
+              </div>
+              <p className="text-[12px] text-on-surface-variant truncate mt-0.5">{activeGroup.topic}</p>
+            </div>
+
+            {/* Member List & Admin Invite Button */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Member Avatars Stack */}
+              <div className="flex items-center -space-x-1.5 mr-1" title={`${activeGroupMembers.length} members in this channel`}>
+                {activeGroupMembers.slice(0, 4).map((member) => (
+                  <div
+                    key={member.id}
+                    className="w-6 h-6 rounded-full bg-surface-container-high border-2 border-surface-container-lowest flex items-center justify-center font-bold text-[9px] text-on-surface"
+                    title={`${member.name} (${member.teamRole})`}
+                  >
+                    {member.initials}
+                  </div>
+                ))}
+                {activeGroupMembers.length > 4 && (
+                  <div className="w-6 h-6 rounded-full bg-surface-container border-2 border-surface-container-lowest flex items-center justify-center text-[9px] text-on-surface-variant font-medium">
+                    +{activeGroupMembers.length - 4}
+                  </div>
+                )}
+              </div>
+
+              {/* Invite Member Button (Admin Only) */}
+              {isTeamAdmin ? (
+                <button
+                  type="button"
+                  onClick={handleOpenInviteModal}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-border-subtle text-[12px] font-semibold text-on-surface transition-colors cursor-pointer"
+                  title="Invite teammates to this group"
+                >
+                  <span className="material-symbols-outlined text-[16px] text-primary">person_add</span>
+                  <span>Invite</span>
+                </button>
+              ) : (
+                <div
+                  className="px-2.5 py-1 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant opacity-60 border border-border-subtle cursor-not-allowed"
+                  title="Only Team Admins can invite members to groups"
+                >
+                  <span className="material-symbols-outlined text-[14px] align-middle mr-1">lock</span>
+                  <span>{activeGroupMembers.length} Members</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Message Stream */}
+          <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
+            {activeMessages.map((msg) => {
+              const isMe = msg.senderId === currentUserId;
+
+              if (msg.isSystemBroadcast) {
+                return (
+                  <div
+                    key={msg.id}
+                    className="w-full my-2 p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-sm flex items-start gap-3 animate-in fade-in"
+                  >
+                    <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-950 flex items-center justify-center shrink-0">
+                      <span className="material-symbols-outlined text-[20px]">campaign</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-2 mb-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
+                          SYSTEM BROADCAST • ALL USERS
+                        </span>
+                        <span className="text-[11px] text-amber-800 font-mono">{msg.timestamp}</span>
+                      </div>
+                      <p className="text-[14px] font-bold text-amber-950 leading-snug">{msg.text}</p>
+                      <span className="text-[11px] text-amber-800 mt-1 block">
+                        Broadcast by {msg.senderName} ({msg.senderRole})
+                      </span>
+                    </div>
+                  </div>
+                );
+              }
+
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-start gap-2.5 max-w-2xl ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}
+                >
+                  <div
+                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                      isMe ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface'
+                    }`}
+                  >
+                    {msg.senderInitials}
+                  </div>
+
+                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="font-label-bold text-[12px] text-on-surface">
+                        {msg.senderName} {isMe && '(You)'}
+                      </span>
+                      <span className="text-[10px] text-on-surface-variant font-mono">{msg.timestamp}</span>
+                    </div>
+
+                    <div
+                      className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${
+                        isMe
+                          ? 'bg-primary text-on-primary rounded-tr-xs'
+                          : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'
+                      }`}
+                    >
+                      {msg.text}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Message Input Bar */}
+          <form onSubmit={handleSendMessage} className="p-3 border-t border-border-subtle bg-surface-container-lowest shrink-0">
+            {isSystemBroadcastMode && (
+              <div className="mb-2 px-3 py-1 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-between text-[11px] text-amber-900 font-semibold animate-in fade-in">
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px]">campaign</span>
+                  <span>BROADCASTING SYSTEM MESSAGE TO ALL USERS ON THE GO</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setIsSystemBroadcastMode(false)}
+                  className="text-amber-800 hover:text-amber-950 underline cursor-pointer"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+
+            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 transition-colors ${
+              isSystemBroadcastMode
+                ? 'bg-amber-50 border-2 border-amber-400'
+                : 'bg-surface-container-low border border-border-subtle focus-within:border-primary focus-within:bg-surface-container-lowest'
+            }`}>
+              <input
+                type="text"
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                placeholder={
+                  isSystemBroadcastMode
+                    ? 'Type system broadcast to all users (e.g. "Today is deployment day hope everyone is ready")...'
+                    : `Message #${activeGroup.name}...`
+                }
+                className="flex-1 bg-transparent text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant"
+              />
+
+              {isTeamAdmin && (
+                <button
+                  type="button"
+                  onClick={() => setIsSystemBroadcastMode((prev) => !prev)}
+                  className={`p-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0 ${
+                    isSystemBroadcastMode
+                      ? 'bg-amber-300 text-amber-950 shadow-xs'
+                      : 'text-on-surface-variant hover:text-primary hover:bg-surface-container'
+                  }`}
+                  title={isSystemBroadcastMode ? 'Exit broadcast mode' : 'Broadcast system message to all users on the go'}
+                >
+                  <span className="material-symbols-outlined text-[18px]">campaign</span>
+                  <span className="hidden sm:inline">Broadcast</span>
+                </button>
+              )}
+
+              <button
+                type="submit"
+                disabled={!inputText.trim()}
+                className={`p-1.5 rounded-lg text-on-primary hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer flex items-center justify-center shrink-0 ${
+                  isSystemBroadcastMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary'
+                }`}
+                title="Send Message (Enter)"
+              >
+                <span className="material-symbols-outlined text-[18px]">send</span>
+              </button>
+            </div>
+          </form>
+        </main>
+      </div>
+
+      {/* Modal 1: Create New Chat Group (Team Admin Only) */}
+      {isCreateModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
+          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-md border-b border-border-subtle flex items-center justify-between">
+              <div>
+                <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
+                  Create Chat Group
+                </h3>
+                <p className="text-[12px] text-on-surface-variant">
+                  Create a dedicated channel and invite members from Acme Engineering
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsCreateModalOpen(false)}
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateGroup} className="p-md flex flex-col gap-3.5">
+              {/* Group Name */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Channel Name *
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3 text-on-surface-variant font-mono text-[14px]">#</span>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. api-architecture, client-onboarding"
+                    value={newGroupName}
+                    onChange={(e) => setNewGroupName(e.target.value)}
+                    className="w-full pl-8 pr-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                  />
+                </div>
+              </div>
+
+              {/* Topic / Description */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Topic &amp; Purpose
+                </label>
+                <input
+                  type="text"
+                  placeholder="What is this channel for?"
+                  value={newGroupTopic}
+                  onChange={(e) => setNewGroupTopic(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+
+              {/* Invite Members Multi-select Checklist */}
+              <div>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-label-sm font-label-bold text-on-surface">
+                    Invite Team Members ({selectedMemberIds.length} selected)
+                  </label>
+                  <span className="text-[11px] text-primary font-medium">Team Admin privilege</span>
+                </div>
+
+                <div className="max-h-48 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
+                  {WORKSPACE_MEMBERS.map((member) => {
+                    const isSelected = selectedMemberIds.includes(member.id);
+                    const isCreator = member.id === currentUserId;
+
+                    return (
+                      <div
+                        key={member.id}
+                        onClick={() => !isCreator && handleToggleMember(member.id)}
+                        className={`p-2.5 flex items-center justify-between transition-colors ${
+                          isCreator ? 'bg-surface-container/60 cursor-default' : 'hover:bg-surface-container cursor-pointer'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            disabled={isCreator}
+                            onChange={() => !isCreator && handleToggleMember(member.id)}
+                            className="w-4 h-4 rounded text-primary accent-primary cursor-pointer"
+                          />
+                          <div className="w-7 h-7 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface shrink-0">
+                            {member.initials}
+                          </div>
+                          <div>
+                            <span className="text-[12px] font-semibold text-on-surface block">
+                              {member.name} {isCreator && '(You - Admin)'}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant block">
+                              {member.role} • {member.teamRole}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <span className="text-[10px] font-medium text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                            Invited
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCreateModalOpen(false)}
+                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer"
+                >
+                  Create &amp; Invite
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Invite Teammates to Existing Channel (Team Admin Only) */}
+      {isInviteModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
+          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-md border-b border-border-subtle flex items-center justify-between">
+              <div>
+                <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
+                  Invite to #{activeGroup.name}
+                </h3>
+                <p className="text-[12px] text-on-surface-variant">
+                  Add available team members to this conversation
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsInviteModalOpen(false)}
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleInviteMembers} className="p-md flex flex-col gap-3.5">
+              {availableToInvite.length === 0 ? (
+                <div className="py-6 text-center text-on-surface-variant text-[13px]">
+                  All team members have already been added to #{activeGroup.name}!
+                </div>
+              ) : (
+                <div className="max-h-60 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
+                  {availableToInvite.map((member) => {
+                    const isChecked = inviteSelectedIds.includes(member.id);
+
+                    return (
+                      <div
+                        key={member.id}
+                        onClick={() => handleToggleInviteMember(member.id)}
+                        className="p-2.5 flex items-center justify-between hover:bg-surface-container transition-colors cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="checkbox"
+                            checked={isChecked}
+                            onChange={() => handleToggleInviteMember(member.id)}
+                            className="w-4 h-4 rounded text-primary accent-primary cursor-pointer"
+                          />
+                          <div className="w-7 h-7 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface shrink-0">
+                            {member.initials}
+                          </div>
+                          <div>
+                            <span className="text-[12px] font-semibold text-on-surface block">
+                              {member.name}
+                            </span>
+                            <span className="text-[10px] text-on-surface-variant block">
+                              {member.role}
+                            </span>
+                          </div>
+                        </div>
+
+                        {isChecked && (
+                          <span className="text-[10px] font-medium text-primary px-2 py-0.5 rounded-full bg-primary/10">
+                            Selected
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Modal Footer */}
+              <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInviteModalOpen(false)}
+                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={inviteSelectedIds.length === 0}
+                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer disabled:opacity-40"
+                >
+                  Add Members ({inviteSelectedIds.length})
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

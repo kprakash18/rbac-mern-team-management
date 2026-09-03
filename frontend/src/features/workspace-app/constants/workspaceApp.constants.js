@@ -1,14 +1,49 @@
 // ─────────────────────────────────────────────
-// Current Logged-In Employee (Mock Session)
+// Workspace User Personas (Role Simulation)
 // ─────────────────────────────────────────────
-export const MOCK_CURRENT_USER = {
-  id: 'usr_alice_j',
-  name: 'Alice Johnson',
-  email: 'alice.j@example.com',
-  initials: 'AJ',
-  role: 'Lead Architect',
-  accountStatus: 'ACTIVE',
-};
+export const WORKSPACE_PERSONAS = [
+  {
+    id: 'usr-dm',
+    name: 'Diana Morales',
+    email: 'diana.m@acme.corp',
+    initials: 'DM',
+    role: 'Lead Architect',
+    teamRoleTitle: 'Team Admin',
+    isTeamAdmin: true,
+    canDeleteTasks: true,
+    canInviteMembers: true,
+    canApproveJit: true,
+    channel: '#core-platform',
+  },
+  {
+    id: 'usr-mv',
+    name: 'Marcus Vance',
+    email: 'marcus.v@acme.corp',
+    initials: 'MV',
+    role: 'Senior Backend Developer',
+    teamRoleTitle: 'Developer',
+    isTeamAdmin: false,
+    canDeleteTasks: false,
+    canInviteMembers: false,
+    canApproveJit: false,
+    channel: '#api-gateway',
+  },
+  {
+    id: 'usr-view',
+    name: 'Alex Rivera',
+    email: 'alex.r@acme.corp',
+    initials: 'AR',
+    role: 'Product Observer',
+    teamRoleTitle: 'Viewer',
+    isTeamAdmin: false,
+    canDeleteTasks: false,
+    canInviteMembers: false,
+    canApproveJit: false,
+    channel: '#general',
+  },
+];
+
+export const MOCK_CURRENT_USER = WORKSPACE_PERSONAS[0];
 
 // ─────────────────────────────────────────────
 // Current Active Workspace
@@ -152,49 +187,107 @@ export const MY_PERMISSIONS = {
 };
 
 // ─────────────────────────────────────────────
-// My JIT Access Grant History
+// Team JIT Access Requests (Hierarchical Governance)
 // ─────────────────────────────────────────────
-export const MY_JIT_HISTORY = [
+export const TEAM_JIT_REQUESTS = [
   {
-    id: 'req_k8s_88',
-    requestedRole: 'K8S_WRITE',
-    requestedRoleLabel: 'Kubernetes Write Access',
-    justification: 'Hotfix patch deployment for ingestion runner memory leak',
-    ticketId: 'OPS-3920',
+    id: 'req_dm_991',
+    memberId: 'usr-dm',
+    memberName: 'Diana Morales',
+    memberRole: 'Lead Architect',
+    isTeamAdmin: true,
+    memberInitials: 'DM',
+    requestedRole: 'INFRA_DEPLOY',
+    requestedRoleLabel: 'DevSecOps Admin (Cluster Root)',
+    justification: 'Emergency IAM cross-account trust policy synchronization in US-East-1',
+    ticketId: 'SEC-9912',
     requestedDuration: '2h',
-    status: 'APPROVED',
-    statusLabel: 'Active',
-    approvedBy: 'Super Admin',
-    expiresAt: new Date(Date.now() + 45 * 60 * 1000).toISOString(), // 45 min from now
-    createdAt: '2026-09-03T11:20:15Z',
+    status: 'PENDING',
+    statusLabel: 'Pending Super Admin Review',
+    approvalLevel: 'SUPER_ADMIN',
+    createdAt: '10m ago',
+    risk: 'Critical',
   },
   {
-    id: 'req_db_read_72',
+    id: 'req_k8s_942',
+    memberId: 'usr-cd',
+    memberName: 'Charlie Davis',
+    memberRole: 'Senior Staff SRE',
+    isTeamAdmin: false,
+    memberInitials: 'CD',
+    requestedRole: 'K8S_WRITE',
+    requestedRoleLabel: 'Kubernetes Cluster Admin',
+    justification: 'Execute database replica pod failover and scale statefulset (#INC-8492)',
+    ticketId: 'INC-8492',
+    requestedDuration: '2h',
+    status: 'PENDING',
+    statusLabel: 'Pending Team Admin Review',
+    approvalLevel: 'TEAM_ADMIN',
+    createdAt: '25m ago',
+    risk: 'High',
+  },
+  {
+    id: 'req_sec_311',
+    memberId: 'usr-er',
+    memberName: 'Elena Rostova',
+    memberRole: 'Security Auditor',
+    isTeamAdmin: false,
+    memberInitials: 'ER',
+    requestedRole: 'SECRETS_READ',
+    requestedRoleLabel: 'Secrets Manager Read',
+    justification: 'Validate HashiCorp Vault transit engine rotation evidence for Q3 SOC2 audit',
+    ticketId: 'SEC-311',
+    requestedDuration: '4h',
+    status: 'PENDING',
+    statusLabel: 'Pending Team Admin Review',
+    approvalLevel: 'TEAM_ADMIN',
+    createdAt: '45m ago',
+    risk: 'Medium',
+  },
+  {
+    id: 'req_prod_admin_88',
+    memberId: 'usr-mv',
+    memberName: 'Marcus Vance',
+    memberRole: 'Senior Backend Developer',
+    isTeamAdmin: false,
+    memberInitials: 'MV',
     requestedRole: 'DB_READ_ONLY',
     requestedRoleLabel: 'Database Read-Only',
-    justification: 'Investigating slow query performance in prod-replica-1',
+    justification: 'Investigating slow query performance on user directory replica',
     ticketId: 'ENG-8842',
     requestedDuration: '1h',
-    status: 'EXPIRED',
-    statusLabel: 'Expired',
-    approvedBy: 'Super Admin',
-    expiresAt: '2026-09-02T16:00:00Z',
-    createdAt: '2026-09-02T15:00:00Z',
+    status: 'APPROVED',
+    statusLabel: 'Active Lease',
+    approvalLevel: 'TEAM_ADMIN',
+    approvedBy: 'Diana Morales (Team Admin)',
+    expiresAt: '42m remaining',
+    createdAt: '18m ago',
+    risk: 'Low',
   },
   {
     id: 'req_ci_admin_60',
+    memberId: 'usr-aj',
+    memberName: 'Alice Johnson',
+    memberRole: 'DevOps Engineer',
+    isTeamAdmin: false,
+    memberInitials: 'AJ',
     requestedRole: 'CI_ADMIN',
     requestedRoleLabel: 'CI/CD Pipeline Admin',
-    justification: 'Reconfigure GitHub Actions runner environment variables',
+    justification: 'Reconfigure GitHub Actions runner environment transit secrets',
     ticketId: 'DEVOPS-441',
     requestedDuration: '30m',
     status: 'REJECTED',
     statusLabel: 'Rejected',
-    rejectionReason: 'CI admin access not permitted without security review.',
+    approvalLevel: 'TEAM_ADMIN',
+    rejectionReason: 'Secrets rotation requires security auditor presence.',
+    approvedBy: 'Diana Morales (Team Admin)',
     expiresAt: null,
-    createdAt: '2026-09-01T09:30:00Z',
+    createdAt: '2 days ago',
+    risk: 'High',
   },
 ];
+
+export const MY_JIT_HISTORY = TEAM_JIT_REQUESTS;
 
 // ─────────────────────────────────────────────
 // Available Roles for JIT Request

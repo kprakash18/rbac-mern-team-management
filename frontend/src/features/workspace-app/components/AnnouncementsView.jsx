@@ -1,58 +1,126 @@
 import { useState } from 'react';
-import { MOCK_ANNOUNCEMENTS } from '../constants/workspaceApp.constants';
 
 const TYPE_CONFIG = {
-  OUTAGE: { icon: 'gpp_maybe', badge: 'bg-error-bg text-error-text border-error-container', dot: 'bg-error-text' },
-  MAINTENANCE: { icon: 'construction', badge: 'bg-warning-bg text-warning-text border-warning-bg', dot: 'bg-warning-text' },
-  POLICY: { icon: 'policy', badge: 'bg-surface-container text-on-surface-variant border-border-subtle', dot: 'bg-outline' },
-  ANNOUNCEMENT: { icon: 'campaign', badge: 'bg-success-bg text-success-text border-success-bg', dot: 'bg-success-text' },
+  OUTAGE: { icon: 'gpp_maybe', badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', label: 'P0 Outage' },
+  MAINTENANCE: { icon: 'construction', badge: 'bg-amber-50 text-amber-800 border-amber-200', dot: 'bg-amber-500', label: 'Deployment & Maintenance' },
+  POLICY: { icon: 'policy', badge: 'bg-slate-100 text-slate-700 border-slate-200', dot: 'bg-slate-500', label: 'Security Policy' },
+  ANNOUNCEMENT: { icon: 'campaign', badge: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500', label: 'General Notice' },
 };
 
-export default function AnnouncementsView() {
-  const [announcements, setAnnouncements] = useState(MOCK_ANNOUNCEMENTS);
+export default function AnnouncementsView({ currentUser, announcements = [], onAddAnnouncement, onMarkRead, onAcknowledge }) {
+  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
+  const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
 
-  const showToast = (msg) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+  // Broadcast Form State
+  const [broadcastTitle, setBroadcastTitle] = useState('');
+  const [broadcastType, setBroadcastType] = useState('MAINTENANCE');
+  const [broadcastBody, setBroadcastBody] = useState('');
+  const [isSticky, setIsSticky] = useState(true);
+  const [requiresAck, setRequiresAck] = useState(false);
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    setTimeout(() => setToast(null), 3500);
   };
 
-  const handleMarkRead = (id) => {
-    setAnnouncements((prev) =>
-      prev.map((a) => a.id === id ? { ...a, isRead: true } : a)
-    );
+  const handleOpenBroadcastModal = () => {
+    setBroadcastTitle('Today is deployment day — hope everyone is ready!');
+    setBroadcastType('MAINTENANCE');
+    setBroadcastBody('We are beginning our scheduled deployment phase for production services. Please freeze all non-essential database schema alterations and verify rollback plans.');
+    setIsSticky(true);
+    setRequiresAck(false);
+    setIsBroadcastModalOpen(true);
   };
 
-  const handleAcknowledge = (id) => {
-    setAnnouncements((prev) =>
-      prev.map((a) => a.id === id ? { ...a, isAcknowledged: true, isRead: true } : a)
-    );
-    showToast('Acknowledgment recorded and signed electronically.');
+  const handleSubmitBroadcast = (e) => {
+    e.preventDefault();
+    if (!broadcastTitle.trim() || !broadcastBody.trim()) {
+      showToast('Please enter both a headline and message body.', 'error');
+      return;
+    }
+
+    const typeConf = TYPE_CONFIG[broadcastType] || TYPE_CONFIG.ANNOUNCEMENT;
+
+    const newBroadcast = {
+      id: `bc-${Date.now()}`,
+      title: broadcastTitle.trim(),
+      body: broadcastBody.trim(),
+      type: broadcastType,
+      typeLabel: typeConf.label,
+      severity: broadcastType === 'OUTAGE' ? 'CRITICAL' : broadcastType === 'MAINTENANCE' ? 'WARNING' : 'INFO',
+      isActive: true,
+      isSticky,
+      requiresAck,
+      sentAt: new Date().toISOString(),
+      sentBy: `${currentUser?.name || 'Diana Morales'} (Team Admin)`,
+      isRead: false,
+      isAcknowledged: false,
+    };
+
+    onAddAnnouncement?.(newBroadcast);
+    setIsBroadcastModalOpen(false);
+    showToast('📢 System broadcast dispatched to all team members!');
   };
 
-  const unreadCount = announcements.filter(a => !a.isRead).length;
+  const unreadCount = announcements.filter((a) => !a.isRead).length;
 
   return (
-    <div className="flex flex-col gap-xl">
+    <div className="w-full max-w-5xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
       {/* Toast */}
       {toast && (
-        <div className="fixed top-6 right-6 z-50 bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-lg flex items-center gap-sm text-[13px] font-semibold animate-in slide-in-from-top-4 duration-200">
-          <span className="material-symbols-outlined text-[18px] text-primary">check_circle</span>
-          {toast}
+        <div
+          className={`fixed top-6 right-6 z-50 px-md py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-[13px] font-semibold transition-all animate-in slide-in-from-top-4 duration-200 border ${
+            toast.type === 'error'
+              ? 'bg-red-50 text-red-700 border-red-200'
+              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">
+            {toast.type === 'error' ? 'cancel' : 'check_circle'}
+          </span>
+          {toast.msg}
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-sm">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
-          <h2 className="text-[22px] font-bold text-on-surface">Announcements</h2>
-          <p className="text-[13px] text-on-surface-variant mt-0.5">Platform-wide broadcasts and compliance notices.</p>
+          <div className="flex items-center gap-2">
+            <h1 className="font-display-title text-[24px] font-semibold text-on-surface tracking-tight">
+              System Bulletins &amp; Broadcasts
+            </h1>
+            {unreadCount > 0 && (
+              <span className="px-2 py-0.5 bg-red-50 text-red-700 border border-red-200 text-[11px] font-bold rounded-full">
+                {unreadCount} unread
+              </span>
+            )}
+          </div>
+          <p className="font-body-sm text-body-sm text-on-surface-variant">
+            Platform-wide alerts, deployment notices, and compliance bulletins
+          </p>
         </div>
-        {unreadCount > 0 && (
-          <span className="px-sm py-1 bg-error-bg text-error-text text-[12px] font-bold rounded-full border border-error-container self-start sm:self-auto">
-            {unreadCount} unread
-          </span>
+
+        {/* Broadcast Button (Team Admin) */}
+        {isTeamAdmin ? (
+          <button
+            type="button"
+            onClick={handleOpenBroadcastModal}
+            className="flex items-center gap-xs px-md py-2 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer self-start md:self-auto"
+          >
+            <span className="material-symbols-outlined text-[18px]">campaign</span>
+            <span>+ Broadcast System Message</span>
+          </button>
+        ) : (
+          <div
+            className="flex items-center gap-xs px-md py-2 rounded-lg bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm opacity-60 cursor-not-allowed border border-border-subtle select-none"
+            title="Only Team Admins can broadcast system-level messages"
+          >
+            <span className="material-symbols-outlined text-[18px]">lock</span>
+            <span>Broadcast (Admin Only)</span>
+          </div>
         )}
       </div>
 
@@ -65,40 +133,64 @@ export default function AnnouncementsView() {
           return (
             <div
               key={ann.id}
-              className={`bg-surface-container-lowest rounded-xl border shadow-xs overflow-hidden transition-shadow hover:shadow-md ${
+              className={`bg-surface-container-lowest rounded-xl border shadow-xs overflow-hidden transition-all ${
                 !ann.isRead ? 'border-primary/40 ring-1 ring-primary/10' : 'border-border-subtle'
               }`}
             >
               {/* Card Header */}
-              <div className="p-md flex items-start gap-sm">
-                <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 border ${typeConf.badge}`}>
-                  <span className="material-symbols-outlined text-[18px]">{typeConf.icon}</span>
+              <div className="p-md flex items-start gap-3">
+                <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${typeConf.badge}`}>
+                  <span className="material-symbols-outlined text-[20px]">{typeConf.icon}</span>
                 </div>
+
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center gap-xs flex-wrap mb-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap mb-1">
                     <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${typeConf.badge}`}>
                       {ann.typeLabel}
                     </span>
-                    {!ann.isRead && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-on-primary">New</span>
+
+                    {ann.isSticky && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-900 border border-amber-300 inline-flex items-center gap-0.5">
+                        <span className="material-symbols-outlined text-[12px]">push_pin</span>
+                        Pinned Banner
+                      </span>
                     )}
+
+                    {!ann.isRead && (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-on-primary">
+                        NEW
+                      </span>
+                    )}
+
                     {ann.requiresAck && !ann.isAcknowledged && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-warning-bg text-warning-text border border-warning-bg">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-800 border border-amber-200">
                         Signature Required
                       </span>
                     )}
+
                     {ann.isAcknowledged && (
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-success-bg text-success-text flex items-center gap-0.5">
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-0.5">
                         <span className="material-symbols-outlined text-[12px]">check</span>
                         Acknowledged
                       </span>
                     )}
                   </div>
-                  <h3 className="font-bold text-on-surface text-[14px] leading-snug">{ann.title}</h3>
-                  <div className="flex items-center gap-xs text-[11px] text-on-surface-variant mt-0.5">
-                    <span>{ann.sentBy}</span>
+
+                  <h3 className="font-label-bold text-on-surface text-[15px] leading-snug">
+                    {ann.title}
+                  </h3>
+
+                  <div className="flex items-center gap-2 text-[11px] text-on-surface-variant mt-1">
+                    <span className="font-medium text-on-surface">{ann.sentBy}</span>
                     <span>•</span>
-                    <span>{new Date(ann.sentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    <span className="font-mono">
+                      {new Date(ann.sentAt).toLocaleDateString('en-US', {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </span>
                   </div>
                 </div>
               </div>
@@ -106,41 +198,43 @@ export default function AnnouncementsView() {
               {/* Expanded Body */}
               {isExpanded && (
                 <div className="px-md pb-md">
-                  <div className="bg-surface-container-low rounded-lg p-sm text-[13px] text-on-surface leading-relaxed">
+                  <div className="bg-surface-container-low rounded-xl p-3.5 text-[13px] text-on-surface leading-relaxed border border-border-subtle/70">
                     {ann.body}
                   </div>
+
                   {ann.requiresAck && !ann.isAcknowledged && (
                     <button
                       type="button"
-                      onClick={() => handleAcknowledge(ann.id)}
-                      className="mt-sm flex items-center gap-1.5 px-md py-2 rounded-lg bg-primary text-on-primary font-bold text-[13px] hover:bg-on-primary-fixed transition-colors cursor-pointer shadow-xs"
+                      onClick={() => onAcknowledge?.(ann.id)}
+                      className="mt-3 flex items-center gap-1.5 px-md py-2 rounded-lg bg-primary text-on-primary font-bold text-[13px] hover:opacity-90 transition-opacity cursor-pointer shadow-xs"
                     >
                       <span className="material-symbols-outlined text-[16px]">draw</span>
-                      I acknowledge and accept this policy
+                      I acknowledge and accept this notice
                     </button>
                   )}
                 </div>
               )}
 
-              {/* Footer / Expand Toggle */}
-              <div className="px-md pb-md flex items-center justify-between">
+              {/* Card Footer */}
+              <div className="px-md pb-3 pt-1 border-t border-border-subtle/60 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={() => {
                     setExpandedId(isExpanded ? null : ann.id);
-                    if (!ann.isRead) handleMarkRead(ann.id);
+                    if (!ann.isRead) onMarkRead?.(ann.id);
                   }}
                   className="text-[12px] text-primary font-bold flex items-center gap-0.5 cursor-pointer hover:underline"
                 >
-                  {isExpanded ? 'Collapse' : 'Read Full Announcement'}
+                  {isExpanded ? 'Collapse Notice' : 'Read Full Message'}
                   <span className="material-symbols-outlined text-[15px]">
                     {isExpanded ? 'expand_less' : 'expand_more'}
                   </span>
                 </button>
+
                 {!ann.isRead && (
                   <button
                     type="button"
-                    onClick={() => handleMarkRead(ann.id)}
+                    onClick={() => onMarkRead?.(ann.id)}
                     className="text-[11px] text-on-surface-variant hover:text-on-surface cursor-pointer font-medium"
                   >
                     Mark as read
@@ -150,7 +244,162 @@ export default function AnnouncementsView() {
             </div>
           );
         })}
+
+        {announcements.length === 0 && (
+          <div className="py-12 text-center text-on-surface-variant bg-surface-container-lowest rounded-xl border border-dashed border-border-subtle">
+            <span className="material-symbols-outlined text-[36px] block mb-1 text-on-surface-variant/50">
+              campaign
+            </span>
+            <span className="font-semibold text-on-surface block">No system bulletins posted</span>
+            <span className="text-[12px]">All active platform notices will appear here.</span>
+          </div>
+        )}
       </div>
+
+      {/* Broadcast Modal (Team Admin On-The-Go Broadcast) */}
+      {isBroadcastModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
+          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-md border-b border-border-subtle flex items-center justify-between">
+              <div>
+                <h3 className="font-headline-md text-headline-md text-on-surface font-semibold flex items-center gap-1.5">
+                  <span className="material-symbols-outlined text-primary text-[22px]">campaign</span>
+                  <span>Broadcast System Message</span>
+                </h3>
+                <p className="text-[12px] text-on-surface-variant">
+                  Instantly notify all team members across Acme Engineering
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsBroadcastModalOpen(false)}
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitBroadcast} className="p-md flex flex-col gap-3.5">
+              {/* Category */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Broadcast Category *
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  {Object.entries(TYPE_CONFIG).map(([key, val]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setBroadcastType(key)}
+                      className={`p-2 rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
+                        broadcastType === key
+                          ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                          : 'border-border-subtle bg-surface-container-low hover:bg-surface-container'
+                      }`}
+                    >
+                      <span className="material-symbols-outlined text-[18px] text-primary">{val.icon}</span>
+                      <span className="text-[11px] font-semibold text-on-surface truncate">{val.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Title / Headline */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Message Headline *
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Today is deployment day — hope everyone is ready!"
+                  value={broadcastTitle}
+                  onChange={(e) => setBroadcastTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary font-medium"
+                />
+              </div>
+
+              {/* Message Body */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Broadcast Details *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  placeholder="Explain what team members need to know or prepare for..."
+                  value={broadcastBody}
+                  onChange={(e) => setBroadcastBody(e.target.value)}
+                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                ></textarea>
+              </div>
+
+              {/* Toggles */}
+              <div className="p-3 rounded-xl bg-surface-container-low border border-border-subtle flex flex-col gap-2.5">
+                <label className="flex items-center justify-between cursor-pointer">
+                  <div>
+                    <span className="text-[13px] font-semibold text-on-surface block">
+                      Pin as Top Alert Banner
+                    </span>
+                    <span className="text-[11px] text-on-surface-variant block">
+                      Displays a high-priority banner at the top of all team members' screens
+                    </span>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={isSticky}
+                    onChange={(e) => setIsSticky(e.target.checked)}
+                    className="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0 ml-3"
+                  />
+                </label>
+
+                <div className="border-t border-border-subtle/60 pt-2">
+                  <label className="flex items-center justify-between cursor-pointer">
+                    <div>
+                      <span className="text-[13px] font-semibold text-on-surface block">
+                        Require Teammate Acknowledgment
+                      </span>
+                      <span className="text-[11px] text-on-surface-variant block">
+                        Members must electronically confirm receipt of this notice
+                      </span>
+                    </div>
+                    <input
+                      type="checkbox"
+                      checked={requiresAck}
+                      onChange={(e) => setRequiresAck(e.target.checked)}
+                      className="w-4 h-4 rounded text-primary accent-primary cursor-pointer shrink-0 ml-3"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              {/* Modal Footer */}
+              <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
+                <span className="text-[11px] text-on-surface-variant">
+                  Broadcasting as <strong>{currentUser?.name || 'Diana Morales'} (Team Admin)</strong>
+                </span>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setIsBroadcastModalOpen(false)}
+                    className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer flex items-center gap-1"
+                  >
+                    <span className="material-symbols-outlined text-[16px]">send</span>
+                    <span>Send to All Users</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
