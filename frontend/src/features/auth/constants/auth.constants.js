@@ -17,14 +17,24 @@ export const MOCK_USERS = [
     accountStatus: 'ACTIVE',
     mustChangePassword: false,
   },
+  // ── Employee / Team Member Accounts (Workspace Portal) ──
   {
-    email: 'admin@example.com',
-    password: 'password123',
-    name: 'Admin User',
-    role: 'Platform Super Admin',
+    email: 'alice.j@example.com',
+    password: 'alice123',
+    name: 'Alice Johnson',
+    role: 'Lead Architect',
     accountStatus: 'ACTIVE',
     mustChangePassword: false,
   },
+  {
+    email: 'bkaur@engineering.corp',
+    password: 'ben123',
+    name: 'Ben Kaur',
+    role: 'Senior Developer',
+    accountStatus: 'ACTIVE',
+    mustChangePassword: false,
+  },
+  // ── Edge Cases ──
   {
     email: 'invited@example.com',
     password: 'temp123Password!',
@@ -42,3 +52,4 @@ export const MOCK_USERS = [
     mustChangePassword: false,
   },
 ];
+
