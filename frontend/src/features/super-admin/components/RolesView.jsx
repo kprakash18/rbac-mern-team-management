@@ -90,9 +90,6 @@ export default function RolesView() {
       return 0;
     });
 
-  const totalMembers = roles.reduce((sum, r) => sum + (r.assignedUsers?.length || r.members || 0), 0);
-  const totalActiveRoles = roles.filter((r) => r.status === 'active').length;
-
   const toggleCardMenu = (e, menuId) => {
     e.stopPropagation();
     setActiveMenuId(activeMenuId === menuId ? null : menuId);
@@ -468,7 +465,7 @@ export default function RolesView() {
   };
 
   return (
-    <div className="relative">
+    <div className="flex flex-col w-full p-xl gap-xl">
       {/* Toast Notification Banner */}
       {toastMessage && (
         <div className="fixed top-6 right-6 z-[1200] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
@@ -477,24 +474,24 @@ export default function RolesView() {
         </div>
       )}
 
-      {/* Main Roles Header & Metrics */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-md mb-lg">
-        <div>
-          <h1 className="font-headline-lg text-headline-lg text-on-surface">Platform Roles &amp; RBAC Control Plane</h1>
-          <p className="font-body-md text-body-md text-on-surface-variant mt-xs">
+      {/* Main Roles Header */}
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-md">
+        <div className="flex flex-col gap-base">
+          <h1 className="font-display-title text-display-title text-on-surface">Platform Roles &amp; RBAC</h1>
+          <p className="font-body-base text-body-base text-on-surface-variant">
             Manage granular access policies, custom tenant roles, and member permission matrices.
           </p>
         </div>
-        <div className="flex items-center gap-xs flex-wrap">
+        <div className="flex items-center gap-sm">
           <button
-            className="h-10 px-md rounded-lg bg-card-bg text-on-surface hover:bg-surface-container font-label-bold text-label-sm flex items-center gap-xs shadow-xs transition-colors cursor-pointer border border-border-subtle"
+            className="px-md py-sm rounded-lg bg-surface-container text-on-surface font-label-bold text-label-bold flex items-center gap-xs hover:bg-surface-container-high transition-colors cursor-pointer"
             onClick={() => setIsExportOpen(true)}
           >
             <span className="material-symbols-outlined text-[18px]">download</span>
             <span>Export Policies</span>
           </button>
           <button
-            className="h-10 px-md rounded-lg bg-primary text-on-primary hover:bg-primary-container font-label-bold text-label-sm flex items-center gap-xs shadow-sm transition-colors cursor-pointer"
+            className="px-md py-sm rounded-lg bg-primary text-on-primary font-label-bold text-label-bold flex items-center gap-xs hover:bg-on-primary-fixed transition-colors cursor-pointer shadow-xs"
             onClick={() => handleOpenCreateModal()}
           >
             <span className="material-symbols-outlined text-[18px]">add</span>
@@ -503,57 +500,30 @@ export default function RolesView() {
         </div>
       </div>
 
-      {/* Metric Counters */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-md mb-lg">
-        <div className="bg-card-bg rounded-xl p-md border border-border-subtle shadow-xs">
-          <span className="text-[12px] font-label-bold text-on-surface-variant block mb-1">Active Roles</span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-headline-lg text-headline-lg text-on-surface">{totalActiveRoles}</span>
-            <span className="text-[12px] text-on-surface-variant font-medium">defined</span>
-          </div>
-        </div>
-        <div className="bg-card-bg rounded-xl p-md border border-border-subtle shadow-xs">
-          <span className="text-[12px] font-label-bold text-on-surface-variant block mb-1">Permissions Index</span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-headline-lg text-headline-lg text-primary">{CANONICAL_PERMISSIONS.length}</span>
-            <span className="text-[12px] text-on-surface-variant font-medium">granular keys</span>
-          </div>
-        </div>
-        <div className="bg-card-bg rounded-xl p-md border border-border-subtle shadow-xs">
-          <span className="text-[12px] font-label-bold text-on-surface-variant block mb-1">Assigned Identifiers</span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-headline-lg text-headline-lg text-on-surface">{totalMembers}</span>
-            <span className="text-[12px] text-on-surface-variant font-medium">user bindings</span>
-          </div>
-        </div>
-        <div className="bg-card-bg rounded-xl p-md border border-border-subtle shadow-xs">
-          <span className="text-[12px] font-label-bold text-on-surface-variant block mb-1">Last Policy Sync</span>
-          <div className="flex items-baseline gap-2">
-            <span className="font-headline-lg text-[18px] font-bold text-success-text">Synchronized</span>
-            <span className="material-symbols-outlined text-success-text text-[16px]">check_circle</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Single-Line Controls Toolbar */}
-      <div className="bg-card-bg rounded-xl p-sm shadow-xs border border-border-subtle mb-lg flex flex-col md:flex-row items-center justify-between gap-sm">
-        <div className="flex items-center gap-xs flex-1 w-full md:w-auto">
-          <div className="relative flex-1 max-w-md">
-            <span className="material-symbols-outlined absolute left-3 top-2 text-outline text-[18px]">search</span>
+      {/* Controls Toolbar */}
+      <div className="bg-surface-container-lowest rounded-xl p-sm shadow-xs border border-surface-variant flex items-center justify-between gap-md overflow-x-auto whitespace-nowrap">
+        <div className="flex items-center gap-sm shrink-0">
+          {/* Search Input */}
+          <div className="relative w-64 shrink-0">
+            <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">
+              search
+            </span>
             <input
-              className="w-full h-8 pl-9 pr-3 bg-surface-container-low rounded-lg text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest shadow-inner"
-              placeholder="Search by role title, permissions, or scope..."
+              className="w-full h-9 pl-9 pr-3 bg-surface-container-low rounded-lg text-body-sm text-on-surface placeholder:text-outline focus:outline-none focus:bg-surface-container-lowest shadow-inner transition-colors"
+              placeholder="Search roles by title, key, or scope..."
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
           </div>
-          <div className="flex items-center bg-surface-container-low p-0.5 rounded-lg shrink-0">
+
+          {/* Filter Pills */}
+          <div className="flex items-center bg-surface-container-low p-1 rounded-lg gap-0.5 shrink-0">
             {['all', 'system', 'custom', 'archived'].map((t) => (
               <button
                 key={t}
                 onClick={() => setRoleTypeFilter(t)}
-                className={`px-2.5 py-1 text-[11px] font-label-bold rounded-md capitalize transition-all cursor-pointer ${
+                className={`px-3 py-1 text-[12px] font-label-bold rounded-md capitalize transition-all cursor-pointer ${
                   roleTypeFilter === t
                     ? 'bg-card-bg text-on-surface shadow-2xs'
                     : 'text-on-surface-variant hover:text-on-surface'
@@ -565,11 +535,11 @@ export default function RolesView() {
           </div>
         </div>
 
-        <div className="flex items-center gap-xs w-full md:w-auto justify-end">
+        <div className="flex items-center gap-xs shrink-0">
           <select
             value={scopeFilter}
             onChange={(e) => setScopeFilter(e.target.value)}
-            className="h-8 px-2 bg-surface-container-low rounded-lg text-[11px] font-label-bold text-on-surface border border-border-subtle focus:outline-none cursor-pointer"
+            className="h-9 px-2.5 bg-surface-container-low rounded-lg text-[12px] font-label-bold text-on-surface border border-border-subtle focus:outline-none cursor-pointer shadow-2xs"
           >
             <option value="all">All Scopes</option>
             <option value="wildcard">Wildcard Scope</option>
@@ -578,7 +548,7 @@ export default function RolesView() {
           <select
             value={sortBy}
             onChange={(e) => setSortBy(e.target.value)}
-            className="h-8 px-2 bg-surface-container-low rounded-lg text-[11px] font-label-bold text-on-surface border border-border-subtle focus:outline-none cursor-pointer"
+            className="h-9 px-2.5 bg-surface-container-low rounded-lg text-[12px] font-label-bold text-on-surface border border-border-subtle focus:outline-none cursor-pointer shadow-2xs"
           >
             <option value="members-desc">Most Members</option>
             <option value="members-asc">Least Members</option>
@@ -586,10 +556,10 @@ export default function RolesView() {
             <option value="name-desc">Name (Z-A)</option>
             <option value="perms-desc">Permission Count</option>
           </select>
-          <div className="flex items-center bg-surface-container-low p-0.5 rounded-lg">
+          <div className="flex items-center bg-surface-container-low p-1 rounded-lg gap-0.5 shrink-0">
             <button
               onClick={() => setViewMode('grid')}
-              className={`p-1 rounded-md transition-colors cursor-pointer ${
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                 viewMode === 'grid' ? 'bg-card-bg text-primary shadow-2xs' : 'text-outline hover:text-on-surface'
               }`}
               title="Grid View"
@@ -598,7 +568,7 @@ export default function RolesView() {
             </button>
             <button
               onClick={() => setViewMode('table')}
-              className={`p-1 rounded-md transition-colors cursor-pointer ${
+              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
                 viewMode === 'table' ? 'bg-card-bg text-primary shadow-2xs' : 'text-outline hover:text-on-surface'
               }`}
               title="Table View"
