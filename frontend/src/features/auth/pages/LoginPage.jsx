@@ -37,9 +37,10 @@ export default function LoginPage({ onLoginSuccess }) {
         return;
       }
 
-      if (rememberMe) {
-        localStorage.setItem('auth_session', JSON.stringify(matchedUser));
-      }
+      // Always overwrite the stored session so switching accounts works correctly.
+      // If rememberMe is unchecked we still save the session for this browser session;
+      // the user must explicitly log out to clear it.
+      localStorage.setItem('auth_session', JSON.stringify(matchedUser));
 
       if (onLoginSuccess) {
         onLoginSuccess(matchedUser);
@@ -83,21 +84,32 @@ export default function LoginPage({ onLoginSuccess }) {
           <div className="mt-xs pt-md border-t border-border-subtle flex flex-col gap-xs text-[12px]">
             <span className="text-on-surface-variant font-label-bold flex items-center gap-1">
               <span className="material-symbols-outlined text-[16px] text-primary">key</span>
-              <span>Demo Super Admin Accounts (Click to Fill):</span>
+              <span>Demo Accounts (Click to Auto-Fill):</span>
             </span>
-            <div className="space-y-1">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pl-0.5">Super Admin</p>
               <button
                 type="button"
                 onClick={() => handleQuickFill(MOCK_USERS[0])}
+                className="w-full p-2.5 rounded-lg bg-primary/5 hover:bg-primary/10 text-left flex items-center justify-between transition-colors cursor-pointer border border-primary/20 group"
+              >
+                <div>
+                  <span className="font-bold text-on-surface block text-[12px]">Alex Vance — Platform Super Admin</span>
+                  <span className="text-on-surface-variant text-[11px] font-mono">admin@platform.internal / password123</span>
+                </div>
+                <span className="text-[11px] text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">Fill →</span>
+              </button>
+              <p className="text-[10px] font-bold text-on-surface-variant uppercase tracking-widest pl-0.5 mt-sm">Team Employee</p>
+              <button
+                type="button"
+                onClick={() => handleQuickFill(MOCK_USERS[2])}
                 className="w-full p-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-left flex items-center justify-between transition-colors cursor-pointer border border-border-subtle group"
               >
                 <div>
-                  <span className="font-bold text-on-surface block text-[12px]">Alex Vance (Super Admin)</span>
-                  <span className="text-on-surface-variant text-[11px] font-mono">admin@platform.internal / password123</span>
+                  <span className="font-bold text-on-surface block text-[12px]">Alice Johnson — Lead Architect</span>
+                  <span className="text-on-surface-variant text-[11px] font-mono">alice.j@example.com / alice123</span>
                 </div>
-                <span className="text-[11px] text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                  Auto-Fill →
-                </span>
+                <span className="text-[11px] text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">Fill →</span>
               </button>
             </div>
           </div>
