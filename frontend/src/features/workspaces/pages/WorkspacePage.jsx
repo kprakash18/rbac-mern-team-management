@@ -8,7 +8,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
 
   const handleSelect = (workspace) => {
     console.log('Selected workspace:', workspace, { rememberChoice });
-    alert(`Entering "${workspace.name}" workspace as ${workspace.role}!`);
     if (onWorkspaceSelected) {
       onWorkspaceSelected(workspace);
     }
