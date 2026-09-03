@@ -8,6 +8,7 @@ import UsersAccessView from '../components/UsersAccessView';
 import RolesView from '../components/RolesView';
 import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
+import SecurityAuditView from '../components/SecurityAuditView';
 
 export default function SuperAdminPage() {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -37,6 +38,8 @@ export default function SuperAdminPage() {
             <JitAccessView />
           ) : activeNav === 'system-broadcasts' ? (
             <SystemBroadcastsView />
+          ) : activeNav === 'security-audit' ? (
+            <SecurityAuditView />
           ) : (
             <div className="flex flex-col w-full p-xl gap-xl">
               <div className="flex flex-col gap-xs">
