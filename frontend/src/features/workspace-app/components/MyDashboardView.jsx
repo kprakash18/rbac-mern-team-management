@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
+export default function MyDashboardView({ currentUser, workspace, personas = [], onSwitchPersona, onNavigate }) {
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(6135); // 01h 42m 15s
 
@@ -28,6 +28,12 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
   const userName = currentUser?.name || 'Diana';
   const displayName = userName.includes(' ') ? userName.split(' ')[0] : userName;
   const userRole = currentUser?.role || 'Lead Architect';
+  const userEmail = currentUser?.email || 'diana.m@acme.corp';
+  const isTeamAdmin = currentUser?.isTeamAdmin;
+  const teamRoleTitle = currentUser?.teamRoleTitle || (isTeamAdmin ? 'Team Admin' : 'Developer');
+
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userInitials = currentUser?.initials || 'DM';
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg">
@@ -45,6 +51,23 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
         <div className="flex items-center gap-sm">
+          {/* Role Persona Switcher Pill */}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-low border border-border-subtle text-[11px]">
+            <span className="text-on-surface-variant font-medium">Role Preview:</span>
+            <select
+              value={currentUser?.id || 'usr-dm'}
+              onChange={(e) => onSwitchPersona?.(e.target.value)}
+              className="bg-transparent font-bold text-on-surface cursor-pointer outline-none text-[11px]"
+              title="Switch Workspace Persona to test permissions"
+            >
+              {personas.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.isTeamAdmin ? '👑' : p.teamRoleTitle === 'Viewer' ? '👁️' : '💻'} {p.name} ({p.teamRoleTitle})
+                </option>
+              ))}
+            </select>
+          </div>
+
           <button
             type="button"
             onClick={() => onNavigate?.('jit-request')}
@@ -57,10 +80,78 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
             type="button"
             onClick={() => onNavigate?.('announcements')}
             className="relative p-1.5 rounded-lg border border-border-subtle text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer"
+            title="Bulletins & Notifications"
           >
             <span className="material-symbols-outlined text-[20px]">notifications</span>
             <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-error"></span>
           </button>
+
+          {/* Top-Right User Logo & Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setIsUserMenuOpen((prev) => !prev)}
+              className="flex items-center gap-xs p-0.5 rounded-full border border-border-subtle hover:border-outline hover:bg-surface-container-low transition-colors cursor-pointer"
+              title="Account & Profile"
+            >
+              <div className="w-8 h-8 rounded-full bg-primary text-on-primary flex items-center justify-center font-label-bold text-label-sm shrink-0">
+                {userInitials}
+              </div>
+            </button>
+
+            {isUserMenuOpen && (
+              <div className="absolute right-0 mt-2 w-64 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-xl py-2 z-50">
+                <div className="px-md py-2 border-b border-border-subtle">
+                  <div className="flex items-center justify-between gap-1">
+                    <p className="font-label-bold text-on-surface truncate">{userName}</p>
+                    <span
+                      className={`px-1.5 py-0.2 rounded text-[9px] font-bold uppercase tracking-wider shrink-0 ${
+                        isTeamAdmin
+                          ? 'bg-primary text-on-primary'
+                          : 'bg-surface-container-high text-on-surface-variant'
+                      }`}
+                    >
+                      {teamRoleTitle}
+                    </span>
+                  </div>
+                  <p className="text-[12px] text-on-surface-variant truncate">{userEmail}</p>
+                  <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-semibold">
+                    {userRole}
+                  </span>
+                </div>
+
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      alert('Profile preferences opened.');
+                    }}
+                    className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left"
+                  >
+                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
+                      settings
+                    </span>
+                    <span>Preferences</span>
+                  </button>
+                </div>
+
+                <div className="border-t border-border-subtle pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      onNavigate?.('logout');
+                    }}
+                    className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-error hover:bg-error-container/30 transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span className="material-symbols-outlined text-[18px]">logout</span>
+                    <span>Sign Out</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
