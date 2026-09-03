@@ -4,8 +4,9 @@ import AuthErrorBanner from '../components/AuthErrorBanner';
 import LoginForm from '../components/LoginForm';
 import { USE_MOCK_DATA, MOCK_USERS } from '../constants/auth.constants';
 
-export default function LoginPage() {
+export default function LoginPage({ onLoginSuccess }) {
   const [error, setError] = useState('');
+  const [prefilledCredentials, setPrefilledCredentials] = useState(null);
 
   const handleLogin = ({ email, password, rememberMe }) => {
     setError('');
@@ -22,7 +23,7 @@ export default function LoginPage() {
       );
 
       if (!matchedUser) {
-        setError('Invalid email or password.');
+        setError('Invalid email or password. Click the demo account below to fill.');
         return;
       }
 
@@ -32,39 +33,73 @@ export default function LoginPage() {
       }
 
       if (matchedUser.mustChangePassword) {
-        console.log('Redirecting to /activate-account for user:', matchedUser);
+        setError('Password reset required for invited accounts.');
         return;
       }
 
-      console.log('Login successful! Redirecting to /workspaces for user:', matchedUser, { rememberMe });
+      if (rememberMe) {
+        localStorage.setItem('auth_session', JSON.stringify(matchedUser));
+      }
+
+      if (onLoginSuccess) {
+        onLoginSuccess(matchedUser);
+      }
     }
   };
 
+  const handleQuickFill = (user) => {
+    setPrefilledCredentials({
+      email: user.email,
+      password: user.password,
+    });
+    setError('');
+  };
+
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-surface font-body-md text-on-surface antialiased">
-      <div className="mb-stack-lg animate-fade-in text-center"></div>
-      <main className="w-full max-w-7xl mx-auto px-container-margin">
-        <div className="flex flex-col w-full items-center justify-center min-h-[calc(100vh-120px)] py-stack-lg">
-          <div className="w-full max-w-110 bg-surface-container-lowest rounded-[10px] shadow-md transition-shadow duration-300 hover:shadow-lg border border-surface-container-highest p-[32px]">
-            
-            {/* Header Component */}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-surface font-body-base text-on-surface antialiased p-md">
+      <main className="w-[440px] max-w-[94vw] mx-auto">
+        <div className="w-full bg-surface-container-lowest rounded-xl shadow-lg border border-surface-variant p-lg sm:p-xl flex flex-col gap-md">
+          {/* Header */}
+          <div className="flex flex-col items-center text-center gap-xs">
             <AuthHeader
-              title="Sign in to your account"
-              subtitle="Enter your email and password to access your team workspaces."
+              title="Platform Control Plane"
+              subtitle="Sign in with your Super Admin credentials to access governance, RBAC & security."
             />
+          </div>
 
-            {/* Error Feedback Component */}
-            <AuthErrorBanner message={error} />
+          {/* Error Banner */}
+          <AuthErrorBanner message={error} />
 
-            {/* Form Component */}
-            <LoginForm
-              onSubmit={handleLogin}
-              onInputChange={() => {
-                if (error) setError('');
-              }}
-            />
+          {/* Form */}
+          <LoginForm
+            onSubmit={handleLogin}
+            initialValues={prefilledCredentials}
+            onInputChange={() => {
+              if (error) setError('');
+            }}
+          />
 
-            <div className="mt-stack-lg text-center"></div>
+          {/* Quick-Fill Demo Credentials Helper */}
+          <div className="mt-xs pt-md border-t border-border-subtle flex flex-col gap-xs text-[12px]">
+            <span className="text-on-surface-variant font-label-bold flex items-center gap-1">
+              <span className="material-symbols-outlined text-[16px] text-primary">key</span>
+              <span>Demo Super Admin Accounts (Click to Fill):</span>
+            </span>
+            <div className="space-y-1">
+              <button
+                type="button"
+                onClick={() => handleQuickFill(MOCK_USERS[0])}
+                className="w-full p-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-left flex items-center justify-between transition-colors cursor-pointer border border-border-subtle group"
+              >
+                <div>
+                  <span className="font-bold text-on-surface block text-[12px]">Alex Vance (Super Admin)</span>
+                  <span className="text-on-surface-variant text-[11px] font-mono">admin@platform.internal / password123</span>
+                </div>
+                <span className="text-[11px] text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">
+                  Auto-Fill →
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       </main>

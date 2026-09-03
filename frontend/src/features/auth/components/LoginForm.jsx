@@ -1,10 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 
-export default function LoginForm({ onSubmit, onInputChange }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
+export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
+  const [email, setEmail] = useState(initialValues?.email || '');
+  const [password, setPassword] = useState(initialValues?.password || '');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
+
+  useEffect(() => {
+    if (initialValues) {
+      if (initialValues.email !== undefined) setEmail(initialValues.email);
+      if (initialValues.password !== undefined) setPassword(initialValues.password);
+    }
+  }, [initialValues]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -22,16 +29,16 @@ export default function LoginForm({ onSubmit, onInputChange }) {
   };
 
   return (
-    <form className="flex flex-col gap-5" onSubmit={handleSubmit}>
+    <form className="flex flex-col gap-4 w-full" onSubmit={handleSubmit}>
       {/* Email Input */}
-      <div className="flex flex-col gap-unit">
-        <label className="font-label-md text-on-surface" htmlFor="email">
+      <div className="flex flex-col gap-1 w-full">
+        <label className="text-[13px] font-semibold text-on-surface" htmlFor="email">
           Email address
         </label>
         <input
-          className="px-stack-md py-2.5 rounded-md border border-outline-variant bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all placeholder:text-on-surface-variant/50"
+          className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all placeholder:text-outline"
           id="email"
-          placeholder="you@company.com"
+          placeholder="admin@platform.internal"
           type="email"
           value={email}
           onChange={handleEmailChange}
@@ -40,31 +47,32 @@ export default function LoginForm({ onSubmit, onInputChange }) {
       </div>
 
       {/* Password Input */}
-      <div className="flex flex-col gap-unit">
+      <div className="flex flex-col gap-1 w-full">
         <div className="flex items-center justify-between">
-          <label className="font-label-md text-on-surface" htmlFor="password">
+          <label className="text-[13px] font-semibold text-on-surface" htmlFor="password">
             Password
           </label>
-          <a className="font-label-sm text-primary hover:underline" href="#forgot">
+          <a className="text-[12px] text-primary hover:underline font-medium" href="#forgot">
             Forgot password?
           </a>
         </div>
-        <div className="relative">
+        <div className="relative w-full">
           <input
-            className="w-full px-stack-md py-2.5 rounded-md border border-outline-variant bg-surface-container-lowest text-body-md text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all pr-10"
+            className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all pr-10"
             id="password"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={handlePasswordChange}
+            placeholder="••••••••"
             required
           />
           <button
             aria-label="Toggle password visibility"
-            className="absolute inset-y-0 right-0 px-stack-sm flex items-center text-on-surface-variant hover:text-on-surface focus:outline-none cursor-pointer"
+            className="absolute inset-y-0 right-0 px-3 flex items-center text-outline hover:text-on-surface focus:outline-none cursor-pointer"
             type="button"
             onClick={() => setShowPassword(!showPassword)}
           >
-            <span className="material-symbols-outlined text-[20px]">
+            <span className="material-symbols-outlined text-[18px]">
               {showPassword ? 'visibility' : 'visibility_off'}
             </span>
           </button>
@@ -72,24 +80,16 @@ export default function LoginForm({ onSubmit, onInputChange }) {
       </div>
 
       {/* Remember Me Checkbox */}
-      <div className="flex items-center gap-stack-sm">
-        <div className="relative flex items-center justify-center">
-          <input
-            className="peer appearance-none w-4 h-4 rounded-xs border border-outline-variant checked:bg-primary checked:border-primary focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-1 transition-all cursor-pointer"
-            id="remember"
-            type="checkbox"
-            checked={rememberMe}
-            onChange={(e) => setRememberMe(e.target.checked)}
-          />
-          <span
-            className="material-symbols-outlined text-[14px] text-on-primary absolute pointer-events-none opacity-0 peer-checked:opacity-100"
-            style={{ fontVariationSettings: '"FILL" 1' }}
-          >
-            check
-          </span>
-        </div>
+      <div className="flex items-center gap-2">
+        <input
+          className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer"
+          id="remember"
+          type="checkbox"
+          checked={rememberMe}
+          onChange={(e) => setRememberMe(e.target.checked)}
+        />
         <label
-          className="font-body-md text-on-surface-variant cursor-pointer select-none"
+          className="text-[13px] text-on-surface-variant cursor-pointer select-none"
           htmlFor="remember"
         >
           Remember me
@@ -98,11 +98,11 @@ export default function LoginForm({ onSubmit, onInputChange }) {
 
       {/* Submit Button */}
       <button
-        className="w-full bg-primary text-on-primary font-label-md py-2.5 px-stack-md rounded-lg hover:bg-primary/90 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2 transition-all mt-stack-sm flex items-center justify-center gap-stack-sm group cursor-pointer"
+        className="w-full bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg hover:bg-on-primary-fixed focus:outline-none focus:ring-2 focus:ring-primary transition-all mt-2 flex items-center justify-center gap-2 group cursor-pointer shadow-sm text-[14px]"
         type="submit"
       >
-        Sign In
-        <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-1">
+        <span>Sign In</span>
+        <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-0.5">
           arrow_forward
         </span>
       </button>
