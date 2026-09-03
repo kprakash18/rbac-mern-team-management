@@ -1,11 +1,10 @@
 export const SUPER_ADMIN_NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: 'dashboard' },
-  { id: 'workspaces-fleet', label: 'Workspaces & Fleet', icon: 'corporate_fare', path: 'workspaces-fleet' },
   { id: 'users-access', label: 'Users & Access', icon: 'group', path: 'users-access' },
   { id: 'roles-rbac', label: 'Roles & RBAC', icon: 'shield_person', path: 'roles-rbac' },
   { id: 'jit-access', label: 'JIT Access Grants', icon: 'timer', path: 'jit-access' },
-  { id: 'security-audit', label: 'Security Audit Logs', icon: 'policy', path: 'security-audit' },
   { id: 'system-broadcasts', label: 'System Broadcasts', icon: 'campaign', path: 'system-broadcasts' },
+  { id: 'security-audit', label: 'Security Audit Logs', icon: 'policy', path: 'security-audit' },
 ];
 
 export const MOCK_PLATFORM_METRICS = {
