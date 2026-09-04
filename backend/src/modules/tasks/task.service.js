@@ -3,8 +3,9 @@ import Membership from "../memberships/membership.model.js";
 import { NotFoundError, ValidationError, ForbiddenError } from "../../common/errors/error.js";
 import { emitToTeam, emitToUser } from "../../realtime/event-emitter.js";
 import { createNotification } from "../notifications/notification.service.js";
+import { can } from "../authorization/authorization.service.js";
 
-export async function createTask({ teamId, creatorUserId, title, description, assignedTo, priority, dueDate }) {
+export async function createTask({ teamId, creatorUserId, title, description, assignedTo, priority, dueDate, remarks }) {
   const isMember = await Membership.findOne({ teamId, userId: creatorUserId, status: "ACTIVE" });
   if (!isMember) {
     throw new ForbiddenError("You must be an active team member to create tasks.");
@@ -24,7 +25,8 @@ export async function createTask({ teamId, creatorUserId, title, description, as
     createdBy: creatorUserId,
     assignedTo: assignedTo || null,
     priority,
-    dueDate
+    dueDate,
+    remarks: remarks || "",
   });
 
   // Real-time Event Emissions & Persistent Notification
@@ -93,22 +95,55 @@ export async function getTaskById({ teamId, taskId }) {
   return task;
 }
 
-export async function updateTask({ teamId, taskId, updates = {} }) {
-  // 1. Validate Assignee if provided and non-null
+export async function updateTask({ teamId, taskId, updates = {}, callerUserId }) {
+  // 1. Find existing task first
+  const existingTask = await Task.findOne({ _id: taskId, teamId });
+  if (!existingTask) {
+    throw new NotFoundError("Task not found in this team");
+  }
+
+  // 2. Ownership & Permission check
+  if (callerUserId) {
+    const isMember = await Membership.findOne({ teamId, userId: callerUserId, status: "ACTIVE" });
+    if (!isMember) {
+      throw new ForbiddenError("You must be an active team member to update tasks.");
+    }
+
+    const hasGlobalUpdate = await can(callerUserId, teamId, "task.update", taskId);
+    const isAssignee = existingTask.assignedTo && existingTask.assignedTo.toString() === callerUserId.toString();
+
+    if (!hasGlobalUpdate && !isAssignee) {
+      throw new ForbiddenError("You do not have permission to update this task.");
+    }
+
+    // Assignees without global task.update can only update status and remarks
+    if (!hasGlobalUpdate && isAssignee) {
+      const allowedAssigneeFields = ["status", "remarks"];
+      const requestedFields = Object.keys(updates);
+      const unauthorizedFields = requestedFields.filter((f) => !allowedAssigneeFields.includes(f));
+      if (unauthorizedFields.length > 0) {
+        throw new ForbiddenError(
+          `Task assignees are only authorized to update status and remarks. Cannot modify: ${unauthorizedFields.join(", ")}`
+        );
+      }
+    }
+  }
+
+  // 3. Validate Assignee if provided and non-null
   if (updates.assignedTo) {
     const activeMembership = await Membership.findOne({
       teamId,
       userId: updates.assignedTo,
-      status: "ACTIVE"
+      status: "ACTIVE",
     });
-    
+
     if (!activeMembership) {
       throw new ValidationError("Assignee must be an active member of this team");
     }
   }
 
-  // 2. Destructure only allowed mutable fields (prevents modifying teamId, createdBy, _id)
-  const { title, description, assignedTo, status, priority, dueDate } = updates;
+  // 4. Destructure only allowed mutable fields (prevents modifying teamId, createdBy, _id)
+  const { title, description, assignedTo, status, priority, dueDate, remarks } = updates;
   const allowedUpdates = {};
   if (title !== undefined) allowedUpdates.title = title;
   if (description !== undefined) allowedUpdates.description = description;
@@ -116,8 +151,9 @@ export async function updateTask({ teamId, taskId, updates = {} }) {
   if (status !== undefined) allowedUpdates.status = status;
   if (priority !== undefined) allowedUpdates.priority = priority;
   if (dueDate !== undefined) allowedUpdates.dueDate = dueDate;
+  if (remarks !== undefined) allowedUpdates.remarks = remarks;
 
-  // 3. Find and update task while enforcing tenant boundary and running schema validators
+  // 5. Find and update task while enforcing tenant boundary and running schema validators
   const updatedTask = await Task.findOneAndUpdate(
     { _id: taskId, teamId },
     { $set: allowedUpdates },
