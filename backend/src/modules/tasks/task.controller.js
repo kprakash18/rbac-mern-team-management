@@ -4,7 +4,7 @@ export async function createTaskController(req, res, next) {
   try {
     const { teamId } = req.params;
     const creatorUserId = req.user.id;
-    const { title, description, assignedTo, priority, dueDate } = req.body;
+    const { title, description, assignedTo, priority, dueDate, remarks } = req.body;
 
     const task = await taskService.createTask({
       teamId,
@@ -13,7 +13,8 @@ export async function createTaskController(req, res, next) {
       description,
       assignedTo,
       priority,
-      dueDate
+      dueDate,
+      remarks,
     });
 
     return res.status(201).json({
@@ -67,11 +68,13 @@ export async function getTaskByIdController(req, res, next) {
 export async function updateTaskController(req, res, next) {
   try {
     const { teamId, taskId } = req.params;
+    const callerUserId = req.user.id;
 
     const task = await taskService.updateTask({
       teamId,
       taskId,
-      updates: req.body
+      updates: req.body,
+      callerUserId,
     });
 
     return res.status(200).json({
