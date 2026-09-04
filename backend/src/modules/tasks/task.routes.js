@@ -29,7 +29,6 @@ taskRouter.get(
 taskRouter.patch(
   "/:taskId",
   authenticate,
-  requirePermission("task.update"),
   taskController.updateTaskController
 );
 
