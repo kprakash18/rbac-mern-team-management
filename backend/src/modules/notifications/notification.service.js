@@ -28,6 +28,8 @@ export async function createNotification({
 /**
  * 2. Get unread or all notifications for a user (paginated)
  */
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+
 export async function getUserNotifications({
   userId,
   unreadOnly = false,
@@ -39,9 +41,7 @@ export async function getUserNotifications({
     filter.readAt = null;
   }
 
-  const sanitizedPage = Math.max(1, parseInt(page, 10) || 1);
-  const sanitizedLimit = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
-  const skip = (sanitizedPage - 1) * sanitizedLimit;
+  const { page: sanitizedPage, limit: sanitizedLimit, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [notifications, total] = await Promise.all([
     Notification.find(filter)
@@ -56,7 +56,7 @@ export async function getUserNotifications({
     notifications,
     total,
     page: sanitizedPage,
-    totalPages: Math.ceil(total / sanitizedLimit),
+    totalPages: getTotalPages(total, sanitizedLimit),
   };
 }
 

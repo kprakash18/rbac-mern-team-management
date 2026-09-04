@@ -52,6 +52,8 @@ export async function createTask({ teamId, creatorUserId, title, description, as
   return task;
 }
 
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+
 export async function getTasksByTeam({ teamId, query = {} }) {
   const { status, priority, assignedTo, page = 1, limit = 20 } = query;
 
@@ -60,9 +62,7 @@ export async function getTasksByTeam({ teamId, query = {} }) {
   if (priority) filter.priority = priority;
   if (assignedTo) filter.assignedTo = assignedTo;
 
-  const pageNumber = Math.max(Number(page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  const skip = (pageNumber - 1) * pageSize;
+  const { page: pageNumber, limit: pageSize, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [tasks, total] = await Promise.all([
     Task.find(filter)
@@ -79,7 +79,7 @@ export async function getTasksByTeam({ teamId, query = {} }) {
     total,
     page: pageNumber,
     limit: pageSize,
-    totalPages: Math.ceil(total / pageSize)
+    totalPages: getTotalPages(total, pageSize)
   };
 }
 

@@ -1,19 +1,83 @@
-import { useState, useEffect, useRef } from 'react';
-import { RECENT_WORKSPACE_ACTIVITY } from '@/constants';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import NotificationDropdown from '../../shell/NotificationDropdown';
+import api from '@/lib/api';
 
-export default function MyDashboardView({ currentUser, personas = [], onSwitchPersona, onNavigate }) {
-  const [isAlertDismissed, setIsAlertDismissed] = useState(false);
-  const [secondsRemaining, setSecondsRemaining] = useState(6135); // 01h 42m 15s
+export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
+  const [loading, setLoading] = useState(true);
+  const [metrics, setMetrics] = useState({
+    capabilitiesCount: 0,
+    totalCapabilities: 0,
+    activeJitCount: 0,
+    activeMembersCount: 0,
+    tasksCount: 0,
+    completedTasksCount: 0,
+  });
+  const [activities, setActivities] = useState([]);
+
+  const teamId = workspace?._id || workspace?.id;
+
+  const fetchDashboardMetrics = useCallback(async () => {
+    if (!teamId) {
+      setLoading(false);
+      return;
+    }
+
+    try {
+      setLoading(true);
+      const [membersRes, tasksRes, jitRes, auditRes, permsRes] = await Promise.allSettled([
+        api.get(`/api/teams/${teamId}/members`),
+        api.get(`/api/teams/${teamId}/tasks`),
+        api.get(`/api/teams/${teamId}/access-requests`),
+        api.get(`/api/teams/${teamId}/audit-logs`),
+        api.get('/api/authorization/permissions'),
+      ]);
+
+      const members = membersRes.status === 'fulfilled' ? (membersRes.value.data?.data?.members || membersRes.value.data?.data || []) : [];
+      const tasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.data?.data?.tasks || tasksRes.value.data?.data || []) : [];
+      const jitRequests = jitRes.status === 'fulfilled' ? (Array.isArray(jitRes.value.data?.data) ? jitRes.value.data.data : []) : [];
+      const auditLogs = auditRes.status === 'fulfilled' ? (Array.isArray(auditRes.value.data?.data) ? auditRes.value.data.data : auditRes.value.data?.data?.logs || []) : [];
+      const perms = permsRes.status === 'fulfilled' ? (permsRes.value.data?.data?.effectivePermissions || permsRes.value.data?.data || []) : [];
+
+      const activeJits = jitRequests.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
+      const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
+
+      const formattedActivities = auditLogs.slice(0, 10).map((l) => {
+        const actorName = l.actor?.name || l.actorId?.name || 'Teammate';
+        const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TM';
+        const timeStr = l.createdAt ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
+        return {
+          id: l._id || l.id,
+          actor: actorName,
+          actorId: l.actorId?._id || l.actorId,
+          initials,
+          action: l.action || 'Performed action',
+          time: timeStr,
+          bgClass: 'bg-primary-container text-on-primary',
+        };
+      });
+
+      setMetrics({
+        capabilitiesCount: Array.isArray(perms) ? perms.length : 0,
+        totalCapabilities: 35,
+        activeJitCount: activeJits,
+        activeMembersCount: Array.isArray(members) ? members.length : 0,
+        tasksCount: Array.isArray(tasks) ? tasks.length : 0,
+        completedTasksCount: completedTasks,
+      });
+      setActivities(formattedActivities);
+    } catch (err) {
+      console.warn('Failed to load workspace dashboard metrics:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
   useEffect(() => {
-    const timer = setInterval(() => {
-      setSecondsRemaining((prev) => (prev > 0 ? prev - 1 : 0));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, []);
+    fetchDashboardMetrics();
+  }, [fetchDashboardMetrics]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -25,84 +89,44 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const formatHeroCountdown = (sec) => {
-    const h = String(Math.floor(sec / 3600)).padStart(2, '0');
-    const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    return `${h}h ${m}m ${s}s`;
-  };
-
-  const formatCardCountdown = (sec) => {
-    const h = String(Math.floor(sec / 3600)).padStart(2, '0');
-    const m = String(Math.floor((sec % 3600) / 60)).padStart(2, '0');
-    const s = String(sec % 60).padStart(2, '0');
-    return `${h}:${m}:${s}`;
-  };
-
-  const userName = currentUser?.name || 'Diana';
+  const userName = currentUser?.name || 'Team Member';
   const displayName = userName.includes(' ') ? userName.split(' ')[0] : userName;
-  const userRole = currentUser?.role || 'Lead Architect';
-  const userEmail = currentUser?.email || 'diana.m@acme.corp';
+  const userRole = currentUser?.role || 'Member';
+  const userEmail = currentUser?.email || '';
   const isTeamAdmin = currentUser?.isTeamAdmin;
   const teamRoleTitle = currentUser?.teamRoleTitle || (isTeamAdmin ? 'Team Admin' : 'Developer');
-  const currentUserId = currentUser?.id;
-  const currentUserName = currentUser?.name?.toLowerCase();
-
-  const displayedActivities = isTeamAdmin
-    ? RECENT_WORKSPACE_ACTIVITY
-    : RECENT_WORKSPACE_ACTIVITY.filter(
-        (a) => a.actorId === currentUserId || (currentUserName && a.actor.toLowerCase() === currentUserName)
-      );
-
-  const userInitials = currentUser?.initials || 'DM';
+  const userInitials = (currentUser?.initials || userName.split(' ').map((n) => n[0]).join('').slice(0, 2)).toUpperCase() || 'TM';
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg">
-      {/* Top search bar & buttons */}
+      {/* Top search bar & actions */}
       <div className="flex items-center justify-between pb-sm border-b border-border-subtle">
         <div className="flex items-center gap-md flex-1 max-w-md">
           <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-surface-container-lowest border border-border-subtle text-on-surface-variant w-full shadow-sm">
             <span className="material-symbols-outlined text-[18px]">search</span>
             <input
               className="w-full bg-transparent font-body-sm text-body-sm text-on-surface outline-none placeholder:text-on-surface-variant"
-              placeholder="Search permissions, teammates, audit events..."
+              placeholder="Search tasks, teammates, capabilities..."
               readOnly=""
               type="text"
             />
           </div>
         </div>
         <div className="flex items-center gap-sm">
-          {/* Role Persona Switcher Pill */}
-          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-low border border-border-subtle text-[11px]">
-            <span className="text-on-surface-variant font-medium">Role Preview:</span>
-            <select
-              value={currentUser?.id || 'usr-dm'}
-              onChange={(e) => onSwitchPersona?.(e.target.value)}
-              className="bg-transparent font-bold text-on-surface cursor-pointer outline-none text-[11px]"
-              title="Switch Workspace Persona to test permissions"
-            >
-              {personas.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.isTeamAdmin ? '👑' : p.teamRoleTitle === 'Viewer' ? '👁️' : '💻'} {p.name} ({p.teamRoleTitle})
-                </option>
-              ))}
-            </select>
-          </div>
-
           <button
             type="button"
             onClick={() => onNavigate?.('jit-request')}
             className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">bolt</span>
-            <span className="">Request JIT Elevation</span>
+            <span>Request JIT Elevation</span>
           </button>
           <NotificationDropdown
             currentUser={currentUser}
             onSelectTab={onNavigate}
           />
 
-          {/* Top-Right User Logo & Dropdown */}
+          {/* Top-Right User Avatar & Dropdown */}
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
@@ -136,75 +160,6 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
                   </span>
                 </div>
 
-                {/* Account Switching Section */}
-                {personas && personas.length > 0 && (
-                  <div className="py-2 px-md border-b border-border-subtle">
-                    <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1 mb-1.5">
-                      <span className="material-symbols-outlined text-[14px] text-primary">switch_account</span>
-                      <span>Switch Account</span>
-                    </span>
-                    <div className="flex flex-col gap-1">
-                      {personas.map((persona) => {
-                        const isSelected = (currentUser?.id || 'usr-dm') === persona.id;
-                        return (
-                          <button
-                            key={persona.id}
-                            type="button"
-                            onClick={() => {
-                              onSwitchPersona?.(persona.id);
-                              setIsUserMenuOpen(false);
-                            }}
-                            className={`flex items-center justify-between p-1.5 rounded-lg text-left text-[12px] transition-colors cursor-pointer w-full ${
-                              isSelected
-                                ? 'bg-primary-container text-on-primary-container font-semibold'
-                                : 'text-on-surface hover:bg-surface-container-low'
-                            }`}
-                          >
-                            <div className="flex items-center gap-2 min-w-0">
-                              <div
-                                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                  persona.isTeamAdmin
-                                    ? 'bg-primary text-on-primary'
-                                    : 'bg-surface-container-high text-on-surface'
-                                }`}
-                              >
-                                {persona.initials}
-                              </div>
-                              <div className="truncate leading-tight">
-                                <p className="truncate font-medium">{persona.name}</p>
-                                <p className="text-[10px] text-on-surface-variant truncate">
-                                  {persona.isTeamAdmin ? '👑 Team Admin' : persona.teamRoleTitle}
-                                </p>
-                              </div>
-                            </div>
-                            {isSelected && (
-                              <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
-                                check
-                              </span>
-                            )}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
-
-                <div className="py-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsUserMenuOpen(false);
-                      alert('Profile preferences opened.');
-                    }}
-                    className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left"
-                  >
-                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
-                      settings
-                    </span>
-                    <span>Preferences</span>
-                  </button>
-                </div>
-
                 <div className="border-t border-border-subtle pt-1">
                   <button
                     type="button"
@@ -224,45 +179,6 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
         </div>
       </div>
 
-      {/* P0 Incident Alert Bar */}
-      {!isAlertDismissed && (
-        <div
-          className="w-full rounded-lg bg-error-container/30 border border-error/20 px-md py-2.5 flex items-center justify-between gap-md transition-all duration-300"
-          id="p0-alert-bar"
-        >
-          <div className="flex items-center gap-sm min-w-0">
-            <span className="w-2 h-2 rounded-full bg-error animate-ping shrink-0"></span>
-            <span className="font-label-bold text-label-bold text-error uppercase tracking-wider text-[11px] shrink-0">
-              Active P0 Incident
-            </span>
-            <span className="text-on-surface-variant/70 text-body-sm truncate">
-              Database Latency &amp; Read Degradation — Cluster failover ongoing in US-East-1
-            </span>
-          </div>
-          <div className="flex items-center gap-sm shrink-0">
-            <a
-              className="inline-flex items-center gap-xs font-label-bold text-label-sm text-error hover:underline cursor-pointer"
-              href="#bridge"
-              onClick={(e) => {
-                e.preventDefault();
-                alert('Incident Bridge #infra-db-latency is active.');
-              }}
-            >
-              <span className="">Incident Bridge</span>
-              <span className="material-symbols-outlined text-[14px]">arrow_forward</span>
-            </a>
-            <button
-              type="button"
-              className="p-1 rounded text-on-surface-variant hover:text-on-surface hover:bg-surface-container-high transition-colors cursor-pointer"
-              onClick={() => setIsAlertDismissed(true)}
-              title="Dismiss"
-            >
-              <span className="material-symbols-outlined text-[16px]">close</span>
-            </button>
-          </div>
-        </div>
-      )}
-
       {/* Welcome Card */}
       <div className="w-full rounded-xl bg-surface-container-lowest border border-border-subtle p-lg shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
@@ -271,26 +187,24 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
               Welcome back, {displayName}
             </h1>
             <span className="px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm">
-              {userRole}
+              {teamRoleTitle}
             </span>
           </div>
           <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-            Prod-US-East cluster context • FIDO2 session active
+            Workspace: {workspace?.name || 'Active Team'} • Role-based access control active
           </p>
         </div>
         <div className="flex items-center gap-sm">
-          <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-warning-bg border border-warning-text/20 text-on-tertiary-fixed font-label-sm text-label-sm">
-            <span className="w-2 h-2 rounded-full bg-warning-text animate-ping"></span>
-            <span className="font-label-bold text-label-bold">DevSecOps Admin</span>
-            <span className="text-on-surface-variant">
-              (Expires in <span id="hero-countdown">{formatHeroCountdown(secondsRemaining)}</span>)
-            </span>
+          <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-surface-container border border-border-subtle text-on-surface font-label-sm text-label-sm">
+            <span className="w-2 h-2 rounded-full bg-success-text"></span>
+            <span className="font-label-bold">Session Active</span>
           </div>
         </div>
       </div>
 
       {/* 4 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
+        {/* Card 1: Active Capabilities */}
         <div
           onClick={() => onNavigate?.('my-permissions')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
@@ -301,121 +215,128 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
           </div>
           <div className="mt-sm">
             <div className="flex items-baseline gap-xs">
-              <span className="font-headline-md text-[24px] font-semibold text-on-surface">18</span>
-              <span className="font-body-sm text-body-sm text-on-surface-variant">/ 24 total</span>
+              <span className="font-headline-md text-[24px] font-semibold text-on-surface">
+                {metrics.capabilitiesCount}
+              </span>
+              <span className="font-body-sm text-body-sm text-on-surface-variant">
+                / {metrics.totalCapabilities} total
+              </span>
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-1 truncate">CI/CD, Vault, Telemetry</p>
+            <p className="text-[11px] text-on-surface-variant mt-1 truncate">Granular RBAC privileges</p>
           </div>
         </div>
 
+        {/* Card 2: Active JIT Leases */}
         <div
           onClick={() => onNavigate?.('jit-request')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-warning-text/40 transition-colors"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">JIT Elevation</span>
+            <span className="font-label-sm text-label-sm text-on-surface-variant">Active JIT Grants</span>
             <span className="material-symbols-outlined text-warning-text text-[18px]">timer</span>
           </div>
           <div className="mt-sm">
-            <span className="font-headline-md text-[24px] font-semibold text-on-surface" id="card-countdown">
-              {formatCardCountdown(secondsRemaining)}
+            <span className="font-headline-md text-[24px] font-semibold text-on-surface">
+              {metrics.activeJitCount}
             </span>
-            <p className="text-[11px] text-on-surface-variant mt-1 truncate">INC-8492 • Re-indexing</p>
+            <p className="text-[11px] text-on-surface-variant mt-1 truncate">
+              {metrics.activeJitCount > 0 ? 'Elevated access active' : 'No active elevation leases'}
+            </p>
           </div>
         </div>
 
+        {/* Card 3: Team Members */}
         <div
           onClick={() => onNavigate?.('team-members')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">Team Presence</span>
+            <span className="font-label-sm text-label-sm text-on-surface-variant">Team Directory</span>
             <span className="material-symbols-outlined text-on-surface-variant text-[18px]">group</span>
           </div>
           <div className="mt-sm">
             <div className="flex items-baseline gap-xs">
-              <span className="font-headline-md text-[24px] font-semibold text-on-surface">42</span>
-              <span className="text-[12px] font-medium text-success-text">Online</span>
+              <span className="font-headline-md text-[24px] font-semibold text-on-surface">
+                {metrics.activeMembersCount}
+              </span>
+              <span className="text-[12px] font-medium text-success-text">Members</span>
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-1 truncate">5 on-call • 3 in bridge</p>
+            <p className="text-[11px] text-on-surface-variant mt-1 truncate">Workspace teammates</p>
           </div>
         </div>
 
+        {/* Card 4: Tasks */}
         <div
-          onClick={() => onNavigate?.('announcements')}
-          className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-error/40 transition-colors"
+          onClick={() => onNavigate?.('tasks')}
+          className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
         >
           <div className="flex items-center justify-between">
-            <span className="font-label-sm text-label-sm text-on-surface-variant">System Bulletins</span>
-            <span className="material-symbols-outlined text-on-surface-variant text-[18px]">campaign</span>
+            <span className="font-label-sm text-label-sm text-on-surface-variant">Tasks Board</span>
+            <span className="material-symbols-outlined text-on-surface-variant text-[18px]">task</span>
           </div>
           <div className="mt-sm">
             <div className="flex items-baseline gap-xs">
-              <span className="font-headline-md text-[24px] font-semibold text-on-surface">2</span>
-              <span className="text-[12px] text-warning-text font-medium">Action required</span>
+              <span className="font-headline-md text-[24px] font-semibold text-on-surface">
+                {metrics.tasksCount}
+              </span>
+              <span className="text-[12px] font-medium text-on-surface-variant">
+                ({metrics.completedTasksCount} done)
+              </span>
             </div>
-            <p className="text-[11px] text-on-surface-variant mt-1 truncate">SOC2 Policy &amp; Kafka patch</p>
+            <p className="text-[11px] text-on-surface-variant mt-1 truncate">Sprint delivery board</p>
           </div>
         </div>
       </div>
 
-      {/* 2-Column Grid */}
+      {/* 2-Column Grid: Real Activity & Workflows */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg items-start">
         {/* Recent Activity */}
         <div className="lg:col-span-7 flex flex-col gap-md">
           <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm">
             <div className="flex items-center justify-between mb-md">
               <div>
-                <h2 className="font-headline-md text-headline-md text-on-surface">
-                  {isTeamAdmin ? 'Recent Activity' : 'My Recent Activity'}
-                </h2>
-                <p className="text-[12px] text-on-surface-variant">
-                  {isTeamAdmin ? 'Workspace audit trail & events' : 'Your personal activity trail & contributions'}
-                </p>
+                <h2 className="font-headline-md text-headline-md text-on-surface">Recent Workspace Activity</h2>
+                <p className="text-[12px] text-on-surface-variant">Live audit trail &amp; events</p>
               </div>
-              {isTeamAdmin && (
-                <button
-                  type="button"
-                  onClick={() => onNavigate?.('audit-log')}
-                  className="font-label-bold text-label-sm text-primary hover:underline cursor-pointer"
-                >
-                  View All
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => onNavigate?.('audit-log')}
+                className="font-label-bold text-label-sm text-primary hover:underline cursor-pointer"
+              >
+                View Audit Log
+              </button>
             </div>
             <div className="divide-y divide-border-subtle">
-              {displayedActivities.length > 0 ? (
-                displayedActivities.map((act) => {
-                  const isCurrentUser =
-                    act.actorId === currentUserId ||
-                    (currentUserName && act.actor.toLowerCase() === currentUserName);
-                  return (
-                    <div key={act.id} className="py-3 flex items-start gap-md">
-                      <div
-                        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-label-bold text-label-sm ${
-                          act.bgClass || 'bg-surface-container-high text-on-surface'
-                        }`}
-                      >
-                        {act.initials}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center justify-between">
-                          <p className="font-label-bold text-label-bold text-on-surface truncate">
-                            {act.actor} {isCurrentUser && '(You)'}
-                          </p>
-                          <span className="text-[11px] text-on-surface-variant">{act.time}</span>
-                        </div>
-                        <p className="text-body-sm text-on-surface-variant truncate">{act.action}</p>
-                      </div>
+              {loading ? (
+                <div className="py-8 text-center text-on-surface-variant text-body-sm flex items-center justify-center gap-2">
+                  <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                  <span>Loading recent activity...</span>
+                </div>
+              ) : activities.length > 0 ? (
+                activities.map((act) => (
+                  <div key={act.id} className="py-3 flex items-start gap-md">
+                    <div
+                      className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-label-bold text-label-sm ${
+                        act.bgClass || 'bg-surface-container-high text-on-surface'
+                      }`}
+                    >
+                      {act.initials}
                     </div>
-                  );
-                })
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between">
+                        <p className="font-label-bold text-label-bold text-on-surface truncate">{act.actor}</p>
+                        <span className="text-[11px] text-on-surface-variant">{act.time}</span>
+                      </div>
+                      <p className="text-body-sm text-on-surface-variant truncate">{act.action}</p>
+                    </div>
+                  </div>
+                ))
               ) : (
                 <div className="py-8 text-center text-on-surface-variant text-body-sm flex flex-col items-center justify-center gap-1">
                   <span className="material-symbols-outlined text-[32px] text-outline">history</span>
-                  <p className="font-medium text-on-surface">No recent personal activity</p>
+                  <p className="font-medium text-on-surface">No recent workspace activity</p>
                   <p className="text-[12px] text-on-surface-variant">
-                    Completed tasks and commits will appear here as you work.
+                    Activity events and task updates will appear here in real time.
                   </p>
                 </div>
               )}
@@ -428,7 +349,7 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
           <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm">
             <div className="mb-md">
               <h2 className="font-headline-md text-headline-md text-on-surface">Quick Workflows</h2>
-              <p className="text-[12px] text-on-surface-variant">Common privileged actions</p>
+              <p className="text-[12px] text-on-surface-variant">Common workspace actions</p>
             </div>
             <div className="flex flex-col gap-sm">
               <div
@@ -443,53 +364,44 @@ export default function MyDashboardView({ currentUser, personas = [], onSwitchPe
                     <p className="font-label-bold text-label-bold text-on-surface group-hover:text-primary transition-colors">
                       My RBAC Matrix
                     </p>
-                    <p className="text-[11px] text-on-surface-variant">18 active capabilities verified</p>
+                    <p className="text-[11px] text-on-surface-variant">{metrics.capabilitiesCount} active capabilities</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  className="font-label-bold text-label-sm text-primary hover:underline cursor-pointer"
-                >
-                  Review
-                </button>
+                <span className="font-label-bold text-label-sm text-primary group-hover:underline">Review</span>
               </div>
 
-              <div className="p-md rounded-lg border border-error/20 bg-error-container/20 flex items-center justify-between">
+              <div
+                onClick={() => onNavigate?.('tasks')}
+                className="p-md rounded-lg border border-border-subtle hover:border-outline transition-colors flex items-center justify-between cursor-pointer group"
+              >
                 <div className="flex items-center gap-sm">
-                  <div className="w-9 h-9 rounded-lg bg-error text-on-error flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[20px]">groups</span>
+                  <div className="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-primary">
+                    <span className="material-symbols-outlined text-[20px]">assignment</span>
                   </div>
                   <div>
-                    <p className="font-label-bold text-label-bold text-on-surface">Incident Bridge</p>
-                    <p className="text-[11px] text-error font-medium">8 engineers on call now</p>
+                    <p className="font-label-bold text-label-bold text-on-surface group-hover:text-primary transition-colors">
+                      Manage Tasks
+                    </p>
+                    <p className="text-[11px] text-on-surface-variant">{metrics.tasksCount} total sprint items</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => alert('Joining Incident Bridge #infra-db-latency...')}
-                  className="px-sm py-1 rounded bg-error text-on-error font-label-sm text-label-sm hover:opacity-90 transition-opacity cursor-pointer"
-                >
-                  Join
-                </button>
+                <span className="font-label-bold text-label-sm text-primary group-hover:underline">Open</span>
               </div>
 
-              <div className="p-md rounded-lg border border-border-subtle hover:border-outline transition-colors flex items-center justify-between">
+              <div
+                onClick={() => onNavigate?.('team-members')}
+                className="p-md rounded-lg border border-border-subtle hover:border-outline transition-colors flex items-center justify-between cursor-pointer group"
+              >
                 <div className="flex items-center gap-sm">
                   <div className="w-9 h-9 rounded-lg bg-surface-container-low flex items-center justify-center text-on-surface-variant">
-                    <span className="material-symbols-outlined text-[20px]">assignment_turned_in</span>
+                    <span className="material-symbols-outlined text-[20px]">group</span>
                   </div>
                   <div>
-                    <p className="font-label-bold text-label-bold text-on-surface">Policy Attestation</p>
-                    <p className="text-[11px] text-on-surface-variant">Q4 SOC2 signature pending</p>
+                    <p className="font-label-bold text-label-bold text-on-surface">Team Directory</p>
+                    <p className="text-[11px] text-on-surface-variant">{metrics.activeMembersCount} teammates enrolled</p>
                   </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => alert('Opening Q4 SOC2 Attestation Disclosure...')}
-                  className="px-sm py-1 rounded bg-surface-container-high text-on-surface font-label-sm text-label-sm hover:bg-surface-variant transition-colors cursor-pointer"
-                >
-                  Sign
-                </button>
+                <span className="font-label-bold text-label-sm text-on-surface-variant group-hover:underline">View</span>
               </div>
             </div>
           </div>

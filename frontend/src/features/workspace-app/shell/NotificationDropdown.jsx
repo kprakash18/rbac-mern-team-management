@@ -1,4 +1,5 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import api from '@/lib/api';
 
 const DEFAULT_NOTIFICATIONS = [
   {
@@ -97,6 +98,31 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     return DEFAULT_NOTIFICATIONS;
   });
 
+  const fetchNotifications = useCallback(async () => {
+    try {
+      const res = await api.get('/api/notifications');
+      const rawNotifs = res.data?.data?.notifications || res.data?.data || [];
+      if (Array.isArray(rawNotifs) && rawNotifs.length > 0) {
+        const formatted = rawNotifs.map((n) => ({
+          id: n._id || n.id,
+          type: n.type || 'SYSTEM',
+          title: n.title || 'System Notification',
+          message: n.message || n.content || '',
+          timeAgo: n.createdAt ? 'Recently' : 'Just now',
+          targetTab: n.targetTab || 'dashboard',
+          readAt: n.isRead ? (n.readAt || new Date().toISOString()) : null,
+        }));
+        setNotifications(formatted);
+      }
+    } catch (err) {
+      console.warn('Backend notifications unavailable, using cached notifications:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -118,7 +144,12 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
 
   const unreadCount = notifications.filter((n) => !n.readAt).length;
 
-  const handleMarkAllAsRead = () => {
+  const handleMarkAllAsRead = async () => {
+    try {
+      await api.patch('/api/notifications/read-all');
+    } catch (err) {
+      console.warn('Failed to mark all read in backend:', err);
+    }
     const updated = notifications.map((n) => ({
       ...n,
       readAt: n.readAt || new Date().toISOString(),
@@ -126,7 +157,15 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     persistNotifications(updated);
   };
 
-  const handleToggleRead = (id) => {
+  const handleToggleRead = async (id) => {
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(id);
+    if (isMongoId) {
+      try {
+        await api.patch(`/api/notifications/${id}/read`);
+      } catch (err) {
+        console.warn('Failed to mark notification read in backend:', err);
+      }
+    }
     const updated = notifications.map((n) => {
       if (n.id === id) {
         return { ...n, readAt: n.readAt ? null : new Date().toISOString() };

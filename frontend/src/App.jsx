@@ -1,5 +1,5 @@
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
-import { AppProvider } from './context/AppContext';
+import { AppProvider } from './context/AppContext.jsx';
 import { useApp } from './context/useApp';
 import LoginPage from './features/auth/pages/LoginPage';
 import ForceChangePasswordPage from './features/auth/pages/ForceChangePasswordPage';

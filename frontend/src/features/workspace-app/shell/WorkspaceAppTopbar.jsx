@@ -4,8 +4,6 @@ import NotificationDropdown from './NotificationDropdown';
 export default function WorkspaceAppTopbar({
   workspace,
   currentUser,
-  personas = [],
-  onSwitchPersona,
   onAnnouncementsClick,
   onSelectTab,
   onLogout,
@@ -13,12 +11,12 @@ export default function WorkspaceAppTopbar({
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
-  const userName = currentUser?.name || 'Diana Morales';
-  const userRole = currentUser?.role || 'Lead Architect';
-  const userEmail = currentUser?.email || 'diana.m@acme.corp';
-  const isTeamAdmin = currentUser?.isTeamAdmin;
-  const teamRoleTitle = currentUser?.teamRoleTitle || (isTeamAdmin ? 'Team Admin' : 'Developer');
-  const initials = currentUser?.initials || 'DM';
+  const userName = currentUser?.name || 'User';
+  const userRole = currentUser?.role || 'Member';
+  const userEmail = currentUser?.email || '';
+  const isTeamAdmin = currentUser?.isTeamAdmin || currentUser?.role === 'Admin' || currentUser?.role === 'SuperAdmin';
+  const teamRoleTitle = currentUser?.teamRoleTitle || (isTeamAdmin ? 'Admin' : 'Member');
+  const initials = currentUser?.initials || (currentUser?.name ? currentUser.name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2) : 'U');
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -35,30 +33,13 @@ export default function WorkspaceAppTopbar({
     <header className="h-14 bg-surface-container-lowest/90 backdrop-blur-sm border-b border-border-subtle z-30 flex items-center justify-between px-lg shadow-xs shrink-0 sticky top-0">
       {/* Left: Breadcrumb */}
       <div className="flex items-center gap-xs text-[12px] text-on-surface-variant">
-        <span className="font-bold text-on-surface">{workspace?.name || 'Acme Engineering'}</span>
+        <span className="font-bold text-on-surface">{workspace?.name || 'Workspace'}</span>
         <span className="material-symbols-outlined text-[14px]">chevron_right</span>
         <span>Employee Portal</span>
       </div>
 
-      {/* Right: Persona Switcher, Actions & User Logo */}
+      {/* Right: Actions & User Logo */}
       <div className="flex items-center gap-sm">
-        {/* Role Persona Switcher Pill */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-surface-container-low border border-border-subtle text-[11px]">
-          <span className="text-on-surface-variant font-medium">Role Preview:</span>
-          <select
-            value={currentUser?.id || 'usr-dm'}
-            onChange={(e) => onSwitchPersona?.(e.target.value)}
-            className="bg-transparent font-bold text-on-surface cursor-pointer outline-none text-[11px]"
-            title="Switch Workspace Persona to test permissions"
-          >
-            {personas.map((p) => (
-              <option key={p.id} value={p.id}>
-                {p.isTeamAdmin ? '👑' : p.teamRoleTitle === 'Viewer' ? '👁️' : '💻'} {p.name} ({p.teamRoleTitle})
-              </option>
-            ))}
-          </select>
-        </div>
-
         {/* Notification Bell Dropdown */}
         <NotificationDropdown
           currentUser={currentUser}
@@ -99,64 +80,11 @@ export default function WorkspaceAppTopbar({
                     {teamRoleTitle}
                   </span>
                 </div>
-                <p className="text-[12px] text-on-surface-variant truncate">{userEmail}</p>
+                {userEmail && <p className="text-[12px] text-on-surface-variant truncate">{userEmail}</p>}
                 <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-semibold">
                   {userRole}
                 </span>
               </div>
-
-              {/* Account Switching Section */}
-              {personas && personas.length > 0 && (
-                <div className="py-2 px-md border-b border-border-subtle">
-                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1 mb-1.5">
-                    <span className="material-symbols-outlined text-[14px] text-primary">switch_account</span>
-                    <span>Switch Account</span>
-                  </span>
-                  <div className="flex flex-col gap-1">
-                    {personas.map((persona) => {
-                      const isSelected = (currentUser?.id || 'usr-dm') === persona.id;
-                      return (
-                        <button
-                          key={persona.id}
-                          type="button"
-                          onClick={() => {
-                            onSwitchPersona?.(persona.id);
-                            setIsMenuOpen(false);
-                          }}
-                          className={`flex items-center justify-between p-1.5 rounded-lg text-left text-[12px] transition-colors cursor-pointer w-full ${
-                            isSelected
-                              ? 'bg-primary-container text-on-primary-container font-semibold'
-                              : 'text-on-surface hover:bg-surface-container-low'
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <div
-                              className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                                persona.isTeamAdmin
-                                  ? 'bg-primary text-on-primary'
-                                  : 'bg-surface-container-high text-on-surface'
-                              }`}
-                            >
-                              {persona.initials}
-                            </div>
-                            <div className="truncate leading-tight">
-                              <p className="truncate font-medium">{persona.name}</p>
-                              <p className="text-[10px] text-on-surface-variant truncate">
-                                {persona.isTeamAdmin ? '👑 Team Admin' : persona.teamRoleTitle}
-                              </p>
-                            </div>
-                          </div>
-                          {isSelected && (
-                            <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
-                              check
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
 
               <div className="py-1">
                 <button
