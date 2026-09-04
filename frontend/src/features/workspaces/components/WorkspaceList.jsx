@@ -1,6 +1,5 @@
 export default function WorkspaceListItem({ workspace, onSelect }) {
   const {
-    id,
     name,
     role,
     icon = 'domain',
@@ -34,7 +33,7 @@ export default function WorkspaceListItem({ workspace, onSelect }) {
           </div>
         </div>
       </div>
-      <span className="material-symbols-outlined text-on-surface-variant opacity-0 group-hover:opacity-100 transform translate-x-[-10px] group-hover:translate-x-0 transition-all duration-300">
+      <span className="material-symbols-outlined text-on-surface-variant opacity-0 group-hover:opacity-100 transform -translate-x-2.5 group-hover:translate-x-0 transition-all duration-300">
         arrow_forward
       </span>
     </button>

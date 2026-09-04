@@ -53,6 +53,13 @@ const taskSchema = new mongoose.Schema(
       type: Date,
       default: null,
     },
+
+    remarks: {
+      type: String,
+      trim: true,
+      maxlength: 1000,
+      default: "",
+    },
   },
   {
     timestamps: true,

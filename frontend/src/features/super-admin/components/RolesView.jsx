@@ -1,26 +1,85 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   CANONICAL_PERMISSIONS,
-  INITIAL_ROLES,
-} from '../constants/roles.constants.js';
+} from '@/constants';
 import RoleCard from './roles/RoleCard.jsx';
 import RolesTableView from './roles/RolesTableView.jsx';
 import RoleMembersDrawer from './roles/RoleMembersDrawer.jsx';
 import CreateEditRoleModal from './roles/CreateEditRoleModal.jsx';
-import DeleteRoleModal from './roles/DeleteRoleModal.jsx';
+import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import ExportPolicyModal from './roles/ExportPolicyModal.jsx';
 import EditUserTtlModal from './roles/EditUserTtlModal.jsx';
 import ReassignUserModal from './roles/ReassignUserModal.jsx';
 import ChangeWorkspaceModal from './roles/ChangeWorkspaceModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
+import api from '@/lib/api';
 
 export default function RolesView() {
-  const [roles, setRoles] = useState(INITIAL_ROLES);
+  const [roles, setRoles] = useState([]);
+  const [rawPermissions, setRawPermissions] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [roleTypeFilter, setRoleTypeFilter] = useState('all');
   const [scopeFilter, setScopeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('members-desc');
   const [viewMode, setViewMode] = useState('grid');
   const [activeMenuId, setActiveMenuId] = useState(null);
+
+  // Fetch live roles and permissions from backend
+  const fetchRolesAndPermissions = useCallback(async () => {
+    try {
+      setLoading(true);
+      const [rolesRes, permsRes] = await Promise.allSettled([
+        api.get('/api/roles'),
+        api.get('/api/permissions'),
+      ]);
+
+      if (permsRes.status === 'fulfilled' && permsRes.value.data?.data) {
+        setRawPermissions(permsRes.value.data.data);
+      }
+
+      if (rolesRes.status === 'fulfilled' && rolesRes.value.data?.data) {
+        const rawRoles = rolesRes.value.data.data;
+        if (Array.isArray(rawRoles) && rawRoles.length > 0) {
+          const mapped = rawRoles.map((r) => {
+            const isSys = Boolean(r.isSystemRole);
+            const permKeys = Array.isArray(r.permissions)
+              ? r.permissions.map((p) => (typeof p === 'object' ? p.key : p))
+              : [];
+            return {
+              id: r._id || r.id,
+              name: r.name,
+              type: isSys ? 'system' : 'custom',
+              status: (r.status || 'ACTIVE').toLowerCase(),
+              members: r.membersCount || (r.assignedUsers?.length) || 0,
+              perms: permKeys.length,
+              icon: isSys ? (r.name.includes('Admin') ? 'shield_person' : 'engineering') : 'tune',
+              iconBg: isSys ? 'bg-primary-container' : 'bg-surface-container-high',
+              desc: r.description || (isSys ? 'Core platform role' : 'Custom defined access policy.'),
+              scopeType: isSys ? 'wildcard' : 'standard',
+              scopeBadge: isSys ? 'Wildcard Access' : 'Scoped Namespace Access',
+              subtitle: isSys ? 'Standard Platform Role' : 'Bespoke custom role',
+              avatars: [],
+              permPills: [{ text: `${permKeys.length} Permissions Attached` }],
+              permissionKeys: permKeys,
+              assignedUsers: r.assignedUsers || [],
+              isSystemRole: isSys,
+            };
+          });
+          setRoles(mapped);
+        }
+      }
+    } catch (err) {
+      console.warn('Backend roles/permissions unavailable, using defaults:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchRolesAndPermissions();
+  }, [fetchRolesAndPermissions]);
 
   // Modals & Drawer State
   const [isMemberDrawerOpen, setIsMemberDrawerOpen] = useState(false);
@@ -48,11 +107,7 @@ export default function RolesView() {
   const [editingUserWorkspace, setEditingUserWorkspace] = useState(null);
 
   // Toast notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
 
   useEffect(() => {
     const handleGlobalClick = () => setActiveMenuId(null);
@@ -101,22 +156,36 @@ export default function RolesView() {
     setIsMemberDrawerOpen(true);
   };
 
-  const handleToggleRoleStatus = (roleId) => {
+  const handleToggleRoleStatus = async (roleId) => {
+    const targetRole = roles.find((r) => r.id === roleId);
+    if (!targetRole) return;
+    const nextStatus = targetRole.status === 'disabled' ? 'active' : 'disabled';
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(roleId);
+
+    try {
+      if (isMongoId && !targetRole.isSystemRole) {
+        await api.patch(`/api/roles/${roleId}`, {
+          status: nextStatus.toUpperCase(),
+        });
+      }
+    } catch (err) {
+      console.warn('Failed to update role status in backend:', err);
+    }
+
     setRoles((prev) =>
       prev.map((r) => {
         if (r.id === roleId) {
-          const nextStatus = r.status === 'disabled' ? 'active' : 'disabled';
           const updated = { ...r, status: nextStatus };
           if (selectedRoleForMembers && selectedRoleForMembers.id === roleId) {
             setSelectedRoleForMembers(updated);
           }
-          showToast(`Role "${r.name}" is now ${nextStatus.toUpperCase()}.`);
           return updated;
         }
         return r;
       })
     );
     setActiveMenuId(null);
+    showToast(`Role "${targetRole.name}" is now ${nextStatus.toUpperCase()}.`);
   };
 
   const handleArchiveToggle = (roleId) => {
@@ -159,9 +228,18 @@ export default function RolesView() {
     });
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (!deleteConfirmData) return;
     const { role, reassignmentTarget } = deleteConfirmData;
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(role.id);
+
+    try {
+      if (isMongoId && !role.isSystemRole) {
+        await api.delete(`/api/roles/${role.id}`);
+      }
+    } catch (err) {
+      console.warn('Backend role delete error:', err);
+    }
 
     if (role.assignedUsers && role.assignedUsers.length > 0 && reassignmentTarget) {
       const targetRole = roles.find((r) => r.id === reassignmentTarget);
@@ -254,11 +332,24 @@ export default function RolesView() {
     });
   };
 
-  const handleSaveRole = (e) => {
+  const handleSaveRole = async (e) => {
     e.preventDefault();
     if (!createForm.name.trim()) return;
 
+    const isMongoId = createForm.id && /^[0-9a-fA-F]{24}$/.test(createForm.id);
+
     if (createForm.id) {
+      if (isMongoId) {
+        try {
+          await api.patch(`/api/roles/${createForm.id}`, {
+            name: createForm.name,
+            description: createForm.description,
+          });
+        } catch (err) {
+          console.warn('Backend update role failed:', err);
+        }
+      }
+
       setRoles((prev) =>
         prev.map((r) => {
           if (r.id === createForm.id) {
@@ -275,8 +366,31 @@ export default function RolesView() {
       );
       showToast(`Role "${createForm.name}" updated successfully.`);
     } else {
+      // Find matching Mongo permission IDs
+      const permIds = [];
+      if (Array.isArray(rawPermissions)) {
+        createForm.selectedPermissions.forEach((key) => {
+          const match = rawPermissions.find((p) => p.key === key);
+          if (match && match._id) permIds.push(match._id);
+        });
+      }
+
+      let createdId = null;
+      try {
+        const res = await api.post('/api/roles', {
+          name: createForm.name,
+          description: createForm.description || '',
+          permissionIds: permIds,
+        });
+        if (res.data?.data?._id) {
+          createdId = res.data.data._id;
+        }
+      } catch (err) {
+        console.warn('Backend create role failed, saving locally:', err);
+      }
+
       const newRole = {
-        id: `custom-${Date.now()}`,
+        id: createdId || `custom-${Date.now()}`,
         name: createForm.name,
         type: 'custom',
         status: 'active',
@@ -292,6 +406,7 @@ export default function RolesView() {
         permPills: [{ text: `${createForm.selectedPermissions.size} Permissions Attached` }],
         permissionKeys: Array.from(createForm.selectedPermissions),
         assignedUsers: [],
+        isSystemRole: false,
       };
       setRoles((prev) => [newRole, ...prev]);
       showToast(`Custom role "${newRole.name}" created.`);
@@ -466,13 +581,10 @@ export default function RolesView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1200] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">info</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-1200">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Main Roles Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-md">
@@ -580,7 +692,12 @@ export default function RolesView() {
       </div>
 
       {/* Main Role Grid or Table View */}
-      {filteredRoles.length === 0 ? (
+      {loading ? (
+        <div className="bg-card-bg rounded-xl p-2xl text-center border border-border-subtle mb-xl flex flex-col items-center justify-center gap-2">
+          <span className="material-symbols-outlined animate-spin text-primary text-[36px]">progress_activity</span>
+          <p className="font-body-md text-on-surface-variant">Loading platform roles &amp; permissions...</p>
+        </div>
+      ) : filteredRoles.length === 0 ? (
         <div className="bg-card-bg rounded-xl p-2xl text-center border border-dashed border-border-subtle mb-xl">
           <span className="material-symbols-outlined text-[48px] text-outline mb-sm">shield</span>
           <h3 className="font-headline-md text-headline-md text-on-surface">No roles match your search filters</h3>
@@ -674,13 +791,62 @@ export default function RolesView() {
       />
 
       {/* 3. Delete Role Modal */}
-      <DeleteRoleModal
-        data={deleteConfirmData}
-        roles={roles}
-        onClose={() => setDeleteConfirmData(null)}
-        onChangeTarget={(target) => setDeleteConfirmData({ ...deleteConfirmData, reassignmentTarget: target })}
-        onConfirmDelete={handleConfirmDelete}
-      />
+      {deleteConfirmData && (
+        <ConfirmModal
+          isOpen={Boolean(deleteConfirmData)}
+          title="Confirm Role Deletion"
+          confirmText="Confirm & Delete Role"
+          confirmVariant="danger"
+          icon="warning"
+          onClose={() => setDeleteConfirmData(null)}
+          onConfirm={handleConfirmDelete}
+        >
+          <div className="space-y-3 text-[13px]">
+            <p className="text-body-sm text-on-surface">
+              Are you sure you want to delete and soft-archive custom role{' '}
+              <strong className="text-on-surface font-semibold">"{deleteConfirmData.role.name}"</strong>?
+            </p>
+
+            {deleteConfirmData.role.assignedUsers && deleteConfirmData.role.assignedUsers.length > 0 ? (
+              <div className="p-3 bg-warning-bg/40 border border-warning-text/30 rounded-xl space-y-2">
+                <div className="flex items-center gap-1 font-semibold text-[12px] text-warning-text">
+                  <span className="material-symbols-outlined text-[16px]">group</span>
+                  <span>Active Member Reassignment Required</span>
+                </div>
+                <p className="text-[12px] text-on-surface-variant leading-relaxed">
+                  There are <strong>{deleteConfirmData.role.assignedUsers.length} active users</strong> currently assigned to this role.
+                  Select a target baseline role to reassign these users to before proceeding:
+                </p>
+                <div>
+                  <label className="block text-[11px] font-semibold text-on-surface-variant mb-1">
+                    Reassign Active Members To:
+                  </label>
+                  <select
+                    value={deleteConfirmData.reassignmentTarget}
+                    onChange={(e) =>
+                      setDeleteConfirmData({ ...deleteConfirmData, reassignmentTarget: e.target.value })
+                    }
+                    className="w-full h-9 px-2 bg-surface-container-lowest rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none cursor-pointer"
+                  >
+                    {roles
+                      .filter((r) => r.id !== deleteConfirmData.role.id && r.status === 'active')
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} ({r.scopeBadge || 'Scoped'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 bg-surface-container-low rounded-lg text-[12px] text-on-surface-variant flex items-center gap-2">
+                <span className="material-symbols-outlined text-outline text-[16px]">check_circle</span>
+                <span>No active users assigned to this role. It can be safely soft-archived.</span>
+              </div>
+            )}
+          </div>
+        </ConfirmModal>
+      )}
 
       {/* 4. Export Policy Modal */}
       <ExportPolicyModal

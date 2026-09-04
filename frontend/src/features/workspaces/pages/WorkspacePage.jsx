@@ -1,14 +1,48 @@
-import { useState } from 'react';
-import { MOCK_USER_WORKSPACES } from '../constants/workspace.constants';
+import { useState, useEffect } from 'react';
+import api from '@/lib/api';
+import { useApp } from '@/context/useApp';
 import WorkspaceListItem from '../components/WorkspaceList';
 
 export default function WorkspacesPage({ onWorkspaceSelected }) {
-  const [workspaces] = useState(MOCK_USER_WORKSPACES);
+  const { isSuperAdmin } = useApp();
+  const [workspaces, setWorkspaces] = useState([]);
   const [rememberChoice, setRememberChoice] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    async function fetchWorkspaces() {
+      try {
+        setLoading(true);
+        setError(null);
+        const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
+        const response = await api.get(endpoint);
+        const rawTeams = response.data?.data?.teams || response.data?.data || [];
+
+        const formatted = rawTeams.map((team) => ({
+          ...team,
+          id: team._id || team.id,
+          name: team.name,
+          role: team.role || 'Developer',
+          isTeamAdmin: Boolean(team.isTeamAdmin || team.role === 'Team Admin' || team.role?.toLowerCase().includes('admin')),
+          icon: team.icon || 'domain',
+          iconBgColor: team.iconBgColor || 'bg-primary',
+          iconTextColor: team.iconTextColor || 'text-on-primary',
+        }));
+        setWorkspaces(formatted);
+      } catch (err) {
+        console.warn('Failed to load remote workspaces:', err);
+        setError(err.response?.data?.error?.message || err.message || 'Failed to load workspaces');
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchWorkspaces();
+  }, [isSuperAdmin]);
 
   const handleSelect = (workspace) => {
     console.log('Selected workspace:', workspace, { rememberChoice });
-    alert(`Entering "${workspace.name}" workspace as ${workspace.role}!`);
     if (onWorkspaceSelected) {
       onWorkspaceSelected(workspace);
     }
@@ -74,17 +108,32 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
           </div>
 
           <div className="bg-surface-container-lowest rounded-xl shadow-md p-stack-md flex flex-col gap-unit border border-outline-variant/20">
-            {workspaces.map((workspace, index) => (
-              <div key={workspace.id} className="flex flex-col">
-                <WorkspaceListItem
-                  workspace={workspace}
-                  onSelect={handleSelect}
-                />
-                {index < workspaces.length - 1 && (
-                  <div className="h-px bg-surface-container-high mx-stack-md my-1" />
-                )}
+            {loading ? (
+              <div className="p-8 text-center text-on-surface-variant font-body-md flex items-center justify-center gap-2">
+                <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
+                Loading workspaces...
               </div>
-            ))}
+            ) : error ? (
+              <div className="p-4 text-center text-error font-body-md bg-error/10 rounded-lg">
+                {error}
+              </div>
+            ) : workspaces.length === 0 ? (
+              <div className="p-8 text-center text-on-surface-variant font-body-md">
+                No active workspaces found for your account.
+              </div>
+            ) : (
+              workspaces.map((workspace, index) => (
+                <div key={workspace.id || workspace._id} className="flex flex-col">
+                  <WorkspaceListItem
+                    workspace={workspace}
+                    onSelect={handleSelect}
+                  />
+                  {index < workspaces.length - 1 && (
+                    <div className="h-px bg-surface-container-high mx-stack-md my-1" />
+                  )}
+                </div>
+              ))
+            )}
           </div>
 
           {/* Remember Choice Checkbox */}

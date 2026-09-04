@@ -1,4 +1,4 @@
-import { BROADCAST_TYPES } from '../../constants/broadcasts.constants';
+import { BROADCAST_TYPES } from '@/constants';
 
 export default function BroadcastCard({
   broadcast,

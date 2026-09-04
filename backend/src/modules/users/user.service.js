@@ -1,7 +1,12 @@
 import User from "./user.model.js";
+import { enrichUsersWithWorkspaces } from "./user.lookup.js";
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
 
-export async function searchUsers({ query = "", page = 1, limit = 20 } = {}) {
-  const filter = { accountStatus: { $ne: "DISABLED" } };
+export async function searchUsers({ query = "", page = 1, limit = 50, status } = {}) {
+  const filter = {};
+  if (status) {
+    filter.accountStatus = status.toUpperCase();
+  }
 
   if (query && typeof query === "string" && query.trim().length > 0) {
     const trimmed = query.trim();
@@ -11,25 +16,27 @@ export async function searchUsers({ query = "", page = 1, limit = 20 } = {}) {
     ];
   }
 
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 50 });
 
-  const [users, total] = await Promise.all([
+  const [rawUsers, total] = await Promise.all([
     User.find(filter)
-      .select("name email accountStatus mustChangePassword createdAt")
-      .sort({ name: 1 })
+      .select("name email accountStatus mustChangePassword createdAt avatar")
+      .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitNum),
+      .limit(limitNum)
+      .lean(),
     User.countDocuments(filter),
   ]);
+
+  // Enrich users with workspaces and roles via lookup utility
+  const users = await enrichUsersWithWorkspaces(rawUsers);
 
   return {
     users,
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: getTotalPages(total, limitNum),
   };
 }
 

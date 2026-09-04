@@ -11,7 +11,7 @@ import {
 } from "../../common/errors/index.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
-import { createNotification } from "../notifications/notification.service.js";
+import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
 import mongoose from "mongoose";
 
 
@@ -27,41 +27,28 @@ export async function assignRoleToMember({
     !mongoose.Types.ObjectId.isValid(userId) ||
     !mongoose.Types.ObjectId.isValid(roleId)
   ) {
-    throw new BadRequestError("Invalid teamId, userId, or roleId format.");
+    throw new BadRequestError("Invalid ID format.");
   }
 
-  // 1. Verify Team exists & is active
-  const team = await Team.findById(teamId);
-  if (!team || team.status === "ARCHIVED") {
-    throw new NotFoundError("Team not found.");
-  }
+  // 1. Verify existence of Team, User, Role, Membership
+  const [team, user, role, membership] = await Promise.all([
+    Team.findById(teamId),
+    User.findById(userId),
+    Role.findById(roleId),
+    Membership.findOne({ teamId, userId }),
+  ]);
 
-  // 2. Verify User exists & is not disabled
-  const user = await User.findById(userId);
-  if (!user || user.accountStatus === "DISABLED") {
-    throw new NotFoundError("User not found or account is disabled.");
-  }
-
-  // 3. Verify Membership exists & is ACTIVE
-  const membership = await Membership.findOne({
-    userId,
-    teamId,
-    status: "ACTIVE",
-  });
+  if (!team) throw new NotFoundError("Team not found.");
+  if (!user) throw new NotFoundError("User not found.");
+  if (!role) throw new NotFoundError("Role not found.");
   if (!membership) {
-    throw new NotFoundError("Active team membership not found.");
+    throw new NotFoundError("User is not a member of this team.");
   }
 
-  // 4. Verify Role exists & is ACTIVE
-  const role = await Role.findById(roleId);
-  if (!role || role.status !== "ACTIVE") {
-    throw new NotFoundError("Role not found or is not active.");
-  }
-
-   // 1. Check if an active unrevoked assignment already exists
+  // Check if role is already assigned and active
   const existingAssignment = await MembershipRole.findOne({
     membershipId: membership._id,
-    roleId: role._id,
+    roleId,
     revokedAt: null,
   });
 
@@ -95,13 +82,14 @@ export async function assignRoleToMember({
     userId,
     roleId: role._id,
   });
-  createNotification({
-    recipientId: userId,
-    type: "ROLE_ASSIGNED",
-    title: "New Role Assigned",
-    message: `You were assigned the role '${role.name}'.`,
+  createTargetedNotifications({
+    recipients: [userId],
+    actorId: assignedBy,
+    type: "USER_ROLE_CHANGED",
     teamId,
-    metadata: { roleId: role._id, expiresAt },
+    resourceType: "ROLE",
+    resourceId: role._id,
+    metadata: { roleId: role._id, roleName: role.name, expiresAt },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging
@@ -246,12 +234,18 @@ export async function revokeRoleAssignment({
     userId,
     assignmentId: assignment._id,
   });
-  createNotification({
-    recipientId: userId,
-    type: "ROLE_REVOKED",
-    title: "Role Revoked",
-    message: "One of your assigned team roles has been revoked.",
+  createTargetedNotifications({
+    recipients: [userId],
+    actorId: revokedBy,
+    type: "USER_ROLE_CHANGED",
     teamId,
+    resourceType: "ROLE",
+    resourceId: assignment.roleId,
+    metadata: {
+      roleId: assignment.roleId,
+      roleName: targetRole?.name || "Role",
+      details: `Your role assignment '${targetRole?.name || "Role"}' has been revoked.`,
+    },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging

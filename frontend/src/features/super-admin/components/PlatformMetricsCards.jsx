@@ -1,9 +1,9 @@
 export default function PlatformMetricsCards({ metrics = {} }) {
   const {
-    workspaces = { total: 14, active: 12, archived: 2 },
-    users = { total: 148, active: 142, invited: 4, suspended: 2 },
-    jitGrants = { active: 5, trending: '+2', percentage: '35%' },
-    securityEvents = { today: 28, last24Hours: 'Last 24 hours' },
+    workspaces = { total: 0, active: 0, archived: 0 },
+    users = { total: 0, active: 0, invited: 0, suspended: 0 },
+    jitGrants = { active: 0, trending: '0', percentage: '0%' },
+    securityEvents = { today: 0, last24Hours: 'Last 24 hours' },
   } = metrics;
 
   return (

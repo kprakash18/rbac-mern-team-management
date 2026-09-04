@@ -1,22 +1,20 @@
-import { useState, useEffect } from 'react';
-import {
-  INITIAL_ACTIVE_GRANTS,
-  INITIAL_PENDING_REQUESTS,
-  INITIAL_JIT_HISTORY,
-} from '../constants/jit.constants.js';
+import { useState, useEffect, useCallback } from 'react';
 import ActiveGrantsTable from './jit/ActiveGrantsTable.jsx';
 import PendingRequestsTable from './jit/PendingRequestsTable.jsx';
 import JitHistoryTable from './jit/JitHistoryTable.jsx';
 import NewGrantModal from './jit/NewGrantModal.jsx';
-import RejectRequestModal from './jit/RejectRequestModal.jsx';
+import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import RequestDetailsModal from './jit/RequestDetailsModal.jsx';
 import JitFilterModal from './jit/JitFilterModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
+import api from '@/lib/api';
 
 export default function JitAccessView() {
   const [activeTab, setActiveTab] = useState('active');
-  const [grants, setGrants] = useState(INITIAL_ACTIVE_GRANTS);
-  const [pendingRequests, setPendingRequests] = useState(INITIAL_PENDING_REQUESTS);
-  const [history, setHistory] = useState(INITIAL_JIT_HISTORY);
+  const [grants, setGrants] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [history, setHistory] = useState([]);
 
   // Filters
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -26,14 +24,77 @@ export default function JitAccessView() {
   // Modals
   const [isNewGrantOpen, setIsNewGrantOpen] = useState(false);
   const [rejectingRequest, setRejectingRequest] = useState(null);
+  const [rejectReason, setRejectReason] = useState('Insufficient business justification or outside operational window.');
   const [selectedRequestDetails, setSelectedRequestDetails] = useState(null);
 
   // Toast notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
+
+  const fetchJitRequests = useCallback(async () => {
+    try {
+      const teamsRes = await api.get('/api/teams');
+      const teams = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
+      if (teams.length > 0) {
+        const teamId = teams[0]._id || teams[0].id;
+        const res = await api.get(`/api/teams/${teamId}/access-requests`);
+        const requests = Array.isArray(res.data?.data) ? res.data?.data : [];
+
+        const pending = requests.filter((r) => r.status === 'PENDING').map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          justification: r.justification || r.reason || 'Operational task',
+          duration: `${r.durationMinutes || 60}m`,
+          requestedAt: r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : 'Just now',
+          timeRemainingSec: (r.durationMinutes || 60) * 60,
+        }));
+
+        const active = requests.filter((r) => r.status === 'APPROVED' || r.status === 'ACTIVE').map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          grantedBy: r.approvedBy?.name || 'System Admin',
+          grantedAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
+          timeRemainingSec: 3600,
+          totalDurationSec: 3600,
+        }));
+
+        const hist = requests.filter((r) => ['REJECTED', 'EXPIRED', 'REVOKED'].includes(r.status)).map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          status: r.status,
+          decisionBy: r.approvedBy?.name || 'System Admin',
+          decisionAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
+        }));
+
+        setPendingRequests(pending);
+        setGrants(active);
+        setHistory(hist);
+      }
+    } catch (err) {
+      console.warn('Failed to load JIT requests:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJitRequests();
+  }, [fetchJitRequests]);
 
   // Real-time ticking timer for active grants with automatic expiration transition
   useEffect(() => {
@@ -189,13 +250,10 @@ export default function JitAccessView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1200] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">info</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-1200">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-lg">
@@ -337,11 +395,47 @@ export default function JitAccessView() {
       />
 
       {/* Reject Request Modal */}
-      <RejectRequestModal
-        request={rejectingRequest}
-        onClose={() => setRejectingRequest(null)}
-        onConfirmReject={handleConfirmReject}
-      />
+      {rejectingRequest && (
+        <ConfirmModal
+          isOpen={Boolean(rejectingRequest)}
+          title="Reject Access Request"
+          confirmText="Confirm Rejection"
+          confirmVariant="danger"
+          icon="cancel"
+          onClose={() => setRejectingRequest(null)}
+          onConfirm={() => {
+            handleConfirmReject(rejectingRequest.id, rejectReason);
+            setRejectingRequest(null);
+          }}
+        >
+          <div className="space-y-3 text-[13px]">
+            <div className="p-2.5 bg-surface-container-low rounded-lg text-[12px] text-on-surface space-y-1">
+              <div>
+                <strong>Requester:</strong> {rejectingRequest.user?.name} ({rejectingRequest.user?.email})
+              </div>
+              <div>
+                <strong>Requested Perm:</strong>{' '}
+                <span className="font-mono">{rejectingRequest.permission}</span> on{' '}
+                <span className="font-mono">{rejectingRequest.targetResource}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-on-surface-variant mb-1">
+                Reason for Rejection
+              </label>
+              <textarea
+                required
+                rows="3"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full p-2 bg-surface-container-low rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none"
+                placeholder="Explain why this request is being rejected..."
+              />
+            </div>
+          </div>
+        </ConfirmModal>
+      )}
 
       {/* Filter Modal */}
       <JitFilterModal

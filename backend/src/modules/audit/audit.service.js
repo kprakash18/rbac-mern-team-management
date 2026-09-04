@@ -1,4 +1,5 @@
 import AuditLog from "./audit-log.model.js";
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
 
 /**
  * Writes a single audit event record.
@@ -53,9 +54,7 @@ export async function getAuditLogs({
     if (filters.dateTo) filter.createdAt.$lte = new Date(filters.dateTo);
   }
 
-  const sanitizedPage = Math.max(1, parseInt(page, 10) || 1);
-  const sanitizedLimit = Math.min(Math.max(1, parseInt(limit, 10) || 20), 100);
-  const skip = (sanitizedPage - 1) * sanitizedLimit;
+  const { page: sanitizedPage, limit: sanitizedLimit, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [logs, total] = await Promise.all([
     AuditLog.find(filter)
@@ -66,12 +65,10 @@ export async function getAuditLogs({
     AuditLog.countDocuments(filter),
   ]);
 
-  const totalPages = Math.ceil(total / sanitizedLimit);
-
   return {
     logs,
     total,
     page: sanitizedPage,
-    totalPages,
+    totalPages: getTotalPages(total, sanitizedLimit),
   };
 }

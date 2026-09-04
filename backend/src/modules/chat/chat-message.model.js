@@ -8,6 +8,11 @@ const chatMessageSchema = new mongoose.Schema(
       required: true,
       index: true,
     },
+    groupId: {
+      type: String,
+      default: "grp-general",
+      index: true,
+    },
     senderId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -34,7 +39,7 @@ const chatMessageSchema = new mongoose.Schema(
   }
 );
 
-chatMessageSchema.index({ teamId: 1, createdAt: -1 });
+chatMessageSchema.index({ teamId: 1, groupId: 1, createdAt: -1 });
 
 const ChatMessage = mongoose.model("ChatMessage", chatMessageSchema);
 
