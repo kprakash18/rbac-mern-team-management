@@ -74,6 +74,7 @@
   --spacing-stack-sm: 8px;
   --spacing-stack-md: 16px;
   --spacing-stack-lg: 24px;
+  --spacing-unit: 4px;
 
   /* Typography */
   --font-label-bold: Inter, sans-serif;

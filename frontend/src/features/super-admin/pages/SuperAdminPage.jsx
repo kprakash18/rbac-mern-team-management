@@ -9,10 +9,137 @@ import RolesView from '../components/RolesView';
 import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
 import SecurityAuditView from '../components/SecurityAuditView';
+import WorkspaceModal from '../components/WorkspaceModal';
+import { MOCK_ACTIVE_WORKSPACES } from '@/constants';
 
-export default function SuperAdminPage({ currentUser, onLogout }) {
+export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
+  const [editingWorkspace, setEditingWorkspace] = useState(null);
+  const [toastMessage, setToastMessage] = useState('');
+  const [workspaces, setWorkspaces] = useState(() => {
+    try {
+      const saved = localStorage.getItem('platform_workspaces_list');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return MOCK_ACTIVE_WORKSPACES;
+  });
+
+  const showToast = (msg) => {
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(''), 3500);
+  };
+
+  const handleCreateWorkspace = (newWs) => {
+    setWorkspaces((prev) => {
+      const nextList = [newWs, ...prev];
+      try {
+        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
+      } catch (err) {
+        console.error(err);
+      }
+      return nextList;
+    });
+
+    // Also register in user accessible workspaces list
+    try {
+      const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
+      storedUserWs.unshift({
+        id: newWs.id,
+        name: newWs.name,
+        description: newWs.description,
+        icon: newWs.icon || 'engineering',
+        membersCount: newWs.membersCount || 1,
+        status: 'Active',
+        tier: newWs.tier || 'Standard',
+      });
+      localStorage.setItem('custom_workspaces', JSON.stringify(storedUserWs));
+    } catch {}
+    showToast(`Workspace "${newWs.name}" successfully created.`);
+  };
+
+  const handleUpdateWorkspace = (updatedWs) => {
+    setWorkspaces((prev) => {
+      const nextList = prev.map((ws) => (ws.id === updatedWs.id ? updatedWs : ws));
+      try {
+        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
+      } catch (err) {
+        console.error(err);
+      }
+      return nextList;
+    });
+
+    // Sync in user accessible custom workspaces list
+    try {
+      const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
+      const nextUserWs = storedUserWs.map((ws) => (ws.id === updatedWs.id ? { ...ws, ...updatedWs } : ws));
+      localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
+    } catch {}
+
+    setEditingWorkspace(null);
+    showToast(`Workspace "${updatedWs.name}" settings updated.`);
+  };
+
+  const handleArchiveWorkspace = (workspaceId) => {
+    let targetName = 'Workspace';
+    setWorkspaces((prev) => {
+      const nextList = prev.map((ws) => {
+        if (ws.id === workspaceId) {
+          targetName = ws.name;
+          return { ...ws, status: 'Archived', archivedAt: new Date().toISOString() };
+        }
+        return ws;
+      });
+      try {
+        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
+      } catch (err) {
+        console.error(err);
+      }
+      return nextList;
+    });
+
+    try {
+      const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
+      const nextUserWs = storedUserWs.map((ws) =>
+        ws.id === workspaceId ? { ...ws, status: 'Archived', archivedAt: new Date().toISOString() } : ws
+      );
+      localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
+    } catch {}
+
+    setEditingWorkspace(null);
+    showToast(`"${targetName}" has been archived.`);
+  };
+
+  const handleRestoreWorkspace = (workspaceId) => {
+    let targetName = 'Workspace';
+    setWorkspaces((prev) => {
+      const nextList = prev.map((ws) => {
+        if (ws.id === workspaceId) {
+          targetName = ws.name;
+          return { ...ws, status: 'Active', archivedAt: null };
+        }
+        return ws;
+      });
+      try {
+        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
+      } catch (err) {
+        console.error(err);
+      }
+      return nextList;
+    });
+
+    try {
+      const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
+      const nextUserWs = storedUserWs.map((ws) =>
+        ws.id === workspaceId ? { ...ws, status: 'Active', archivedAt: null } : ws
+      );
+      localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
+    } catch {}
+
+    setEditingWorkspace(null);
+    showToast(`"${targetName}" has been restored to Active status.`);
+  };
 
   return (
     <div className="font-body-base text-on-surface bg-surface min-h-screen">
@@ -51,12 +178,42 @@ export default function SuperAdminPage({ currentUser, onLogout }) {
               <PlatformMetricsCards />
               <div className="flex flex-col lg:flex-row gap-xl w-full">
                 <RecentActivityFeed />
-                <ActiveWorkspacesWidget />
+                <ActiveWorkspacesWidget
+                  workspaces={workspaces}
+                  onCreateWorkspaceClick={() => setIsCreateWorkspaceModalOpen(true)}
+                  onEditWorkspaceClick={(ws) => setEditingWorkspace(ws)}
+                  onJumpInWorkspace={(ws) => onJumpIntoWorkspace?.(ws)}
+                />
               </div>
             </div>
           )}
         </main>
       </div>
+
+      {/* Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-120 bg-inverse-surface text-inverse-on-surface px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-border-subtle animate-in slide-in-from-bottom-5 duration-200">
+          <span className="material-symbols-outlined text-[20px] text-emerald-400">check_circle</span>
+          <span className="font-label-bold text-label-sm">{toastMessage}</span>
+        </div>
+      )}
+
+      <WorkspaceModal
+        isOpen={isCreateWorkspaceModalOpen}
+        onClose={() => setIsCreateWorkspaceModalOpen(false)}
+        onCreateWorkspace={handleCreateWorkspace}
+      />
+
+      {editingWorkspace && (
+        <WorkspaceModal
+          isOpen={Boolean(editingWorkspace)}
+          workspace={editingWorkspace}
+          onClose={() => setEditingWorkspace(null)}
+          onSaveWorkspace={handleUpdateWorkspace}
+          onArchiveWorkspace={handleArchiveWorkspace}
+          onRestoreWorkspace={handleRestoreWorkspace}
+        />
+      )}
     </div>
   );
 }

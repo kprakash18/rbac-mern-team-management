@@ -1,14 +1,28 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
+import { RECENT_WORKSPACE_ACTIVITY } from '@/constants';
+import NotificationDropdown from '../../shell/NotificationDropdown';
 
-export default function MyDashboardView({ currentUser, workspace, personas = [], onSwitchPersona, onNavigate }) {
+export default function MyDashboardView({ currentUser, personas = [], onSwitchPersona, onNavigate }) {
   const [isAlertDismissed, setIsAlertDismissed] = useState(false);
   const [secondsRemaining, setSecondsRemaining] = useState(6135); // 01h 42m 15s
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const userMenuRef = useRef(null);
 
   useEffect(() => {
     const timer = setInterval(() => {
       setSecondsRemaining((prev) => (prev > 0 ? prev - 1 : 0));
     }, 1000);
     return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const formatHeroCountdown = (sec) => {
@@ -31,8 +45,15 @@ export default function MyDashboardView({ currentUser, workspace, personas = [],
   const userEmail = currentUser?.email || 'diana.m@acme.corp';
   const isTeamAdmin = currentUser?.isTeamAdmin;
   const teamRoleTitle = currentUser?.teamRoleTitle || (isTeamAdmin ? 'Team Admin' : 'Developer');
+  const currentUserId = currentUser?.id;
+  const currentUserName = currentUser?.name?.toLowerCase();
 
-  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const displayedActivities = isTeamAdmin
+    ? RECENT_WORKSPACE_ACTIVITY
+    : RECENT_WORKSPACE_ACTIVITY.filter(
+        (a) => a.actorId === currentUserId || (currentUserName && a.actor.toLowerCase() === currentUserName)
+      );
+
   const userInitials = currentUser?.initials || 'DM';
 
   return (
@@ -76,18 +97,13 @@ export default function MyDashboardView({ currentUser, workspace, personas = [],
             <span className="material-symbols-outlined text-[16px]">bolt</span>
             <span className="">Request JIT Elevation</span>
           </button>
-          <button
-            type="button"
-            onClick={() => onNavigate?.('announcements')}
-            className="relative p-1.5 rounded-lg border border-border-subtle text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer"
-            title="Bulletins & Notifications"
-          >
-            <span className="material-symbols-outlined text-[20px]">notifications</span>
-            <span className="absolute top-1 right-1 w-2 h-2 rounded-full bg-error"></span>
-          </button>
+          <NotificationDropdown
+            currentUser={currentUser}
+            onSelectTab={onNavigate}
+          />
 
           {/* Top-Right User Logo & Dropdown */}
-          <div className="relative">
+          <div className="relative" ref={userMenuRef}>
             <button
               type="button"
               onClick={() => setIsUserMenuOpen((prev) => !prev)}
@@ -119,6 +135,59 @@ export default function MyDashboardView({ currentUser, workspace, personas = [],
                     {userRole}
                   </span>
                 </div>
+
+                {/* Account Switching Section */}
+                {personas && personas.length > 0 && (
+                  <div className="py-2 px-md border-b border-border-subtle">
+                    <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1 mb-1.5">
+                      <span className="material-symbols-outlined text-[14px] text-primary">switch_account</span>
+                      <span>Switch Account</span>
+                    </span>
+                    <div className="flex flex-col gap-1">
+                      {personas.map((persona) => {
+                        const isSelected = (currentUser?.id || 'usr-dm') === persona.id;
+                        return (
+                          <button
+                            key={persona.id}
+                            type="button"
+                            onClick={() => {
+                              onSwitchPersona?.(persona.id);
+                              setIsUserMenuOpen(false);
+                            }}
+                            className={`flex items-center justify-between p-1.5 rounded-lg text-left text-[12px] transition-colors cursor-pointer w-full ${
+                              isSelected
+                                ? 'bg-primary-container text-on-primary-container font-semibold'
+                                : 'text-on-surface hover:bg-surface-container-low'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <div
+                                className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                  persona.isTeamAdmin
+                                    ? 'bg-primary text-on-primary'
+                                    : 'bg-surface-container-high text-on-surface'
+                                }`}
+                              >
+                                {persona.initials}
+                              </div>
+                              <div className="truncate leading-tight">
+                                <p className="truncate font-medium">{persona.name}</p>
+                                <p className="text-[10px] text-on-surface-variant truncate">
+                                  {persona.isTeamAdmin ? '👑 Team Admin' : persona.teamRoleTitle}
+                                </p>
+                              </div>
+                            </div>
+                            {isSelected && (
+                              <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
+                                check
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="py-1">
                   <button
@@ -297,66 +366,59 @@ export default function MyDashboardView({ currentUser, workspace, personas = [],
           <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm">
             <div className="flex items-center justify-between mb-md">
               <div>
-                <h2 className="font-headline-md text-headline-md text-on-surface">Recent Activity</h2>
-                <p className="text-[12px] text-on-surface-variant">Workspace audit trail &amp; events</p>
+                <h2 className="font-headline-md text-headline-md text-on-surface">
+                  {isTeamAdmin ? 'Recent Activity' : 'My Recent Activity'}
+                </h2>
+                <p className="text-[12px] text-on-surface-variant">
+                  {isTeamAdmin ? 'Workspace audit trail & events' : 'Your personal activity trail & contributions'}
+                </p>
               </div>
-              <button
-                type="button"
-                onClick={() => onNavigate?.('audit-log')}
-                className="font-label-bold text-label-sm text-primary hover:underline cursor-pointer"
-              >
-                View All
-              </button>
+              {isTeamAdmin && (
+                <button
+                  type="button"
+                  onClick={() => onNavigate?.('audit-log')}
+                  className="font-label-bold text-label-sm text-primary hover:underline cursor-pointer"
+                >
+                  View All
+                </button>
+              )}
             </div>
             <div className="divide-y divide-border-subtle">
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-warning-bg text-on-tertiary-fixed flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  DM
+              {displayedActivities.length > 0 ? (
+                displayedActivities.map((act) => {
+                  const isCurrentUser =
+                    act.actorId === currentUserId ||
+                    (currentUserName && act.actor.toLowerCase() === currentUserName);
+                  return (
+                    <div key={act.id} className="py-3 flex items-start gap-md">
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 font-label-bold text-label-sm ${
+                          act.bgClass || 'bg-surface-container-high text-on-surface'
+                        }`}
+                      >
+                        {act.initials}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center justify-between">
+                          <p className="font-label-bold text-label-bold text-on-surface truncate">
+                            {act.actor} {isCurrentUser && '(You)'}
+                          </p>
+                          <span className="text-[11px] text-on-surface-variant">{act.time}</span>
+                        </div>
+                        <p className="text-body-sm text-on-surface-variant truncate">{act.action}</p>
+                      </div>
+                    </div>
+                  );
+                })
+              ) : (
+                <div className="py-8 text-center text-on-surface-variant text-body-sm flex flex-col items-center justify-center gap-1">
+                  <span className="material-symbols-outlined text-[32px] text-outline">history</span>
+                  <p className="font-medium text-on-surface">No recent personal activity</p>
+                  <p className="text-[12px] text-on-surface-variant">
+                    Completed tasks and commits will appear here as you work.
+                  </p>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface truncate">Diana Morales (You)</p>
-                    <span className="text-[11px] text-on-surface-variant">18m ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant truncate">Elevated to DevSecOps Admin via Ticket #INC-8492</p>
-                </div>
-              </div>
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  CD
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface truncate">Charlie Davis</p>
-                    <span className="text-[11px] text-on-surface-variant">34m ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant truncate">Provisioned bridge #infra-db-latency in Slack</p>
-                </div>
-              </div>
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  AJ
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface truncate">Alice Johnson</p>
-                    <span className="text-[11px] text-on-surface-variant">1h ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant truncate">Deployed service-mesh-gateway v2.9.4 to Kubernetes</p>
-                </div>
-              </div>
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  ER
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface truncate">Elena Rostova</p>
-                    <span className="text-[11px] text-on-surface-variant">2h ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant truncate">Signed Q4 Credential Rotation Disclosure</p>
-                </div>
-              </div>
+              )}
             </div>
           </div>
         </div>

@@ -1,21 +1,51 @@
 import { useState } from 'react';
-import WorkspaceAppSidebar from '../components/WorkspaceAppSidebar';
-import WorkspaceAppTopbar from '../components/WorkspaceAppTopbar';
-import MyDashboardView from '../components/MyDashboardView';
-import TasksView from '../components/TasksView';
-import TeamMembersView from '../components/TeamMembersView';
-import ChatView from '../components/ChatView';
-import JitRequestView from '../components/JitRequestView';
-import AnnouncementsView from '../components/AnnouncementsView';
-import DirectMessageSidebar from '../components/DirectMessageSidebar';
-import { MOCK_ANNOUNCEMENTS, MOCK_CURRENT_USER, WORKSPACE_PERSONAS } from '../constants/workspaceApp.constants';
+import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
+import WorkspaceAppTopbar from '../shell/WorkspaceAppTopbar';
+import DirectMessageSidebar from '../shell/DirectMessageSidebar';
+import MyDashboardView from '../modules/dashboard/MyDashboardView';
+import MyPermissionsView from '../modules/dashboard/MyPermissionsView';
+import TasksView from '../modules/tasks/TasksView';
+import TeamMembersView from '../modules/members/TeamMembersView';
+import ChatView from '../modules/chat/ChatView';
+import JitRequestView from '../modules/jit/JitRequestView';
+import AnnouncementsView from '../modules/announcements/AnnouncementsView';
+import TeamSettingsModal from '../modules/announcements/TeamSettingsModal';
+import WorkspaceAuditLogView from '../modules/audit/WorkspaceAuditLogView';
+import { MOCK_ANNOUNCEMENTS, MOCK_CURRENT_USER, WORKSPACE_PERSONAS } from '@/constants';
 
 export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const [selectedPersonaId, setSelectedPersonaId] = useState('usr-dm');
+  const initialPersonaId =
+    WORKSPACE_PERSONAS.find((p) => p.email?.toLowerCase() === currentUser?.email?.toLowerCase())?.id ||
+    (currentUser?.email?.includes('marcus') ? 'usr-mv' : currentUser?.id) ||
+    'usr-dm';
+  const [selectedPersonaId, setSelectedPersonaId] = useState(initialPersonaId);
   const [announcements, setAnnouncements] = useState(MOCK_ANNOUNCEMENTS);
   const [dismissedBannerIds, setDismissedBannerIds] = useState([]);
+
+  // Active Workspace State & Team Settings Modal (PATCH /api/teams/:teamId)
+  const [currentWorkspace, setCurrentWorkspace] = useState(() => {
+    try {
+      const saved = localStorage.getItem('active_workspace');
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return workspace || { name: 'Acme Engineering' };
+  });
+  const [isTeamSettingsOpen, setIsTeamSettingsOpen] = useState(false);
+
+  const handleSaveTeamSettings = (updated) => {
+    setCurrentWorkspace(updated);
+    try {
+      localStorage.setItem('active_workspace', JSON.stringify(updated));
+      const storedList = localStorage.getItem('platform_workspaces_list');
+      if (storedList) {
+        const list = JSON.parse(storedList);
+        const nextList = list.map((w) => (w.id === updated.id ? { ...w, ...updated } : w));
+        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
+      }
+    } catch {}
+  };
 
   // Persistent Direct Messaging State
   const [directMessageTarget, setDirectMessageTarget] = useState(null);
@@ -63,7 +93,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         return (
           <MyDashboardView
             currentUser={user}
-            workspace={workspace}
+            workspace={currentWorkspace}
             personas={WORKSPACE_PERSONAS}
             onSwitchPersona={setSelectedPersonaId}
             onNavigate={handleNavigate}
@@ -76,7 +106,14 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       case 'chat':
         return <ChatView currentUser={user} />;
       case 'jit-request':
+      case 'jit-access':
         return <JitRequestView currentUser={user} />;
+      case 'my-permissions':
+        return (
+          <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex-1">
+            <MyPermissionsView currentUser={user} />
+          </div>
+        );
       case 'announcements':
         return (
           <AnnouncementsView
@@ -89,52 +126,17 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         );
       case 'audit-log':
         return (
-          <div className="flex flex-col gap-lg max-w-7xl mx-auto p-lg">
-            <h1 className="font-display-title text-[22px] font-semibold text-on-surface">
-              Audit Log
-            </h1>
-            <p className="font-body-sm text-on-surface-variant">
-              Immutable workspace events and authorization trails.
-            </p>
-            <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm divide-y divide-border-subtle">
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-warning-bg text-on-tertiary-fixed flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  DM
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface">
-                      Diana Morales (You)
-                    </p>
-                    <span className="text-[11px] text-on-surface-variant">18m ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant">
-                    Elevated to DevSecOps Admin via Ticket #INC-8492
-                  </p>
-                </div>
-              </div>
-              <div className="py-3 flex items-start gap-md">
-                <div className="w-8 h-8 rounded-full bg-surface-container-high text-on-surface flex items-center justify-center shrink-0 font-label-bold text-label-sm">
-                  CD
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between">
-                    <p className="font-label-bold text-label-bold text-on-surface">Charlie Davis</p>
-                    <span className="text-[11px] text-on-surface-variant">34m ago</span>
-                  </div>
-                  <p className="text-body-sm text-on-surface-variant">
-                    Provisioned bridge #infra-db-latency in Slack
-                  </p>
-                </div>
-              </div>
-            </div>
-          </div>
+          <WorkspaceAuditLogView
+            currentUser={user}
+            workspace={currentWorkspace}
+            onNavigate={handleNavigate}
+          />
         );
       default:
         return (
           <MyDashboardView
             currentUser={user}
-            workspace={workspace}
+            workspace={currentWorkspace}
             onNavigate={handleNavigate}
           />
         );
@@ -145,9 +147,11 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     <div className="bg-surface font-body-base text-on-surface antialiased flex min-h-screen w-full overflow-x-hidden">
       {/* Sidebar with Toggle */}
       <WorkspaceAppSidebar
-        workspace={workspace}
+        workspace={currentWorkspace}
+        currentUser={user}
         activeView={activeView}
         onSelectView={setActiveView}
+        onOpenTeamSettings={() => setIsTeamSettingsOpen(true)}
         unreadAnnouncementsCount={unreadAnnouncementsCount}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
@@ -157,12 +161,14 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       <div className="flex-1 min-w-0 flex flex-col overflow-x-hidden">
         {activeView !== 'dashboard' && (
           <WorkspaceAppTopbar
-            workspace={workspace}
+            workspace={currentWorkspace}
             currentUser={user}
             personas={WORKSPACE_PERSONAS}
             onSwitchPersona={setSelectedPersonaId}
+            onOpenTeamSettings={() => setIsTeamSettingsOpen(true)}
             unreadAnnouncementsCount={unreadAnnouncementsCount}
             onAnnouncementsClick={() => setActiveView('announcements')}
+            onSelectTab={(tab) => setActiveView(tab)}
             onLogout={onLogout}
           />
         )}
@@ -218,6 +224,14 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         isMinimized={isDirectMessageMinimized}
         onClose={() => setIsDirectMessageOpen(false)}
         onToggleMinimize={() => setIsDirectMessageMinimized((prev) => !prev)}
+      />
+
+      {/* Team Settings Modal (PATCH /api/teams/:id) */}
+      <TeamSettingsModal
+        isOpen={isTeamSettingsOpen}
+        workspace={currentWorkspace}
+        onClose={() => setIsTeamSettingsOpen(false)}
+        onSave={handleSaveTeamSettings}
       />
     </div>
   );

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { MOCK_USER_WORKSPACES } from '../constants/workspace.constants';
+import { MOCK_USER_WORKSPACES } from '@/constants';
 import WorkspaceListItem from '../components/WorkspaceList';
 
 export default function WorkspacesPage({ onWorkspaceSelected }) {

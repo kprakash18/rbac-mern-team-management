@@ -1,6 +1,5 @@
 export default function WorkspaceListItem({ workspace, onSelect }) {
   const {
-    id,
     name,
     role,
     icon = 'domain',

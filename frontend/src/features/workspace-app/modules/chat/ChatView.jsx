@@ -1,13 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-
-const WORKSPACE_MEMBERS = [
-  { id: 'usr-dm', name: 'Diana Morales', role: 'Lead Architect', teamRole: 'Team Admin', initials: 'DM' },
-  { id: 'usr-cd', name: 'Charlie Davis', role: 'Senior Staff SRE', teamRole: 'Project Manager', initials: 'CD' },
-  { id: 'usr-aj', name: 'Alice Johnson', role: 'DevOps Engineer', teamRole: 'Developer', initials: 'AJ' },
-  { id: 'usr-er', name: 'Elena Rostova', role: 'Security Auditor', teamRole: 'Security Auditor', initials: 'ER' },
-  { id: 'usr-mv', name: 'Marcus Vance', role: 'Senior Backend Developer', teamRole: 'Developer', initials: 'MV' },
-  { id: 'usr-sl', name: 'Sophia Lin', role: 'Lead UI Engineer', teamRole: 'Developer', initials: 'SL' },
-];
+import { WORKSPACE_TEAM_MEMBERS } from '@/constants';
+import { getStorage, setStorage } from '../../../../lib/storage';
+import ConfirmModal from '../../../../components/shared/ConfirmModal';
 
 const INITIAL_GROUPS = [
   {
@@ -129,13 +123,28 @@ const INITIAL_MESSAGES = {
 
 export default function ChatView({ currentUser }) {
   const currentUserId = currentUser?.id || 'usr-dm';
-  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
-  const [groups, setGroups] = useState(INITIAL_GROUPS);
+  const [groups, setGroups] = useState(() => getStorage('workspace_chat_groups', INITIAL_GROUPS));
+
+  const persistGroups = (newGroups) => {
+    setGroups(newGroups);
+    setStorage('workspace_chat_groups', newGroups);
+  };
+
   const [activeGroupId, setActiveGroupId] = useState('grp-general');
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
+  const [messages, setMessages] = useState(() => getStorage('workspace_chat_messages', INITIAL_MESSAGES));
   const [inputText, setInputText] = useState('');
   const [searchChannel, setSearchChannel] = useState('');
+
+  // Editing & Deleting Messages State
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [deletingMessage, setDeletingMessage] = useState(null);
+
+  // Channel deletion & leaving confirmation state
+  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null);
+  const [confirmLeaveGroup, setConfirmLeaveGroup] = useState(null);
 
   // Modals
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -179,13 +188,53 @@ export default function ChatView({ currentUser }) {
       timestamp: 'Just now',
     };
 
-    setMessages((prev) => ({
-      ...prev,
-      [activeGroupId]: [...(prev[activeGroupId] || []), newMsg],
-    }));
+    setMessages((prev) => {
+      const nextMessages = {
+        ...prev,
+        [activeGroupId]: [...(prev[activeGroupId] || []), newMsg],
+      };
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
 
     setInputText('');
     setIsSystemBroadcastMode(false);
+  };
+
+  const handleStartEdit = (msg) => {
+    setEditingMessageId(msg.id);
+    setEditingText(msg.text);
+  };
+
+  const handleCancelEdit = () => {
+    setEditingMessageId(null);
+    setEditingText('');
+  };
+
+  const handleSaveEdit = (msgId) => {
+    if (!editingText.trim()) return;
+    setMessages((prev) => {
+      const currentGroupMsgs = prev[activeGroupId] || [];
+      const nextGroupMsgs = currentGroupMsgs.map((m) =>
+        m.id === msgId ? { ...m, text: editingText.trim(), isEdited: true } : m
+      );
+      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
+    setEditingMessageId(null);
+    setEditingText('');
+  };
+
+  const handleDeleteMessage = (msgId) => {
+    setMessages((prev) => {
+      const currentGroupMsgs = prev[activeGroupId] || [];
+      const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId);
+      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
+    setDeletingMessage(null);
   };
 
   const handleOpenCreateModal = () => {
@@ -220,7 +269,8 @@ export default function ChatView({ currentUser }) {
       isDefault: false,
     };
 
-    setGroups((prev) => [...prev, newGroup]);
+    const updatedGroups = [...groups, newGroup];
+    persistGroups(updatedGroups);
     setMessages((prev) => ({
       ...prev,
       [newGroup.id]: [
@@ -255,35 +305,92 @@ export default function ChatView({ currentUser }) {
     e.preventDefault();
     if (inviteSelectedIds.length === 0) return;
 
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === activeGroupId
-          ? { ...g, memberIds: Array.from(new Set([...g.memberIds, ...inviteSelectedIds])) }
-          : g
-      )
+    const updatedGroups = groups.map((g) =>
+      g.id === activeGroupId
+        ? { ...g, memberIds: Array.from(new Set([...g.memberIds, ...inviteSelectedIds])) }
+        : g
     );
+    persistGroups(updatedGroups);
 
-    const invitedNames = WORKSPACE_MEMBERS.filter((m) => inviteSelectedIds.includes(m.id))
+    const invitedNames = WORKSPACE_TEAM_MEMBERS.filter((m) => inviteSelectedIds.includes(m.id))
       .map((m) => m.name)
       .join(', ');
 
-    setMessages((prev) => ({
-      ...prev,
-      [activeGroupId]: [
-        ...(prev[activeGroupId] || []),
-        {
-          id: `msg-inv-${Date.now()}`,
-          senderId: currentUserId,
-          senderName: currentUser?.name || 'Diana Morales',
-          senderRole: currentUser?.role || 'Lead Architect',
-          senderInitials: currentUser?.initials || 'DM',
-          text: `🎉 Added ${invitedNames} to #${activeGroup.name}.`,
-          timestamp: 'Just now',
-        },
-      ],
-    }));
+    setMessages((prev) => {
+      const nextMessages = {
+        ...prev,
+        [activeGroupId]: [
+          ...(prev[activeGroupId] || []),
+          {
+            id: `msg-inv-${Date.now()}`,
+            senderId: currentUserId,
+            senderName: currentUser?.name || 'Diana Morales',
+            senderRole: currentUser?.role || 'Lead Architect',
+            senderInitials: currentUser?.initials || 'DM',
+            text: `🎉 Added ${invitedNames} to #${activeGroup.name}.`,
+            timestamp: 'Just now',
+          },
+        ],
+      };
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
 
     setIsInviteModalOpen(false);
+  };
+
+  const handleConfirmDeleteGroup = () => {
+    if (!confirmDeleteGroup || confirmDeleteGroup.isDefault) return;
+    const targetId = confirmDeleteGroup.id;
+    const updatedGroups = groups.filter((g) => g.id !== targetId);
+    persistGroups(updatedGroups);
+
+    setMessages((prev) => {
+      const nextMessages = { ...prev };
+      delete nextMessages[targetId];
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
+
+    if (activeGroupId === targetId) {
+      setActiveGroupId('grp-general');
+    }
+    setConfirmDeleteGroup(null);
+  };
+
+  const handleConfirmLeaveGroup = () => {
+    if (!confirmLeaveGroup || confirmLeaveGroup.isDefault) return;
+    const targetId = confirmLeaveGroup.id;
+    const updatedGroups = groups.map((g) =>
+      g.id === targetId
+        ? { ...g, memberIds: g.memberIds.filter((id) => id !== currentUserId) }
+        : g
+    );
+    persistGroups(updatedGroups);
+
+    const departureMsg = {
+      id: `msg-leave-${Date.now()}`,
+      senderId: currentUserId,
+      senderName: currentUser?.name || 'Teammate',
+      senderRole: currentUser?.role || 'Developer',
+      senderInitials: currentUser?.initials || 'ME',
+      text: `👋 Left #${confirmLeaveGroup.name}.`,
+      timestamp: 'Just now',
+    };
+
+    setMessages((prev) => {
+      const nextMessages = {
+        ...prev,
+        [targetId]: [...(prev[targetId] || []), departureMsg],
+      };
+      setStorage('workspace_chat_messages', nextMessages);
+      return nextMessages;
+    });
+
+    if (activeGroupId === targetId) {
+      setActiveGroupId('grp-general');
+    }
+    setConfirmLeaveGroup(null);
   };
 
   // Filter channels the user has access to
@@ -294,8 +401,8 @@ export default function ChatView({ currentUser }) {
     return hasMembership && matchesSearch;
   });
 
-  const activeGroupMembers = WORKSPACE_MEMBERS.filter((m) => activeGroup.memberIds.includes(m.id));
-  const availableToInvite = WORKSPACE_MEMBERS.filter((m) => !activeGroup.memberIds.includes(m.id));
+  const activeGroupMembers = WORKSPACE_TEAM_MEMBERS.filter((m) => activeGroup.memberIds.includes(m.id));
+  const availableToInvite = WORKSPACE_TEAM_MEMBERS.filter((m) => !activeGroup.memberIds.includes(m.id));
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-md flex flex-col flex-1 h-[calc(100vh-80px)]">
@@ -465,6 +572,35 @@ export default function ChatView({ currentUser }) {
                   <span>{activeGroupMembers.length} Members</span>
                 </div>
               )}
+
+              {/* Channel Actions: Delete (Admin) or Leave (Member) if not default channel */}
+              {!activeGroup.isDefault && (
+                <>
+                  {isTeamAdmin ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmDeleteGroup(activeGroup)}
+                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-error-container/40 hover:text-error border border-border-subtle text-[12px] font-semibold text-on-surface-variant transition-colors cursor-pointer"
+                      title="Delete this channel and all its messages"
+                    >
+                      <span className="material-symbols-outlined text-[16px]">delete</span>
+                      <span className="hidden sm:inline">Delete Channel</span>
+                    </button>
+                  ) : (
+                    activeGroup.memberIds.includes(currentUserId) && (
+                      <button
+                        type="button"
+                        onClick={() => setConfirmLeaveGroup(activeGroup)}
+                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-border-subtle text-[12px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
+                        title="Leave this channel"
+                      >
+                        <span className="material-symbols-outlined text-[16px]">logout</span>
+                        <span className="hidden sm:inline">Leave</span>
+                      </button>
+                    )
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -498,10 +634,16 @@ export default function ChatView({ currentUser }) {
                 );
               }
 
+              const canEdit = isMe && !msg.isSystemBroadcast;
+              const canDelete = (isMe || isTeamAdmin) && !msg.isSystemBroadcast;
+              const isEditing = editingMessageId === msg.id;
+
               return (
                 <div
                   key={msg.id}
-                  className={`flex items-start gap-2.5 max-w-2xl ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}
+                  className={`relative group/msg flex items-start gap-2.5 max-w-2xl ${
+                    isMe ? 'self-end flex-row-reverse' : 'self-start'
+                  }`}
                 >
                   <div
                     className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
@@ -511,23 +653,101 @@ export default function ChatView({ currentUser }) {
                     {msg.senderInitials}
                   </div>
 
-                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'}`}>
+                  <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-lg`}>
                     <div className="flex items-center gap-1.5 mb-1">
                       <span className="font-label-bold text-[12px] text-on-surface">
                         {msg.senderName} {isMe && '(You)'}
                       </span>
                       <span className="text-[10px] text-on-surface-variant font-mono">{msg.timestamp}</span>
+                      {msg.isEdited && (
+                        <span className="text-[10px] text-on-surface-variant/70 italic font-mono">
+                          (edited)
+                        </span>
+                      )}
                     </div>
 
-                    <div
-                      className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${
-                        isMe
-                          ? 'bg-primary text-on-primary rounded-tr-xs'
-                          : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'
-                      }`}
-                    >
-                      {msg.text}
-                    </div>
+                    {isEditing ? (
+                      <div className="w-full min-w-[280px] p-2.5 rounded-xl bg-surface-container-lowest border-2 border-primary shadow-md flex flex-col gap-2 animate-in zoom-in-95 duration-100">
+                        <textarea
+                          value={editingText}
+                          onChange={(e) => setEditingText(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              handleSaveEdit(msg.id);
+                            } else if (e.key === 'Escape') {
+                              handleCancelEdit();
+                            }
+                          }}
+                          rows={2}
+                          className="w-full bg-transparent text-[13px] text-on-surface outline-none resize-none"
+                          autoFocus
+                        />
+                        <div className="flex items-center justify-between text-[11px] text-on-surface-variant pt-1 border-t border-border-subtle">
+                          <span className="text-[10px]">
+                            esc to <button type="button" onClick={handleCancelEdit} className="text-primary hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(msg.id)} className="text-primary hover:underline font-bold">save</button>
+                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              type="button"
+                              onClick={handleCancelEdit}
+                              className="px-2 py-0.5 rounded border border-border-subtle hover:bg-surface-container text-on-surface text-[11px] font-medium cursor-pointer"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleSaveEdit(msg.id)}
+                              className="px-2.5 py-0.5 rounded bg-primary text-on-primary hover:opacity-90 text-[11px] font-bold cursor-pointer shadow-xs"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <div
+                          className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${
+                            isMe
+                              ? 'bg-primary text-on-primary rounded-tr-xs'
+                              : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'
+                          }`}
+                        >
+                          {msg.text}
+                        </div>
+
+                        {/* Hover Action Menu */}
+                        {(canEdit || canDelete) && (
+                          <div
+                            className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-opacity bg-surface-container-lowest border border-border-subtle rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 z-10 ${
+                              isMe ? 'right-full mr-1.5' : 'left-full ml-1.5'
+                            }`}
+                          >
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleStartEdit(msg)}
+                                className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
+                                title="Edit message"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">edit</span>
+                              </button>
+                            )}
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => setDeletingMessage(msg)}
+                                className="p-1 rounded text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors cursor-pointer"
+                                title={isMe ? 'Delete message' : 'Delete message (Team Admin)'}
+                              >
+                                <span className="material-symbols-outlined text-[15px]">delete</span>
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               );
@@ -666,7 +886,7 @@ export default function ChatView({ currentUser }) {
                 </div>
 
                 <div className="max-h-48 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
-                  {WORKSPACE_MEMBERS.map((member) => {
+                  {WORKSPACE_TEAM_MEMBERS.map((member) => {
                     const isSelected = selectedMemberIds.includes(member.id);
                     const isCreator = member.id === currentUserId;
 
@@ -821,6 +1041,51 @@ export default function ChatView({ currentUser }) {
           </div>
         </div>
       )}
+
+      {/* Delete Message Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(deletingMessage)}
+        title="Delete Message?"
+        description="Are you sure you want to delete this message? This action cannot be undone."
+        confirmText="Yes, Delete"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        icon="delete"
+        onConfirm={() => handleDeleteMessage(deletingMessage.id)}
+        onClose={() => setDeletingMessage(null)}
+      >
+        {deletingMessage && (
+          <div className="p-2 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant italic truncate max-w-[240px] mt-1">
+            "{deletingMessage.text}"
+          </div>
+        )}
+      </ConfirmModal>
+
+      {/* Delete Channel Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmDeleteGroup)}
+        title={`Delete #${confirmDeleteGroup?.name}?`}
+        description="Are you sure you want to delete this channel? All chat history and messages in this channel will be permanently removed for all members."
+        confirmText="Delete Channel"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        icon="delete_forever"
+        onConfirm={handleConfirmDeleteGroup}
+        onClose={() => setConfirmDeleteGroup(null)}
+      />
+
+      {/* Leave Channel Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmLeaveGroup)}
+        title={`Leave #${confirmLeaveGroup?.name}?`}
+        description="You will no longer receive updates or have access to messages in this channel unless invited back by an admin."
+        confirmText="Leave Channel"
+        cancelText="Cancel"
+        confirmVariant="primary"
+        icon="logout"
+        onConfirm={handleConfirmLeaveGroup}
+        onClose={() => setConfirmLeaveGroup(null)}
+      />
     </div>
   );
 }

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   WORKSPACE_ROLES_MAP,
   DEFAULT_WORKSPACE,
-} from '../constants/superAdmin.constants';
+} from '@/constants';
 
 export default function CreateUserModal({ isOpen, onClose, onInvite, existingUsers = [] }) {
   const [fullName, setFullName] = useState('');
@@ -11,6 +11,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
     {
       workspace: DEFAULT_WORKSPACE,
       role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+      isTeamAdmin: false,
     },
   ]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
@@ -22,6 +23,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
       {
         workspace: DEFAULT_WORKSPACE,
         role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+        isTeamAdmin: false,
       },
     ]);
     setIsSuperAdmin(false);
@@ -61,6 +63,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
       {
         workspace: nextWorkspace,
         role: WORKSPACE_ROLES_MAP[nextWorkspace][0] || 'Viewer',
+        isTeamAdmin: false,
       },
     ]);
   };
@@ -91,6 +94,12 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
     );
   };
 
+  const handleTeamAdminChange = (index, isTeamAdmin) => {
+    setAssignments((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, isTeamAdmin } : item))
+    );
+  };
+
   const handleSubmit = (e) => {
     e.preventDefault();
     if (onInvite) {
@@ -100,6 +109,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
         assignments,
         workspace: assignments[0]?.workspace || DEFAULT_WORKSPACE,
         role: assignments[0]?.role || 'Viewer',
+        isTeamAdmin: assignments.some((a) => a.isTeamAdmin),
         isSuperAdmin,
         isExistingUser,
       });
@@ -181,61 +191,89 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
               {assignments.map((item, index) => {
                 const availableRoles = WORKSPACE_ROLES_MAP[item.workspace] || ['Viewer'];
                 return (
-                  <div key={index} className="flex gap-md items-end">
-                    <div className="flex-1 flex flex-col gap-sm relative">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant">
-                        Assign to Workspace {assignments.length > 1 ? `${index + 1}` : ''}
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={item.workspace}
-                          onChange={(e) => handleWorkspaceChange(index, e.target.value)}
-                          className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                        >
-                          {Object.keys(WORKSPACE_ROLES_MAP).map((ws) => (
-                            <option key={ws} value={ws}>
-                              {ws}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                          expand_more
-                        </span>
+                  <div
+                    key={index}
+                    className="p-3.5 rounded-xl bg-surface-container-low/60 border border-border-subtle flex flex-col gap-2.5"
+                  >
+                    <div className="flex gap-md items-end">
+                      <div className="flex-1 flex flex-col gap-sm relative">
+                        <label className="font-label-sm text-label-sm text-on-surface-variant">
+                          Assign to Workspace {assignments.length > 1 ? `${index + 1}` : ''}
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={item.workspace}
+                            onChange={(e) => handleWorkspaceChange(index, e.target.value)}
+                            className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
+                          >
+                            {Object.keys(WORKSPACE_ROLES_MAP).map((ws) => (
+                              <option key={ws} value={ws}>
+                                {ws}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
+                            expand_more
+                          </span>
+                        </div>
                       </div>
+
+                      <div className="flex-1 flex flex-col gap-sm relative">
+                        <label className="font-label-sm text-label-sm text-on-surface-variant">
+                          Assigned Role
+                        </label>
+                        <div className="relative">
+                          <select
+                            value={item.role}
+                            onChange={(e) => handleRoleChange(index, e.target.value)}
+                            className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
+                          >
+                            {availableRoles.map((r) => (
+                              <option key={r} value={r}>
+                                {r}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
+                            expand_more
+                          </span>
+                        </div>
+                      </div>
+
+                      {assignments.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveAssignment(index)}
+                          className="h-10 w-10 flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-bg rounded-lg transition-colors cursor-pointer"
+                          title="Remove assignment"
+                        >
+                          <span className="material-symbols-outlined text-[20px]">delete</span>
+                        </button>
+                      )}
                     </div>
 
-                    <div className="flex-1 flex flex-col gap-sm relative">
-                      <label className="font-label-sm text-label-sm text-on-surface-variant">
-                        Assigned Role
-                      </label>
-                      <div className="relative">
-                        <select
-                          value={item.role}
-                          onChange={(e) => handleRoleChange(index, e.target.value)}
-                          className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                        >
-                          {availableRoles.map((r) => (
-                            <option key={r} value={r}>
-                              {r}
-                            </option>
-                          ))}
-                        </select>
-                        <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                          expand_more
+                    {/* Team Admin Option for this Workspace */}
+                    <div className="pt-2 border-t border-border-subtle/80 flex items-center justify-between">
+                      <label className="flex items-center gap-2 text-[12px] font-medium text-on-surface cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={Boolean(item.isTeamAdmin)}
+                          onChange={(e) => handleTeamAdminChange(index, e.target.checked)}
+                          className="w-4 h-4 rounded border-border-subtle text-primary focus:ring-primary accent-primary cursor-pointer"
+                        />
+                        <span className="flex items-center gap-1.5">
+                          <span className="material-symbols-outlined text-[16px] text-amber-500">crown</span>
+                          <span className="font-semibold text-on-surface">
+                            Assign as Team Admin for {item.workspace}
+                          </span>
                         </span>
-                      </div>
+                      </label>
+                      {item.isTeamAdmin && (
+                        <span className="text-[10px] bg-amber-500/10 text-amber-700 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
+                          Full Workspace Control
+                        </span>
+                      )}
                     </div>
-
-                    {assignments.length > 1 && (
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveAssignment(index)}
-                        className="h-10 w-10 flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-bg rounded-lg transition-colors cursor-pointer"
-                        title="Remove assignment"
-                      >
-                        <span className="material-symbols-outlined text-[20px]">delete</span>
-                      </button>
-                    )}
                   </div>
                 );
               })}

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
   INVITATION_STATES,
   MOCK_INVITATIONS,
-} from '../constants/invitation.constants';
+} from '@/constants';
 import NewUserCard from '../components/NewUserCard';
 import ExistingUserCard from '../components/ExistingUserCard';
 import InvalidCard from '../components/InvalidCard';

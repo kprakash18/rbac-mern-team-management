@@ -3,12 +3,12 @@ import {
   INITIAL_ACTIVE_GRANTS,
   INITIAL_PENDING_REQUESTS,
   INITIAL_JIT_HISTORY,
-} from '../constants/jit.constants.js';
+} from '@/constants';
 import ActiveGrantsTable from './jit/ActiveGrantsTable.jsx';
 import PendingRequestsTable from './jit/PendingRequestsTable.jsx';
 import JitHistoryTable from './jit/JitHistoryTable.jsx';
 import NewGrantModal from './jit/NewGrantModal.jsx';
-import RejectRequestModal from './jit/RejectRequestModal.jsx';
+import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import RequestDetailsModal from './jit/RequestDetailsModal.jsx';
 import JitFilterModal from './jit/JitFilterModal.jsx';
 
@@ -26,6 +26,7 @@ export default function JitAccessView() {
   // Modals
   const [isNewGrantOpen, setIsNewGrantOpen] = useState(false);
   const [rejectingRequest, setRejectingRequest] = useState(null);
+  const [rejectReason, setRejectReason] = useState('Insufficient business justification or outside operational window.');
   const [selectedRequestDetails, setSelectedRequestDetails] = useState(null);
 
   // Toast notification
@@ -337,11 +338,47 @@ export default function JitAccessView() {
       />
 
       {/* Reject Request Modal */}
-      <RejectRequestModal
-        request={rejectingRequest}
-        onClose={() => setRejectingRequest(null)}
-        onConfirmReject={handleConfirmReject}
-      />
+      {rejectingRequest && (
+        <ConfirmModal
+          isOpen={Boolean(rejectingRequest)}
+          title="Reject Access Request"
+          confirmText="Confirm Rejection"
+          confirmVariant="danger"
+          icon="cancel"
+          onClose={() => setRejectingRequest(null)}
+          onConfirm={() => {
+            handleConfirmReject(rejectingRequest.id, rejectReason);
+            setRejectingRequest(null);
+          }}
+        >
+          <div className="space-y-3 text-[13px]">
+            <div className="p-2.5 bg-surface-container-low rounded-lg text-[12px] text-on-surface space-y-1">
+              <div>
+                <strong>Requester:</strong> {rejectingRequest.user?.name} ({rejectingRequest.user?.email})
+              </div>
+              <div>
+                <strong>Requested Perm:</strong>{' '}
+                <span className="font-mono">{rejectingRequest.permission}</span> on{' '}
+                <span className="font-mono">{rejectingRequest.targetResource}</span>
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[11px] font-semibold text-on-surface-variant mb-1">
+                Reason for Rejection
+              </label>
+              <textarea
+                required
+                rows="3"
+                value={rejectReason}
+                onChange={(e) => setRejectReason(e.target.value)}
+                className="w-full p-2 bg-surface-container-low rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none"
+                placeholder="Explain why this request is being rejected..."
+              />
+            </div>
+          </div>
+        </ConfirmModal>
+      )}
 
       {/* Filter Modal */}
       <JitFilterModal

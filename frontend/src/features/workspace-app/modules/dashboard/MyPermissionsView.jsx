@@ -1,4 +1,4 @@
-import { MY_PERMISSIONS } from '../constants/workspaceApp.constants';
+import { MY_PERMISSIONS } from '@/constants';
 
 export default function MyPermissionsView() {
   const grantedCount = MY_PERMISSIONS.categories.reduce(

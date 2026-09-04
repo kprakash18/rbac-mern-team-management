@@ -1,4 +1,4 @@
-import { SUPER_ADMIN_NAV_ITEMS } from '../constants/superAdmin.constants';
+import { SUPER_ADMIN_NAV_ITEMS } from '@/constants';
 
 export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav, onLogout, isOpen = true, onToggle }) {
   return (
