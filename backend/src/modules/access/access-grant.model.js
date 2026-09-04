@@ -16,7 +16,7 @@ const accessGrantSchema = new mongoose.Schema(
 
     resource: {
       type: String,
-      required: true,
+      default: "*",
       trim: true,
     },
 

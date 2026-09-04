@@ -2,7 +2,7 @@ import {
   CANONICAL_PERMISSIONS,
   CATEGORY_LABELS,
   permissionsByCategory,
-} from '../../constants/roles.constants.js';
+} from '@/constants';
 
 export default function CreateEditRoleModal({
   isOpen,

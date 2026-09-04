@@ -23,7 +23,7 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
 
   return (
     <div className="flex flex-col w-full h-full items-center justify-center p-md bg-inverse-surface/40 backdrop-blur-sm fixed inset-0 z-50">
-      <div className="w-full max-w-[580px] bg-card-bg shadow-xl flex flex-col rounded-xl overflow-hidden animate-[fade-in_0.3s_ease-out]">
+      <div className="w-full max-w-145 bg-card-bg shadow-xl flex flex-col rounded-xl overflow-hidden animate-[fade-in_0.3s_ease-out]">
         {/* Header */}
         <div className="flex items-center justify-between px-lg py-md border-b border-border-subtle bg-success-bg/20">
           <div className="flex items-center gap-sm text-success-text">
@@ -53,7 +53,7 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
             </label>
             <div className="flex items-center gap-xs">
               <input
-                className="flex-1 bg-surface-container-low border border-border-subtle rounded-lg px-md py-sm font-body-base text-body-base text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary truncate font-mono text-[13px]"
+                className="flex-1 bg-surface-container-low border border-border-subtle rounded-lg px-md py-sm text-on-surface focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary truncate font-mono text-[13px]"
                 readOnly
                 type="text"
                 value={inviteLink}
@@ -116,13 +116,13 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
         <div className="px-lg py-md border-t border-border-subtle bg-surface-container-lowest flex justify-end gap-sm items-center">
           <button
             onClick={onInviteAnother}
-            className="px-lg py-[10px] rounded-lg border border-border-subtle bg-surface-container-lowest hover:bg-surface-container-low font-label-bold text-label-sm text-on-surface transition-colors cursor-pointer"
+            className="px-lg py-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest hover:bg-surface-container-low font-label-bold text-label-sm text-on-surface transition-colors cursor-pointer"
           >
             Invite Another User
           </button>
           <button
             onClick={onClose}
-            className="px-lg py-[10px] rounded-lg bg-primary hover:opacity-90 font-label-bold text-label-sm text-on-primary transition-opacity shadow-sm cursor-pointer"
+            className="px-lg py-2.5 rounded-lg bg-primary hover:opacity-90 font-label-bold text-label-sm text-on-primary transition-opacity shadow-sm cursor-pointer"
           >
             Done
           </button>

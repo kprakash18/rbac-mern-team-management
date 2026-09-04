@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { WORKSPACE_ROLES_MAP } from '../constants/superAdmin.constants';
+import { WORKSPACE_ROLES_MAP } from '@/constants';
 
 const WORKSPACE_ICONS = {
   'Research & Development': 'biotech',
@@ -24,6 +24,7 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
       user?.workspaces?.map((w) => ({
         name: w.name,
         role: w.role || (WORKSPACE_ROLES_MAP[w.name] ? WORKSPACE_ROLES_MAP[w.name][0] : 'Developer'),
+        isTeamAdmin: Boolean(w.isTeamAdmin ?? user?.isTeamAdmin),
       })) || []
   );
   const [isSuperAdmin, setIsSuperAdmin] = useState(() => Boolean(user?.isSuperAdmin));
@@ -32,6 +33,12 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
   const [confirmModal, setConfirmModal] = useState(null);
 
   if (!isOpen || !user) return null;
+
+  const handleToggleTeamAdmin = (index, isTeamAdmin) => {
+    setWorkspaces((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, isTeamAdmin } : item))
+    );
+  };
 
   const handleAddWorkspace = () => {
     const availableWorkspaces = Object.keys(WORKSPACE_ROLES_MAP);
@@ -46,6 +53,7 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
       {
         name: nextWorkspace,
         role: defaultRole,
+        isTeamAdmin: false,
       },
     ]);
   };
@@ -136,8 +144,10 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
       workspaces: workspaces.map((w) => ({
         name: w.name,
         role: w.role,
-        isHigh: false,
+        isTeamAdmin: Boolean(w.isTeamAdmin),
+        isHigh: Boolean(w.isTeamAdmin),
       })),
+      isTeamAdmin: workspaces.some((w) => w.isTeamAdmin),
       isSuperAdmin,
       mustChangePassword,
       lastLogoutAt: sessionsTerminated ? new Date().toISOString() : user.lastLogoutAt,
@@ -260,15 +270,37 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
                   return (
                     <div
                       key={index}
-                      className="flex items-center justify-between p-md bg-surface-container rounded-lg shadow-sm"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-md bg-surface-container rounded-lg shadow-sm gap-2"
                     >
                       <div className="flex items-center gap-sm">
                         <div className="w-8 h-8 bg-primary text-on-primary rounded-lg flex items-center justify-center shadow-sm">
                           <span className="material-symbols-outlined text-[18px]">{icon}</span>
                         </div>
-                        <span className="font-label-bold text-on-surface">{ws.name}</span>
+                        <div>
+                          <span className="font-label-bold text-on-surface block">{ws.name}</span>
+                          {ws.isTeamAdmin && (
+                            <span className="text-[10px] text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-semibold inline-flex items-center gap-0.5">
+                              <span className="material-symbols-outlined text-[12px] text-amber-600">crown</span>
+                              Team Admin
+                            </span>
+                          )}
+                        </div>
                       </div>
                       <div className="flex items-center gap-md">
+                        {/* Team Admin Toggle Checkbox */}
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(ws.isTeamAdmin)}
+                            onChange={(e) => handleToggleTeamAdmin(index, e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-border-subtle text-primary focus:ring-primary accent-primary cursor-pointer"
+                          />
+                          <span className="flex items-center gap-0.5 text-on-surface-variant hover:text-on-surface">
+                            <span className="material-symbols-outlined text-[14px] text-amber-500">crown</span>
+                            <span>Team Admin</span>
+                          </span>
+                        </label>
+
                         <div className="relative w-36">
                           <select
                             value={ws.role}

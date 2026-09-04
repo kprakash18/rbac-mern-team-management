@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CANONICAL_PERMISSIONS } from '../../constants/roles.constants.js';
+import { CANONICAL_PERMISSIONS } from '@/constants';
 
 export default function RoleMembersDrawer({
   isOpen,

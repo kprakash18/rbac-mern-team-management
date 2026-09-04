@@ -74,6 +74,7 @@
   --spacing-stack-sm: 8px;
   --spacing-stack-md: 16px;
   --spacing-stack-lg: 24px;
+  --spacing-unit: 4px;
 
   /* Typography */
   --font-label-bold: Inter, sans-serif;
@@ -126,6 +127,19 @@
     line-height: 20px;
     font-weight: 400;
   }
+
+  /* Standard max-width utilities protected from spacing token collision */
+  .max-w-xs { max-width: 20rem; }
+  .max-w-sm { max-width: 24rem; }
+  .max-w-md { max-width: 28rem; }
+  .max-w-lg { max-width: 32rem; }
+  .max-w-xl { max-width: 36rem; }
+  .max-w-2xl { max-width: 42rem; }
+  .max-w-3xl { max-width: 48rem; }
+  .max-w-4xl { max-width: 56rem; }
+  .max-w-5xl { max-width: 64rem; }
+  .max-w-6xl { max-width: 72rem; }
+  .max-w-7xl { max-width: 80rem; }
 }
 
 body {
