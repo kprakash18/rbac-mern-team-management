@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import api from '@/lib/api';
+import { getSocket } from '@/lib/socket';
 import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
 import WorkspaceAppTopbar from '../shell/WorkspaceAppTopbar';
 import DirectMessageSidebar from '../shell/DirectMessageSidebar';
@@ -16,6 +18,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
+  const [activeBulletins, setActiveBulletins] = useState([]);
   const [dismissedBannerIds, setDismissedBannerIds] = useState([]);
 
   // Active Workspace State & Team Settings Modal (PATCH /api/teams/:teamId)
@@ -55,16 +58,79 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     setIsDirectMessageMinimized(false);
   };
 
-  const user = currentUser || {
-    name: 'Team Member',
-    email: 'user@example.com',
-    role: 'Member',
-    teamRoleTitle: 'Developer',
-    initials: 'TM',
+  const isTeamAdmin = Boolean(
+    currentUser?.isTeamAdmin ||
+    currentWorkspace?.isTeamAdmin ||
+    currentWorkspace?.role === 'Team Admin' ||
+    currentWorkspace?.role?.toLowerCase().includes('admin')
+  );
+
+  const teamRoleTitle =
+    currentWorkspace?.role ||
+    currentUser?.teamRoleTitle ||
+    (isTeamAdmin ? 'Team Admin' : 'Developer');
+
+  const user = {
+    ...(currentUser || {}),
+    isTeamAdmin,
+    teamRoleTitle,
+    teamRole: teamRoleTitle,
+    role: teamRoleTitle,
   };
   const unreadAnnouncementsCount = announcements.filter((a) => !a.isRead).length;
 
+  const fetchActiveBulletins = useCallback(async () => {
+    const teamId = currentWorkspace?._id || currentWorkspace?.id;
+    try {
+      const res = await api.get('/api/notifications/bulletins/active', {
+        params: teamId ? { teamId } : {},
+      });
+      if (res.data?.success) {
+        setActiveBulletins(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch active bulletins:', err);
+    }
+  }, [currentWorkspace?._id, currentWorkspace?.id]);
+
+  useEffect(() => {
+    fetchActiveBulletins();
+
+    const socket = getSocket();
+    const handleNewBulletin = (bulletin) => {
+      const now = new Date();
+      const starts = bulletin.startsAt ? new Date(bulletin.startsAt) : now;
+      const expires = bulletin.expiresAt ? new Date(bulletin.expiresAt) : null;
+      if (starts <= now && (!expires || expires > now)) {
+        setActiveBulletins((prev) => [
+          bulletin,
+          ...prev.filter((b) => (b._id || b.id) !== (bulletin._id || bulletin.id)),
+        ]);
+      }
+    };
+
+    socket.on('bulletin:new', handleNewBulletin);
+    socket.on('broadcast:new', handleNewBulletin);
+
+    return () => {
+      socket.off('bulletin:new', handleNewBulletin);
+      socket.off('broadcast:new', handleNewBulletin);
+    };
+  }, [fetchActiveBulletins]);
+
+  const now = new Date();
+  const validBulletins = activeBulletins.filter((b) => {
+    const bId = b._id || b.id;
+    if (dismissedBannerIds.includes(bId)) return false;
+    const starts = b.startsAt ? new Date(b.startsAt) : now;
+    const expires = b.expiresAt ? new Date(b.expiresAt) : null;
+    return starts <= now && (!expires || expires > now);
+  });
+
   const pinnedAnnouncement = announcements.find((a) => a.isSticky && !dismissedBannerIds.includes(a.id));
+  const displayedBulletin =
+    validBulletins[0] ||
+    (pinnedAnnouncement && !dismissedBannerIds.includes(pinnedAnnouncement.id) ? pinnedAnnouncement : null);
 
   const handleAddAnnouncement = (newAnn) => {
     setAnnouncements((prev) => [newAnn, ...prev]);
@@ -125,6 +191,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         return (
           <AnnouncementsView
             currentUser={user}
+            workspace={currentWorkspace}
             announcements={announcements}
             onAddAnnouncement={handleAddAnnouncement}
             onMarkRead={handleMarkRead}
@@ -178,8 +245,8 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
           />
         )}
 
-        {/* Pinned System-Level Broadcast Banner (Seen by All Users) */}
-        {pinnedAnnouncement && (
+        {/* Pinned System-Level Broadcast / Bulletin Banner (Seen by All Users) */}
+        {displayedBulletin && (
           <div className="w-full bg-primary text-on-primary px-margin-mobile lg:px-margin-desktop py-2.5 flex items-center justify-between text-[13px] shadow-sm z-20">
             <div className="flex items-center gap-2.5 min-w-0">
               <span className="material-symbols-outlined text-[20px] text-amber-300 shrink-0">
@@ -187,11 +254,11 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
               </span>
               <div className="flex items-center gap-2 truncate">
                 <span className="font-bold text-amber-200 uppercase tracking-wider text-[10px] px-1.5 py-0.2 rounded bg-white/10">
-                  SYSTEM BROADCAST
+                  SYSTEM BULLETIN
                 </span>
-                <span className="font-semibold truncate">{pinnedAnnouncement.title}</span>
+                <span className="font-semibold truncate">{displayedBulletin.title}</span>
                 <span className="hidden md:inline text-on-primary/75 truncate text-[12px]">
-                  — {pinnedAnnouncement.body}
+                  — {displayedBulletin.body || displayedBulletin.message}
                 </span>
               </div>
             </div>
@@ -206,7 +273,9 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
               </button>
               <button
                 type="button"
-                onClick={() => setDismissedBannerIds((prev) => [...prev, pinnedAnnouncement.id])}
+                onClick={() =>
+                  setDismissedBannerIds((prev) => [...prev, displayedBulletin._id || displayedBulletin.id])
+                }
                 className="p-1 hover:bg-white/15 rounded-md cursor-pointer transition-colors"
                 title="Dismiss banner"
               >

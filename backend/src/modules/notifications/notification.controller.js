@@ -2,7 +2,7 @@ import * as notificationService from "./notification.service.js";
 
 /**
  * GET /api/notifications
- * Get logged-in user's notifications
+ * Get logged-in user's notifications (paginated, unreadOnly filter)
  */
 export async function getMyNotificationsController(req, res, next) {
   try {
@@ -15,6 +15,24 @@ export async function getMyNotificationsController(req, res, next) {
       page,
       limit,
     });
+
+    return res.status(200).json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/notifications/unread-count
+ * Lightweight unread notifications count
+ */
+export async function getUnreadCountController(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const data = await notificationService.getUnreadNotificationCount({ userId });
 
     return res.status(200).json({
       success: true,
@@ -66,3 +84,96 @@ export async function markAllNotificationsAsReadController(req, res, next) {
     next(error);
   }
 }
+
+/**
+ * DELETE /api/notifications/:notificationId
+ * Delete a notification
+ */
+export async function deleteNotificationController(req, res, next) {
+  try {
+    const userId = req.user.id;
+    const { notificationId } = req.params;
+
+    const result = await notificationService.deleteNotification({
+      notificationId,
+      userId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: { deleted: Boolean(result) },
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/teams/:teamId/broadcasts
+ * Broadcast a system message to all active members of a team
+ */
+export async function createTeamBroadcastController(req, res, next) {
+  try {
+    const senderId = req.user.id;
+    const { teamId } = req.params;
+    const { title, message, body, type, isSticky, requiresAck, startsAt, expiresAt } = req.body;
+
+    const broadcast = await notificationService.broadcastToTeam({
+      teamId,
+      senderId,
+      title,
+      body: body || message,
+      type,
+      isSticky,
+      requiresAck,
+      startsAt,
+      expiresAt,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: broadcast,
+      message: "Broadcast dispatched to team members successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/teams/:teamId/broadcasts
+ * Fetch system broadcasts sent to a team
+ */
+export async function getTeamBroadcastsController(req, res, next) {
+  try {
+    const { teamId } = req.params;
+
+    const broadcasts = await notificationService.getTeamBroadcasts({ teamId });
+
+    return res.status(200).json({
+      success: true,
+      data: broadcasts,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * GET /api/notifications/bulletins/active
+ * Fetch currently active system bulletins within valid time window (startsAt <= now <= expiresAt)
+ */
+export async function getActiveBulletinsController(req, res, next) {
+  try {
+    const teamId = req.query.teamId || null;
+    const bulletins = await notificationService.getActiveSystemBulletins({ teamId });
+
+    return res.status(200).json({
+      success: true,
+      data: bulletins,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+

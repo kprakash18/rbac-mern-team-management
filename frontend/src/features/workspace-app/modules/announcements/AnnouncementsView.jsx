@@ -1,4 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import api from '../../../../lib/api';
+import { getSocket } from '../../../../lib/socket';
+import { useApp } from '@/context/useApp';
 
 const TYPE_CONFIG = {
   OUTAGE: { icon: 'gpp_maybe', badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', label: 'P0 Outage' },
@@ -7,12 +10,16 @@ const TYPE_CONFIG = {
   ANNOUNCEMENT: { icon: 'campaign', badge: 'bg-blue-50 text-blue-700 border-blue-200', dot: 'bg-blue-500', label: 'General Notice' },
 };
 
-export default function AnnouncementsView({ currentUser, announcements = [], onAddAnnouncement, onMarkRead, onAcknowledge }) {
+export default function AnnouncementsView({ currentUser, workspace, announcements = [], onAddAnnouncement, onMarkRead, onAcknowledge }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
 
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
   const [isBroadcastModalOpen, setIsBroadcastModalOpen] = useState(false);
+  const [teamBroadcasts, setTeamBroadcasts] = useState([]);
+  const [submitting, setSubmitting] = useState(false);
 
   // Broadcast Form State
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -26,6 +33,59 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
     setTimeout(() => setToast(null), 3500);
   };
 
+  const fetchBroadcasts = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      const res = await api.get(`/api/teams/${teamId}/broadcasts`);
+      const raw = res.data?.data || [];
+      const formatted = raw.map((b) => {
+        const typeConf = TYPE_CONFIG[b.type] || TYPE_CONFIG.ANNOUNCEMENT;
+        const senderName = b.senderId?.name || b.senderId?.email || 'Team Admin';
+        return {
+          id: b._id || b.id,
+          _id: b._id || b.id,
+          title: b.title,
+          body: b.body || b.message,
+          type: b.type || 'ANNOUNCEMENT',
+          typeLabel: typeConf.label,
+          severity: b.severity || (b.type === 'OUTAGE' ? 'CRITICAL' : 'INFO'),
+          isActive: b.status === 'ACTIVE',
+          isSticky: Boolean(b.isSticky),
+          requiresAck: Boolean(b.requiresAck),
+          sentAt: b.createdAt || new Date().toISOString(),
+          sentBy: `${senderName} (Team Admin)`,
+          isRead: false,
+          isAcknowledged: false,
+        };
+      });
+      setTeamBroadcasts(formatted);
+    } catch (err) {
+      console.error('Failed to load broadcasts:', err);
+    }
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchBroadcasts();
+  }, [fetchBroadcasts]);
+
+  // Real-time socket listener for team broadcasts
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewBroadcast = () => {
+      fetchBroadcasts();
+    };
+
+    socket.on('broadcast:new', handleNewBroadcast);
+    socket.on('notification:new', handleNewBroadcast);
+
+    return () => {
+      socket.off('broadcast:new', handleNewBroadcast);
+      socket.off('notification:new', handleNewBroadcast);
+    };
+  }, [fetchBroadcasts]);
+
   const handleOpenBroadcastModal = () => {
     setBroadcastTitle('');
     setBroadcastType('ANNOUNCEMENT');
@@ -35,37 +95,57 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
     setIsBroadcastModalOpen(true);
   };
 
-  const handleSubmitBroadcast = (e) => {
+  const handleSubmitBroadcast = async (e) => {
     e.preventDefault();
     if (!broadcastTitle.trim() || !broadcastBody.trim()) {
       showToast('Please enter both a headline and message body.', 'error');
       return;
     }
 
-    const typeConf = TYPE_CONFIG[broadcastType] || TYPE_CONFIG.ANNOUNCEMENT;
+    setSubmitting(true);
+    try {
+      if (teamId) {
+        const res = await api.post(`/api/teams/${teamId}/broadcasts`, {
+          title: broadcastTitle.trim(),
+          body: broadcastBody.trim(),
+          type: broadcastType,
+          isSticky,
+          requiresAck,
+        });
 
-    const newBroadcast = {
-      id: `bc-${Date.now()}`,
-      title: broadcastTitle.trim(),
-      body: broadcastBody.trim(),
-      type: broadcastType,
-      typeLabel: typeConf.label,
-      severity: broadcastType === 'OUTAGE' ? 'CRITICAL' : broadcastType === 'MAINTENANCE' ? 'WARNING' : 'INFO',
-      isActive: true,
-      isSticky,
-      requiresAck,
-      sentAt: new Date().toISOString(),
-      sentBy: `${currentUser?.name || 'Admin'} (${currentUser?.teamRoleTitle || 'Team Admin'})`,
-      isRead: false,
-      isAcknowledged: false,
-    };
+        const created = res.data?.data;
+        const typeConf = TYPE_CONFIG[broadcastType] || TYPE_CONFIG.ANNOUNCEMENT;
+        const formattedNew = {
+          id: created?._id || `bc-${Date.now()}`,
+          title: broadcastTitle.trim(),
+          body: broadcastBody.trim(),
+          type: broadcastType,
+          typeLabel: typeConf.label,
+          severity: broadcastType === 'OUTAGE' ? 'CRITICAL' : broadcastType === 'MAINTENANCE' ? 'WARNING' : 'INFO',
+          isActive: true,
+          isSticky,
+          requiresAck,
+          sentAt: new Date().toISOString(),
+          sentBy: `${currentUser?.name || 'Admin'} (${currentUser?.teamRoleTitle || 'Team Admin'})`,
+          isRead: false,
+          isAcknowledged: false,
+        };
 
-    onAddAnnouncement?.(newBroadcast);
-    setIsBroadcastModalOpen(false);
-    showToast('📢 System broadcast dispatched to all team members!');
+        setTeamBroadcasts((prev) => [formattedNew, ...prev]);
+        onAddAnnouncement?.(formattedNew);
+      }
+      setIsBroadcastModalOpen(false);
+      showToast('📢 System broadcast dispatched to all team members!');
+    } catch (err) {
+      console.error('Failed to send broadcast:', err);
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to dispatch broadcast.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
-  const unreadCount = announcements.filter((a) => !a.isRead).length;
+  const displayAnnouncements = teamBroadcasts.length > 0 ? teamBroadcasts : announcements;
+  const unreadCount = displayAnnouncements.filter((a) => !a.isRead).length;
 
   return (
     <div className="w-full max-w-5xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
@@ -126,7 +206,7 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
 
       {/* Announcements List */}
       <div className="flex flex-col gap-md">
-        {announcements.map((ann) => {
+        {displayAnnouncements.map((ann) => {
           const typeConf = TYPE_CONFIG[ann.type] || TYPE_CONFIG.ANNOUNCEMENT;
           const isExpanded = expandedId === ann.id;
 
@@ -245,7 +325,7 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
           );
         })}
 
-        {announcements.length === 0 && (
+        {displayAnnouncements.length === 0 && (
           <div className="py-12 text-center text-on-surface-variant bg-surface-container-lowest rounded-xl border border-dashed border-border-subtle">
             <span className="material-symbols-outlined text-[36px] block mb-1 text-on-surface-variant/50">
               campaign

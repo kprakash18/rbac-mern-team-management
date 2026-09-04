@@ -12,9 +12,11 @@ import AccessRequest from "../../../modules/access/access-request.model.js";
 import AccessGrant from "../../../modules/access/access-grant.model.js";
 import Notification from "../../../modules/notifications/notification.model.js";
 import AuditLog from "../../../modules/audit/audit-log.model.js";
+import ChatMessage from "../../../modules/chat/chat-message.model.js";
 
 // Ordered from leaf dependents to root dependencies
 const DEMO_COLLECTION_MODELS = [
+  ChatMessage,
   AuditLog,
   Notification,
   AccessGrant,

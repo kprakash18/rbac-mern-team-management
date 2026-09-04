@@ -6,7 +6,7 @@ import Role from "../roles/role.model.js";
 
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
-import { createNotification } from "../notifications/notification.service.js";
+import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -101,6 +101,16 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
             existingMembership.removedAt = null;
             await existingMembership.save();
 
+            emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
+            createTargetedNotifications({
+              recipients: [userId],
+              type: "GROUP_MEMBER_ADDED",
+              teamId,
+              resourceType: "TEAM",
+              resourceId: team._id,
+              metadata: { teamName: team.name, teamId: team._id },
+            }).catch((err) => console.error("Failed to persist notification:", err));
+
             return getMembershipById({
                 teamId,
                 membershipId: existingMembership._id,
@@ -117,10 +127,22 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
     joinedAt: new Date(),
   });
 
+  emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
+  createTargetedNotifications({
+    recipients: [userId],
+    type: "GROUP_MEMBER_ADDED",
+    teamId,
+    resourceType: "TEAM",
+    resourceId: team._id,
+    metadata: { teamName: team.name, teamId: team._id },
+  }).catch((err) => console.error("Failed to persist notification:", err));
+
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
 
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+
+import RolePermission from "../roles/role-permission.model.js";
 
 export async function listTeamMembers({
   teamId,
@@ -145,7 +167,7 @@ export async function listTeamMembers({
 
   const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
-  const [members, total] = await Promise.all([
+  const [rawMembers, total] = await Promise.all([
     Membership.find(query)
       .populate("userId", "name email accountStatus")
       .sort({ joinedAt: -1 })
@@ -153,6 +175,46 @@ export async function listTeamMembers({
       .limit(limitNum),
     Membership.countDocuments(query),
   ]);
+
+  const membershipIds = rawMembers.map((m) => m._id);
+  const memberRoles = await MembershipRole.find({
+    membershipId: { $in: membershipIds },
+    revokedAt: null,
+  })
+    .populate("roleId", "name isSystemRole description")
+    .lean();
+
+  const allRoleIds = memberRoles.map((mr) => mr.roleId?._id).filter(Boolean);
+  const rolePermissions = await RolePermission.find({
+    roleId: { $in: allRoleIds },
+  })
+    .populate("permissionId", "key description category resource action")
+    .lean();
+
+  const members = rawMembers.map((m) => {
+    const mObj = m.toObject ? m.toObject() : { ...m };
+    const memberRoleDocs = memberRoles.filter(
+      (mr) => String(mr.membershipId) === String(m._id)
+    );
+    const roles = memberRoleDocs.map((mr) => mr.roleId).filter(Boolean);
+    const primaryRole = roles[0]?.name || "Developer";
+
+    const memberRoleIds = roles.map((r) => String(r._id));
+    const permissionsForMember = rolePermissions
+      .filter((rp) => memberRoleIds.includes(String(rp.roleId)))
+      .map((rp) => rp.permissionId?.description || rp.permissionId?.key)
+      .filter(Boolean);
+
+    const uniquePermissions = [...new Set(permissionsForMember)];
+
+    return {
+      ...mObj,
+      roles,
+      role: primaryRole,
+      isTeamAdmin: roles.some((r) => r.name?.toLowerCase().includes("admin")),
+      permissions: uniquePermissions,
+    };
+  });
 
   return {
     members,
@@ -180,7 +242,37 @@ export async function getMembershipById({ teamId, membershipId }) {
     throw new NotFoundError("Membership not found in this team.");
   }
 
-  return membership;
+  const memberRoles = await MembershipRole.find({
+    membershipId: membership._id,
+    revokedAt: null,
+  })
+    .populate("roleId", "name isSystemRole description")
+    .lean();
+
+  const roleIds = memberRoles.map((mr) => mr.roleId?._id).filter(Boolean);
+  const rolePermissions = await RolePermission.find({
+    roleId: { $in: roleIds },
+  })
+    .populate("permissionId", "key description category resource action")
+    .lean();
+
+  const roles = memberRoles.map((mr) => mr.roleId).filter(Boolean);
+  const primaryRole = roles[0]?.name || "Developer";
+  const permissions = [
+    ...new Set(
+      rolePermissions
+        .map((rp) => rp.permissionId?.description || rp.permissionId?.key)
+        .filter(Boolean)
+    ),
+  ];
+
+  return {
+    ...membership.toObject(),
+    roles,
+    role: primaryRole,
+    isTeamAdmin: roles.some((r) => r.name?.toLowerCase().includes("admin")),
+    permissions,
+  };
 }
 
 export async function suspendMembership({ teamId, membershipId, actorId }) {
@@ -213,12 +305,21 @@ export async function suspendMembership({ teamId, membershipId, actorId }) {
     userId: membership.userId,
     membershipId: membership._id,
   });
-  createNotification({
-    recipientId: membership.userId,
-    type: "TEAM_MEMBERSHIP",
-    title: "Membership Suspended",
-    message: "Your team membership has been suspended.",
+  const team = await Team.findById(teamId).select("name");
+  const teamName = team?.name || "the team";
+
+  createTargetedNotifications({
+    recipients: [membership.userId],
+    actorId,
+    type: "USER_STATUS_CHANGED",
     teamId,
+    resourceType: "TEAM",
+    resourceId: teamId,
+    metadata: {
+      status: "SUSPENDED",
+      teamName,
+      details: `Your account status has been updated to SUSPENDED.`,
+    },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging
@@ -251,6 +352,9 @@ export async function reactivateMembership({ teamId, membershipId, actorId }) {
   membership.status = "ACTIVE";
   await membership.save();
 
+  const team = await Team.findById(teamId).select("name");
+  const teamName = team?.name || "the team";
+
   // Real-time Event Emissions & Notification
   emitToUser(membership.userId, "access:changed", {
     teamId,
@@ -260,12 +364,18 @@ export async function reactivateMembership({ teamId, membershipId, actorId }) {
     userId: membership.userId,
     membershipId: membership._id,
   });
-  createNotification({
-    recipientId: membership.userId,
-    type: "TEAM_MEMBERSHIP",
-    title: "Membership Reactivated",
-    message: "Your team membership has been reactivated.",
+  createTargetedNotifications({
+    recipients: [membership.userId],
+    actorId,
+    type: "USER_STATUS_CHANGED",
     teamId,
+    resourceType: "TEAM",
+    resourceId: teamId,
+    metadata: {
+      status: "ACTIVE",
+      teamName,
+      details: `Your account status has been updated to ACTIVE.`,
+    },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging
@@ -307,6 +417,9 @@ export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
     { $set: { revokedAt: new Date(), revokedBy: actorId } }
   );
 
+  const team = await Team.findById(teamId).select("name");
+  const teamName = team?.name || "the team";
+
   // 3. Real-time Event Emissions & Notification
   emitToUser(membership.userId, "access:changed", {
     teamId,
@@ -316,12 +429,18 @@ export async function removeMemberFromTeam({ teamId, membershipId, actorId }) {
     userId: membership.userId,
     membershipId: membership._id,
   });
-  createNotification({
-    recipientId: membership.userId,
-    type: "TEAM_MEMBERSHIP",
-    title: "Removed from Team",
-    message: "You have been removed from the team.",
+  createTargetedNotifications({
+    recipients: [membership.userId],
+    actorId,
+    type: "USER_STATUS_CHANGED",
     teamId,
+    resourceType: "TEAM",
+    resourceId: teamId,
+    metadata: {
+      status: "REMOVED",
+      teamName,
+      details: `Your team membership in ${teamName} has been removed.`,
+    },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // 4. Audit Logging

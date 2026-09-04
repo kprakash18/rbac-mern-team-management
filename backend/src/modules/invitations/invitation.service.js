@@ -104,19 +104,14 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
 
   // Real-time Event Emissions & Persistent Notification (if invited user has existing account)
   if (invitation.userId) {
-    emitToUser(invitation.userId, "notification:new", {
-      type: "INVITATION",
-      title: "New Team Invitation",
-      teamId,
-      invitationId: invitation._id,
-    });
     createNotification({
       recipientId: invitation.userId,
-      type: "INVITATION",
-      title: "New Team Invitation",
-      message: `You have been invited to join team ${team.name}.`,
+      actorId: invitedByUserId,
+      type: "INVITATION_RECEIVED",
       teamId,
-      metadata: { invitationId: invitation._id },
+      resourceType: "INVITATION",
+      resourceId: invitation._id,
+      metadata: { invitationId: invitation._id, teamName: team.name },
     }).catch((err) => console.error("Failed to persist notification:", err));
   }
 
@@ -279,19 +274,18 @@ export async function acceptInvitation({ token, name, password }) {
     name: resolvedUser.name,
     email: resolvedUser.email,
   });
-  emitToUser(invitation.invitedBy, "notification:new", {
-    type: "TEAM_MEMBERSHIP",
-    title: "Invitation Accepted",
-    teamId: targetTeam._id,
-    userId: resolvedUser._id,
-  });
   createNotification({
     recipientId: invitation.invitedBy,
-    type: "TEAM_MEMBERSHIP",
-    title: "Invitation Accepted",
-    message: `${resolvedUser.name} accepted your invitation to join ${targetTeam.name}.`,
+    actorId: resolvedUser._id,
+    type: "INVITATION_ACCEPTED",
     teamId: targetTeam._id,
-    metadata: { userId: resolvedUser._id },
+    resourceType: "INVITATION",
+    resourceId: invitation._id,
+    metadata: {
+      userId: resolvedUser._id,
+      userName: resolvedUser.name,
+      teamName: targetTeam.name,
+    },
   }).catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging

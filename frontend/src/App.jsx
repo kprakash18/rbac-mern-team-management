@@ -42,7 +42,7 @@ function AppRoutes() {
     return (
       <WorkspaceApp
         workspace={activeWorkspace}
-        currentUser={{ ...authUser, isTeamAdmin: true, teamRoleTitle: 'Super Admin' }}
+        currentUser={{ ...authUser, isTeamAdmin: true, isSuperAdmin: true, teamRoleTitle: 'Super Admin' }}
         onLogout={clearWorkspace}
       />
     );
@@ -71,6 +71,18 @@ function AppRoutes() {
   }
 
   // Regular employee in their workspace
+  const workspaceUser = {
+    ...authUser,
+    isTeamAdmin: Boolean(
+      activeWorkspace?.isTeamAdmin ||
+      activeWorkspace?.role === 'Team Admin' ||
+      activeWorkspace?.role?.toLowerCase().includes('admin')
+    ),
+    isSuperAdmin: false, // regular employees are never Super Admin
+    teamRoleTitle: activeWorkspace?.role || 'Developer',
+    teamRole: activeWorkspace?.role || 'Developer',
+  };
+
   return (
     <Routes>
       <Route path="/invite" element={<AcceptInvitationPage />} />
@@ -89,7 +101,7 @@ function AppRoutes() {
       />
       <Route
         path="*"
-        element={<WorkspaceApp workspace={activeWorkspace} currentUser={authUser} onLogout={logout} />}
+        element={<WorkspaceApp workspace={activeWorkspace} currentUser={workspaceUser} onLogout={logout} />}
       />
     </Routes>
   );

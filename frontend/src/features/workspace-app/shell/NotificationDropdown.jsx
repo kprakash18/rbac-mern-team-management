@@ -1,57 +1,104 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-
-const DEFAULT_NOTIFICATIONS = [
-  {
-    id: 'notif-1',
-    type: 'ACCESS_GRANTED',
-    title: 'JIT Access Lease Approved',
-    message: 'Temporary DB Read-Write lease granted for 60m on prod_cluster_primary.',
-    timeAgo: '10m ago',
-    targetTab: 'jit-request',
-    readAt: null,
-  },
-  {
-    id: 'notif-2',
-    type: 'ROLE_ASSIGNED',
-    title: 'Workspace Role Updated',
-    message: 'You have been designated Lead Architect with Team Admin privileges.',
-    timeAgo: '1h ago',
-    targetTab: 'team-members',
-    readAt: null,
-  },
-  {
-    id: 'notif-3',
-    type: 'INVITATION',
-    title: 'Invitation Accepted',
-    message: 'Rachel Zhang accepted the invitation and joined Acme Engineering.',
-    timeAgo: '3h ago',
-    targetTab: 'team-members',
-    readAt: '2026-09-04T08:00:00.000Z',
-  },
-  {
-    id: 'notif-4',
-    type: 'TEAM_MEMBERSHIP',
-    title: 'New Member Onboarded',
-    message: 'Samuel Kim was provisioned as Senior Backend Developer.',
-    timeAgo: 'Yesterday',
-    targetTab: 'team-members',
-    readAt: '2026-09-03T14:00:00.000Z',
-  },
-  {
-    id: 'notif-5',
-    type: 'SYSTEM',
-    title: 'Scheduled Fleet Maintenance',
-    message: 'Database failover drill scheduled for Sunday, 02:00 AM UTC (15m window).',
-    timeAgo: 'Yesterday',
-    targetTab: 'announcements',
-    readAt: '2026-09-03T11:00:00.000Z',
-  },
-];
+import { getSocket } from '@/lib/socket';
 
 const NOTIF_CONFIG = {
+  // Canonical Types
+  USER_ROLE_CHANGED: {
+    icon: 'badge',
+    bg: 'bg-purple-100 text-purple-800 border-purple-200',
+    label: 'Role Change',
+  },
+  USER_STATUS_CHANGED: {
+    icon: 'manage_accounts',
+    bg: 'bg-amber-100 text-amber-800 border-amber-200',
+    label: 'Status Change',
+  },
+  USER_ACCESS_CHANGED: {
+    icon: 'security',
+    bg: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    label: 'Access Change',
+  },
+  GROUP_MEMBER_ADDED: {
+    icon: 'group_add',
+    bg: 'bg-sky-100 text-sky-800 border-sky-200',
+    label: 'Team Member',
+  },
+
+  // Role & Permissions
+  ROLE_ASSIGNED: {
+    icon: 'badge',
+    bg: 'bg-purple-100 text-purple-800 border-purple-200',
+    label: 'Role Change',
+  },
+  ROLE_REVOKED: {
+    icon: 'badge',
+    bg: 'bg-rose-100 text-rose-800 border-rose-200',
+    label: 'Role Revoked',
+  },
+  PERMISSION_CHANGED: {
+    icon: 'security',
+    bg: 'bg-indigo-100 text-indigo-800 border-indigo-200',
+    label: 'Permissions',
+  },
+
+  // Team & Channel
+  TEAM_MEMBERSHIP: {
+    icon: 'group',
+    bg: 'bg-sky-100 text-sky-800 border-sky-200',
+    label: 'Team Member',
+  },
+  CHANNEL_ADDED: {
+    icon: 'chat',
+    bg: 'bg-violet-100 text-violet-800 border-violet-200',
+    label: 'Team Channel',
+  },
+  INVITATION: {
+    icon: 'group_add',
+    bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    label: 'Invitation',
+  },
+  INVITATION_RECEIVED: {
+    icon: 'group_add',
+    bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    label: 'Invitation',
+  },
+  INVITATION_ACCEPTED: {
+    icon: 'how_to_reg',
+    bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    label: 'Invite Accepted',
+  },
+
+  // Tasks
+  TASK_ASSIGNED: {
+    icon: 'assignment_ind',
+    bg: 'bg-teal-100 text-teal-800 border-teal-200',
+    label: 'Task Assigned',
+  },
+  TASK_UNASSIGNED: {
+    icon: 'assignment_late',
+    bg: 'bg-amber-100 text-amber-800 border-amber-200',
+    label: 'Task Removed',
+  },
+  TASK_STATUS_CHANGED: {
+    icon: 'published_with_changes',
+    bg: 'bg-blue-100 text-blue-800 border-blue-200',
+    label: 'Task Status',
+  },
+  TASK_COMPLETED: {
+    icon: 'task_alt',
+    bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
+    label: 'Task Completed',
+  },
+  TASK_DUE_DATE_CHANGED: {
+    icon: 'event',
+    bg: 'bg-amber-100 text-amber-800 border-amber-200',
+    label: 'Task Due Date',
+  },
+
+  // JIT & Access Grants
   ACCESS_GRANTED: {
-    icon: 'timer',
+    icon: 'key',
     bg: 'bg-amber-100 text-amber-800 border-amber-200',
     label: 'JIT Access',
   },
@@ -60,21 +107,13 @@ const NOTIF_CONFIG = {
     bg: 'bg-primary-container text-on-primary-fixed border-primary/20',
     label: 'Access Request',
   },
-  ROLE_ASSIGNED: {
-    icon: 'badge',
-    bg: 'bg-purple-100 text-purple-800 border-purple-200',
-    label: 'Role Change',
+  ACCESS_REVOKED: {
+    icon: 'lock',
+    bg: 'bg-rose-100 text-rose-800 border-rose-200',
+    label: 'Access Revoked',
   },
-  INVITATION: {
-    icon: 'group_add',
-    bg: 'bg-emerald-100 text-emerald-800 border-emerald-200',
-    label: 'Invitation',
-  },
-  TEAM_MEMBERSHIP: {
-    icon: 'person',
-    bg: 'bg-sky-100 text-sky-800 border-sky-200',
-    label: 'Team Member',
-  },
+
+  // System
   SYSTEM: {
     icon: 'campaign',
     bg: 'bg-surface-container-high text-on-surface-variant border-border-subtle',
@@ -82,10 +121,26 @@ const NOTIF_CONFIG = {
   },
 };
 
+function resolveTargetTab(notif) {
+  const resourceType = notif.resourceType || '';
+  const type = notif.type || '';
+
+  if (resourceType === 'TASK' || type.startsWith('TASK_')) return 'tasks';
+  if (resourceType === 'CHANNEL' || type === 'CHANNEL_ADDED') return 'chat';
+  if (resourceType === 'ACCESS_REQUEST' || resourceType === 'ACCESS_GRANT' || type.startsWith('ACCESS_') || type === 'USER_ACCESS_CHANGED') return 'jit-request';
+  if (type === 'USER_ROLE_CHANGED' || type === 'USER_STATUS_CHANGED' || type === 'GROUP_MEMBER_ADDED') return 'team-members';
+  if (resourceType === 'ROLE' || type.startsWith('ROLE_') || type === 'PERMISSION_CHANGED') return 'team-members';
+  if (resourceType === 'MEMBERSHIP' || resourceType === 'INVITATION' || type.startsWith('INVITATION_') || type === 'TEAM_MEMBERSHIP') return 'team-members';
+
+  return 'dashboard';
+}
+
 export default function NotificationDropdown({ currentUser, onSelectTab }) {
-  const userId = currentUser?.id || 'usr-dm';
+  const userId = currentUser?._id || currentUser?.id || 'usr-current';
   const [isOpen, setIsOpen] = useState(false);
   const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread'
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef(null);
 
   const storageKey = `workspace_user_notifications_${userId}`;
@@ -95,34 +150,109 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
       const saved = localStorage.getItem(storageKey);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return DEFAULT_NOTIFICATIONS;
+    return [];
   });
 
+  const fetchUnreadCount = useCallback(async () => {
+    try {
+      const res = await api.get('/api/notifications/unread-count');
+      if (typeof res.data?.data?.unreadCount === 'number') {
+        setUnreadCount(res.data.data.unreadCount);
+      }
+    } catch {}
+  }, []);
+
   const fetchNotifications = useCallback(async () => {
+    setIsLoading(true);
     try {
       const res = await api.get('/api/notifications');
       const rawNotifs = res.data?.data?.notifications || res.data?.data || [];
-      if (Array.isArray(rawNotifs) && rawNotifs.length > 0) {
+      if (Array.isArray(rawNotifs)) {
         const formatted = rawNotifs.map((n) => ({
           id: n._id || n.id,
           type: n.type || 'SYSTEM',
+          resourceType: n.resourceType || 'SYSTEM',
+          resourceId: n.resourceId || null,
           title: n.title || 'System Notification',
           message: n.message || n.content || '',
-          timeAgo: n.createdAt ? 'Recently' : 'Just now',
-          targetTab: n.targetTab || 'dashboard',
-          readAt: n.isRead ? (n.readAt || new Date().toISOString()) : null,
+          timeAgo: n.createdAt
+            ? new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : 'Recently',
+          targetTab: resolveTargetTab(n),
+          readAt: n.readAt || null,
+          metadata: n.metadata || {},
         }));
         setNotifications(formatted);
+        try {
+          localStorage.setItem(storageKey, JSON.stringify(formatted));
+        } catch {}
+
+        if (typeof res.data?.data?.unreadCount === 'number') {
+          setUnreadCount(res.data.data.unreadCount);
+        } else {
+          setUnreadCount(formatted.filter((n) => !n.readAt).length);
+        }
       }
     } catch (err) {
-      console.warn('Backend notifications unavailable, using cached notifications:', err);
+      console.warn('Backend notifications unavailable:', err);
+    } finally {
+      setIsLoading(false);
     }
-  }, []);
+  }, [storageKey]);
 
   useEffect(() => {
+    try {
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        setNotifications(parsed);
+        setUnreadCount(parsed.filter((n) => !n.readAt).length);
+      } else {
+        setNotifications([]);
+        setUnreadCount(0);
+      }
+    } catch {
+      setNotifications([]);
+      setUnreadCount(0);
+    }
     fetchNotifications();
-  }, [fetchNotifications]);
+    fetchUnreadCount();
+  }, [userId, storageKey, fetchNotifications, fetchUnreadCount]);
 
+  useEffect(() => {
+    if (isOpen) {
+      fetchNotifications();
+    }
+  }, [isOpen, fetchNotifications]);
+
+  // Real-time notification socket listener
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onNewNotif = () => {
+      fetchNotifications();
+      fetchUnreadCount();
+    };
+
+    const onCountUpdate = (data) => {
+      if (typeof data?.unreadCount === 'number') {
+        setUnreadCount(data.unreadCount);
+      }
+    };
+
+    socket.on('notification:new', onNewNotif);
+    socket.on('notification:count', onCountUpdate);
+    socket.on('access:changed', onNewNotif);
+
+    return () => {
+      socket.off('notification:new', onNewNotif);
+      socket.off('notification:count', onCountUpdate);
+      socket.off('access:changed', onNewNotif);
+    };
+  }, [fetchNotifications, fetchUnreadCount]);
+
+  // Handle outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -137,12 +267,11 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
 
   const persistNotifications = (nextList) => {
     setNotifications(nextList);
+    setUnreadCount(nextList.filter((n) => !n.readAt).length);
     try {
       localStorage.setItem(storageKey, JSON.stringify(nextList));
     } catch {}
   };
-
-  const unreadCount = notifications.filter((n) => !n.readAt).length;
 
   const handleMarkAllAsRead = async () => {
     try {
@@ -175,8 +304,16 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     persistNotifications(updated);
   };
 
-  const handleDeleteNotification = (id, e) => {
+  const handleDeleteNotification = async (id, e) => {
     e.stopPropagation();
+    const isMongoId = /^[0-9a-fA-F]{24}$/.test(id);
+    if (isMongoId) {
+      try {
+        await api.delete(`/api/notifications/${id}`);
+      } catch (err) {
+        console.warn('Failed to delete notification in backend:', err);
+      }
+    }
     const updated = notifications.filter((n) => n.id !== id);
     persistNotifications(updated);
   };
@@ -275,7 +412,12 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
 
           {/* List of Notifications */}
           <div className="flex-1 overflow-y-auto divide-y divide-border-subtle/60">
-            {displayedNotifications.length === 0 ? (
+            {isLoading && notifications.length === 0 ? (
+              <div className="p-xl text-center flex flex-col items-center gap-2">
+                <span className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin"></span>
+                <span className="text-body-sm text-on-surface-variant">Loading notifications...</span>
+              </div>
+            ) : displayedNotifications.length === 0 ? (
               <div className="p-xl text-center flex flex-col items-center gap-2">
                 <span className="material-symbols-outlined text-outline text-[32px]">
                   notifications_paused
@@ -375,10 +517,10 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
             </button>
             <button
               type="button"
-              onClick={() => persistNotifications([])}
+              onClick={() => handleMarkAllAsRead()}
               className="text-on-surface-variant hover:text-error font-label-bold cursor-pointer"
             >
-              Clear all
+              Mark all read
             </button>
           </div>
         </div>

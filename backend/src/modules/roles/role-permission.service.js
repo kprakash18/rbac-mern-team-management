@@ -1,12 +1,59 @@
 import Role from "./role.model.js";
 import RolePermission from "./role-permission.model.js";
 import Permission from "../permissions/permission.model.js";
+import MembershipRole from "../member-roles/member-role.model.js";
+import Membership from "../memberships/membership.model.js";
+import { createBatchDomainNotifications } from "../notifications/notification.service.js";
+import { emitToUser } from "../../realtime/event-emitter.js";
 import {
   BadRequestError,
   NotFoundError,
-  ConflictError,
 } from "../../common/errors/index.js";
 import mongoose from "mongoose";
+
+async function notifyUsersWithRole(role, actorId, actionDescription) {
+  try {
+    const assignments = await MembershipRole.find({
+      roleId: role._id,
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).select("membershipId");
+
+    if (!assignments || assignments.length === 0) return;
+
+    const membershipIds = assignments.map((a) => a.membershipId);
+    const activeMembers = await Membership.find({
+      _id: { $in: membershipIds },
+      status: "ACTIVE",
+    }).select("userId teamId");
+
+    const notifications = activeMembers.map((m) => {
+      emitToUser(m.userId, "access:changed", {
+        teamId: m.teamId,
+        reason: "PERMISSION_CHANGED",
+        roleId: role._id,
+      });
+
+      return {
+        recipientId: m.userId,
+        actorId,
+        type: "USER_ACCESS_CHANGED",
+        teamId: m.teamId,
+        resourceType: "ROLE",
+        resourceId: role._id,
+        metadata: {
+          roleId: role._id,
+          roleName: role.name,
+          details: actionDescription,
+        },
+      };
+    });
+
+    await createBatchDomainNotifications(notifications);
+  } catch (err) {
+    console.error("Failed to notify users of role permission change:", err);
+  }
+}
 
 export async function assignPermissionsToRole(roleId, permissionIds = [], assignedBy) {
   if (!mongoose.Types.ObjectId.isValid(roleId)) {
@@ -54,13 +101,20 @@ export async function assignPermissionsToRole(roleId, permissionIds = [], assign
       assignedBy,
     }));
     await RolePermission.insertMany(junctionDocs);
+
+    // Notify all active users with this role
+    notifyUsersWithRole(
+      role,
+      assignedBy,
+      `New permissions were added to role '${role.name}'.`
+    );
   }
 
   // 5. Return updated list of permissions
   return getPermissionsForRole(role._id);
 }
 
-export async function removePermissionFromRole(roleId, permissionId) {
+export async function removePermissionFromRole(roleId, permissionId, removedBy) {
   if (!mongoose.Types.ObjectId.isValid(roleId)) {
     throw new NotFoundError("Role not found.");
   }
@@ -74,7 +128,15 @@ export async function removePermissionFromRole(roleId, permissionId) {
     throw new BadRequestError("System roles cannot be modified or deleted.");
   }
 
-  await RolePermission.deleteOne({ roleId: role._id, permissionId });
+  const result = await RolePermission.deleteOne({ roleId: role._id, permissionId });
+  if (result.deletedCount > 0) {
+    notifyUsersWithRole(
+      role,
+      removedBy,
+      `A permission was removed from role '${role.name}'.`
+    );
+  }
+
   return { success: true, message: "Permission removed from role successfully." };
 }
 

@@ -24,6 +24,7 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
           id: team._id || team.id,
           name: team.name,
           role: team.role || 'Developer',
+          isTeamAdmin: Boolean(team.isTeamAdmin || team.role === 'Team Admin' || team.role?.toLowerCase().includes('admin')),
           icon: team.icon || 'domain',
           iconBgColor: team.iconBgColor || 'bg-primary',
           iconTextColor: team.iconTextColor || 'text-on-primary',

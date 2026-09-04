@@ -4,16 +4,18 @@ export async function createAccessRequestController(req, res, next) {
   try {
     const { teamId } = req.params;
     const requesterId = req.user.id;
-    const { targetUserId, permissionKey, resource, reason, durationHours } = req.body;
+    const { targetUserId, permissionKey, permissionId, resource, reason, durationHours, durationMinutes } = req.body ?? {};
 
     const accessRequest = await accessService.createAccessRequest({
       requesterId,
       targetUserId,
       teamId,
       permissionKey,
+      permissionId,
       resource,
       reason,
       durationHours,
+      durationMinutes,
     });
 
     return res.status(201).json({
@@ -107,7 +109,7 @@ export async function approveAccessRequestController(req, res, next) {
   try {
     const { teamId, requestId } = req.params;
     const reviewerId = req.user.id;
-    const { durationHours } = req.body;
+    const { durationHours } = req.body ?? {};
 
     const result = await accessService.approveAccessRequest({
       teamId,
@@ -130,7 +132,7 @@ export async function rejectAccessRequestController(req, res, next) {
   try {
     const { teamId, requestId } = req.params;
     const reviewerId = req.user.id;
-    const { reason } = req.body;
+    const { reason } = req.body ?? {};
 
     const request = await accessService.rejectAccessRequest({
       teamId,
@@ -156,6 +158,26 @@ export async function revokeAccessGrantController(req, res, next) {
     const result = await accessService.revokeAccessGrant({
       teamId,
       grantId,
+      revokedBy,
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: result.message,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export async function revokeByRequestIdController(req, res, next) {
+  try {
+    const { teamId, requestId } = req.params;
+    const revokedBy = req.user.id;
+
+    const result = await accessService.revokeByRequestId({
+      teamId,
+      requestId,
       revokedBy,
     });
 
