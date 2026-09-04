@@ -10,7 +10,7 @@ export const invitationController = {
     try {
       const { teamId } = req.params;
       const { email, roleIds } = req.body;
-      const invitedByUserId = req.user.sub;
+      const invitedByUserId = req.user.id || req.user.sub;
 
       const data = await createInvitation({
         teamId,
@@ -63,7 +63,7 @@ export const invitationController = {
   revokeInvitation: async (req, res, next) => {
     try {
       const { teamId, invitationId } = req.params;
-      const revokedByUserId = req.user.sub;
+      const revokedByUserId = req.user.id || req.user.sub;
 
       const result = await revokeInvitation({
         teamId,

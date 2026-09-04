@@ -5,7 +5,7 @@ import { requirePermission } from "../../common/middleware/authorize.js";
 
 const router = Router();
 
-router.get("/search", authenticate, requirePermission("user.read"), userController.searchUsers);
-router.get("/", authenticate, requirePermission("user.read"), userController.searchUsers);
+router.get("/search", authenticate, userController.searchUsers);
+router.get("/", authenticate, userController.searchUsers);
 
 export default router;

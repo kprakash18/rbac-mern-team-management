@@ -113,11 +113,25 @@ export async function resolvePermissions(userId, teamId) {
 
 /**
  * 6. Main access check: Can user perform permission in team on resource?
+ *    Super Admins bypass all team-scoped checks.
  */
 export async function can(userId, teamId, permissionKey, resource = null) {
   if (!userId || !teamId || !permissionKey) return false;
 
-  // Step 1: Check Role permissions
+  // Super Admin bypass — Super Admins have unrestricted access across all teams
+  const superAdminRole = await Role.findOne({ name: "Super Admin", isSystemRole: true }).select("_id");
+  if (superAdminRole) {
+    const superAdminMemberRoles = await MembershipRole.find({
+      roleId: superAdminRole._id,
+      revokedAt: null,
+    }).populate({ path: "membershipId", select: "userId status" });
+    const isSuperAdmin = superAdminMemberRoles.some(
+      (mr) => mr.membershipId && String(mr.membershipId.userId) === String(userId) && mr.membershipId.status === "ACTIVE"
+    );
+    if (isSuperAdmin) return true;
+  }
+
+  // Step 1: Check Role permissions in the given team
   const rolePermissions = await resolveRolePermissions(userId, teamId);
   if (rolePermissions.has(permissionKey)) {
     return true;

@@ -412,14 +412,15 @@ async function seedNotificationsAndAuditLogs() {
     }
 
     await AuditLog.create({
-      actorId: actor._id,
+      actorId: actor ? actor._id : null,
       action: item.action,
       targetType: item.targetType,
       targetId,
       teamId: team ? team._id : null,
       metadata,
-      ipAddress: "127.0.0.1",
-      userAgent: "Mozilla/5.0 (Seed-Runner/1.0)",
+      result: item.result || "SUCCESS",
+      ipAddress: item.ipAddress || "127.0.0.1",
+      userAgent: item.userAgent || "Mozilla/5.0 (Seed-Runner/1.0)",
     });
   }
 }

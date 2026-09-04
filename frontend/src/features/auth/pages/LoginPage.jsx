@@ -1,14 +1,40 @@
 import { useState } from 'react';
-import AuthHeader from '../components/AuthHeader';
-import AuthErrorBanner from '../components/AuthErrorBanner';
 import LoginForm from '../components/LoginForm';
-import { USE_MOCK_DATA, MOCK_USERS } from '../constants/auth.constants';
+import api from '@/lib/api';
+
+function AuthHeader({ title, subtitle }) {
+  return (
+    <div className="flex flex-col items-center text-center mb-5">
+      <div className="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center mb-stack-md">
+        <img
+          alt="Company Logo"
+          className="w-8 h-8 object-contain mix-blend-multiply"
+          src="/b2b_saas_logo.png"
+        />
+      </div>
+      <h1 className="text-[22px] font-semibold text-on-surface mb-stack-sm leading-tight tracking-tight">
+        {title}
+      </h1>
+      <p className="font-body-md text-on-surface-variant">{subtitle}</p>
+    </div>
+  );
+}
+
+function AuthErrorBanner({ message }) {
+  if (!message) return null;
+  return (
+    <div className="bg-error-container/30 border border-error-container rounded-md p-stack-sm mb-5 flex items-center gap-stack-sm text-error animate-in fade-in">
+      <span className="material-symbols-outlined text-[18px]">error</span>
+      <span className="font-label-md">{message}</span>
+    </div>
+  );
+}
 
 export default function LoginPage({ onLoginSuccess }) {
   const [error, setError] = useState('');
-  const [prefilledCredentials, setPrefilledCredentials] = useState(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleLogin = ({ email, password, rememberMe }) => {
+  const handleLogin = async ({ email, password }) => {
     setError('');
 
     if (!email.trim() || !password.trim()) {
@@ -16,48 +42,49 @@ export default function LoginPage({ onLoginSuccess }) {
       return;
     }
 
-    if (USE_MOCK_DATA) {
-      const normalizedEmail = email.trim().toLowerCase();
-      const matchedUser = MOCK_USERS.find(
-        (u) => u.email.toLowerCase() === normalizedEmail && u.password === password
-      );
+    // ─── Live API Mode ──────────────────────────────────
+    setLoading(true);
+    try {
+      const response = await api.post('/api/auth/login', {
+        email: email.trim(),
+        password: password.trim(),
+      });
 
-      if (!matchedUser) {
-        setError('Invalid email or password. Click the demo account below to fill.');
-        return;
-      }
+      const responsePayload = response.data?.data;
+      if (responsePayload) {
+        const authenticatedUser = {
+          ...responsePayload.user,
+          token: responsePayload.accessToken,
+          role:
+            responsePayload.user.email === 'admin@system.local' ||
+            responsePayload.user.email === 'admin@platform.internal'
+              ? 'Platform Super Admin'
+              : responsePayload.user.role || 'Member',
+          mustChangePassword: Boolean(
+            responsePayload.requiresPasswordChange ?? responsePayload.user.mustChangePassword
+          ),
+          initialPassword: password.trim(),
+        };
 
-      if (matchedUser.accountStatus === 'SUSPENDED') {
-        setError('Your account is currently suspended. Please contact your administrator.');
-        return;
+        if (onLoginSuccess) {
+          onLoginSuccess(authenticatedUser);
+        }
       }
-
-      if (matchedUser.mustChangePassword) {
-        setError('Password reset required for invited accounts.');
-        return;
-      }
-
-      if (rememberMe) {
-        localStorage.setItem('auth_session', JSON.stringify(matchedUser));
-      }
-
-      if (onLoginSuccess) {
-        onLoginSuccess(matchedUser);
-      }
+    } catch (apiError) {
+      const serverMsg =
+        apiError.response?.data?.error?.message ||
+        apiError.response?.data?.message ||
+        apiError.message ||
+        'Authentication failed. Please verify your credentials.';
+      setError(serverMsg);
+    } finally {
+      setLoading(false);
     }
-  };
-
-  const handleQuickFill = (user) => {
-    setPrefilledCredentials({
-      email: user.email,
-      password: user.password,
-    });
-    setError('');
   };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface font-body-base text-on-surface antialiased p-md">
-      <main className="w-[440px] max-w-[94vw] mx-auto">
+      <main className="w-110 max-w-[94vw] mx-auto">
         <div className="w-full bg-surface-container-lowest rounded-xl shadow-lg border border-surface-variant p-lg sm:p-xl flex flex-col gap-md">
           {/* Header */}
           <div className="flex flex-col items-center text-center gap-xs">
@@ -73,34 +100,11 @@ export default function LoginPage({ onLoginSuccess }) {
           {/* Form */}
           <LoginForm
             onSubmit={handleLogin}
-            initialValues={prefilledCredentials}
+            loading={loading}
             onInputChange={() => {
               if (error) setError('');
             }}
           />
-
-          {/* Quick-Fill Demo Credentials Helper */}
-          <div className="mt-xs pt-md border-t border-border-subtle flex flex-col gap-xs text-[12px]">
-            <span className="text-on-surface-variant font-label-bold flex items-center gap-1">
-              <span className="material-symbols-outlined text-[16px] text-primary">key</span>
-              <span>Demo Super Admin Accounts (Click to Fill):</span>
-            </span>
-            <div className="space-y-1">
-              <button
-                type="button"
-                onClick={() => handleQuickFill(MOCK_USERS[0])}
-                className="w-full p-2.5 rounded-lg bg-surface-container-low hover:bg-surface-container text-left flex items-center justify-between transition-colors cursor-pointer border border-border-subtle group"
-              >
-                <div>
-                  <span className="font-bold text-on-surface block text-[12px]">Alex Vance (Super Admin)</span>
-                  <span className="text-on-surface-variant text-[11px] font-mono">admin@platform.internal / password123</span>
-                </div>
-                <span className="text-[11px] text-primary font-bold opacity-0 group-hover:opacity-100 transition-opacity">
-                  Auto-Fill →
-                </span>
-              </button>
-            </div>
-          </div>
         </div>
       </main>
     </div>

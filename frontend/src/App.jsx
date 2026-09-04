@@ -1,44 +1,118 @@
-import { useEffect, useState } from 'react';
-import LoginPage from '@/features/auth/pages/LoginPage';
+import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { AppProvider } from './context/AppContext.jsx';
+import { useApp } from './context/useApp';
+import LoginPage from './features/auth/pages/LoginPage';
+import ForceChangePasswordPage from './features/auth/pages/ForceChangePasswordPage';
 import AcceptInvitationPage from './features/invitation/pages/AcceptInvitationPage';
 import WorkspacePage from './features/workspaces/pages/WorkspacePage';
+import WorkspaceApp from './features/workspace-app/pages/WorkspaceApp';
 import SuperAdminPage from './features/super-admin/pages/SuperAdminPage';
 
-export default function App() {
-  const [currentPath, setCurrentPath] = useState(window.location.pathname);
-  const [authUser, setAuthUser] = useState(() => {
-    try {
-      const saved = localStorage.getItem('auth_session');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+/**
+ * Inner router — has access to AppContext and react-router hooks.
+ */
+function AppRoutes() {
+  const { authUser, activeWorkspace, isSuperAdmin, login, logout, updateAuthUser, selectWorkspace, clearWorkspace } =
+    useApp();
+  const navigate = useNavigate();
 
-  useEffect(() => {
-    const handlePopState = () => setCurrentPath(window.location.pathname);
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
+  // Not logged in
+  if (!authUser) {
+    return (
+      <Routes>
+        <Route path="/invite" element={<AcceptInvitationPage />} />
+        <Route path="*" element={<LoginPage onLoginSuccess={login} />} />
+      </Routes>
+    );
+  }
 
-  const handleLogout = () => {
-    localStorage.removeItem('auth_session');
-    setAuthUser(null);
+  // Must change password before anything else
+  if (authUser.mustChangePassword) {
+    return (
+      <ForceChangePasswordPage
+        user={authUser}
+        onPasswordChanged={updateAuthUser}
+        onCancel={logout}
+      />
+    );
+  }
+
+  // Super Admin jumped into a workspace
+  if (isSuperAdmin && activeWorkspace) {
+    return (
+      <WorkspaceApp
+        workspace={activeWorkspace}
+        currentUser={{ ...authUser, isTeamAdmin: true, isSuperAdmin: true, teamRoleTitle: 'Super Admin' }}
+        onLogout={clearWorkspace}
+      />
+    );
+  }
+
+  // Super Admin control plane
+  if (isSuperAdmin) {
+    return (
+      <SuperAdminPage
+        currentUser={authUser}
+        onLogout={logout}
+        onJumpIntoWorkspace={selectWorkspace}
+      />
+    );
+  }
+
+  // Regular employee — must pick a workspace first
+  if (!activeWorkspace) {
+    return (
+      <WorkspacePage
+        currentUser={authUser}
+        onWorkspaceSelected={selectWorkspace}
+        onLogout={logout}
+      />
+    );
+  }
+
+  // Regular employee in their workspace
+  const workspaceUser = {
+    ...authUser,
+    isTeamAdmin: Boolean(
+      activeWorkspace?.isTeamAdmin ||
+      activeWorkspace?.role === 'Team Admin' ||
+      activeWorkspace?.role?.toLowerCase().includes('admin')
+    ),
+    isSuperAdmin: false, // regular employees are never Super Admin
+    teamRoleTitle: activeWorkspace?.role || 'Developer',
+    teamRole: activeWorkspace?.role || 'Developer',
   };
 
-  if (currentPath === '/invite') {
-    return <AcceptInvitationPage />;
-  }
+  return (
+    <Routes>
+      <Route path="/invite" element={<AcceptInvitationPage />} />
+      <Route
+        path="/change-password"
+        element={
+          <ForceChangePasswordPage
+            user={authUser}
+            onPasswordChanged={(updated) => {
+              updateAuthUser(updated);
+              navigate('/');
+            }}
+            onCancel={logout}
+          />
+        }
+      />
+      <Route
+        path="*"
+        element={<WorkspaceApp workspace={activeWorkspace} currentUser={workspaceUser} onLogout={logout} />}
+      />
+    </Routes>
+  );
+}
 
-  if (currentPath === '/workspaces') {
-    return <WorkspacePage />;
-  }
-
-  // If not authenticated, render LoginPage
-  if (!authUser) {
-    return <LoginPage onLoginSuccess={(user) => setAuthUser(user)} />;
-  }
-
-  // If authenticated, render Super Admin Control Plane
-  return <SuperAdminPage currentUser={authUser} onLogout={handleLogout} />;
+export default function App() {
+  return (
+    <BrowserRouter>
+      <AppProvider>
+        <AppRoutes />
+      </AppProvider>
+    </BrowserRouter>
+  );
 }

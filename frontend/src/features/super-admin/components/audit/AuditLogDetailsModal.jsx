@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { AUDIT_SEVERITY } from '../../constants/audit.constants';
+import { AUDIT_SEVERITY } from '@/constants';
 
 export default function AuditLogDetailsModal({
   isOpen,

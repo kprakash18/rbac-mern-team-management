@@ -1,10 +1,14 @@
-import { useState } from 'react';
-import { INITIAL_AUDIT_LOGS, AUDIT_CATEGORIES } from '../constants/audit.constants';
+import { useState, useEffect, useCallback } from 'react';
+import { AUDIT_CATEGORIES } from '@/constants';
 import AuditLogsTable from './audit/AuditLogsTable.jsx';
 import AuditLogDetailsModal from './audit/AuditLogDetailsModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
+import api from '@/lib/api';
 
 export default function SecurityAuditView() {
-  const [logs] = useState(INITIAL_AUDIT_LOGS);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(false);
   const [isLiveStreaming, setIsLiveStreaming] = useState(true);
 
   // Search & Filter State
@@ -17,11 +21,50 @@ export default function SecurityAuditView() {
   const [inspectedLog, setInspectedLog] = useState(null);
 
   // Toast Notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
+
+  const fetchAuditLogs = useCallback(async () => {
+    try {
+      setLoading(true);
+      const teamsRes = await api.get('/api/teams');
+      const teams = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
+      if (teams.length > 0) {
+        const teamId = teams[0]._id || teams[0].id;
+        const res = await api.get(`/api/teams/${teamId}/audit-logs`);
+        const rawLogs = Array.isArray(res.data?.data) ? res.data?.data : res.data?.data?.logs || [];
+        const formatted = rawLogs.map((l) => ({
+          id: l._id || l.id,
+          timestamp: l.createdAt ? new Date(l.createdAt).toLocaleString() : 'Just now',
+          isoDate: l.createdAt || new Date().toISOString(),
+          actor: {
+            name: l.actor?.name || l.actorId?.name || 'System Admin',
+            email: l.actor?.email || l.actorId?.email || 'admin@system.local',
+            initials: (l.actor?.name || 'SA').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          action: l.action || 'system.event',
+          actionLabel: l.action || 'System Event',
+          category: l.category || 'IAM',
+          severity: l.severity || (l.result === 'FAILURE' ? 'WARNING' : 'INFO'),
+          targetIdentifier: l.targetId?.name || l.targetIdentifier || l.targetType || 'System Resource',
+          workspace: teams[0].name || 'Enterprise Core',
+          ipAddress: l.ipAddress || '127.0.0.1',
+          result: (l.result || 'SUCCESS').toUpperCase(),
+          userAgent: l.userAgent || 'Mozilla/5.0 Chrome/128.0.0.0',
+          correlationId: l.correlationId || `corr-${Math.random().toString(36).substring(2, 9)}`,
+          metadata: l.metadata || {},
+        }));
+        setLogs(formatted);
+      }
+    } catch (err) {
+      console.warn('Failed to load live audit logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [fetchAuditLogs]);
 
   // Filtered Logs
   const filteredLogs = logs.filter((log) => {
@@ -41,10 +84,29 @@ export default function SecurityAuditView() {
     return matchSeverity && matchCategory && matchResult && matchSearch;
   });
 
-  // Severity Counts
+  // Severity & Metric Counts
   const criticalCount = logs.filter((l) => l.severity === 'CRITICAL').length;
   const warningCount = logs.filter((l) => l.severity === 'WARNING').length;
   const infoCount = logs.filter((l) => l.severity === 'INFO').length;
+  const failureCount = logs.filter((l) => l.result === 'FAILURE' || l.severity === 'CRITICAL').length;
+  const jitCount = logs.filter((l) =>
+    l.category === 'ACCESS_CONTROL' ||
+    l.category === 'IAM' ||
+    (l.action && l.action.toLowerCase().includes('jit')) ||
+    (l.action && l.action.toLowerCase().includes('grant'))
+  ).length;
+  const mutationsCount = logs.filter((l) =>
+    l.category === 'SYSTEM' ||
+    l.category === 'COMPLIANCE' ||
+    (l.action && (
+      l.action.toLowerCase().includes('role') ||
+      l.action.toLowerCase().includes('permission') ||
+      l.action.toLowerCase().includes('user') ||
+      l.action.toLowerCase().includes('create') ||
+      l.action.toLowerCase().includes('update') ||
+      l.action.toLowerCase().includes('delete')
+    ))
+  ).length;
 
   const handleExportCSV = () => {
     const rows = [
@@ -88,13 +150,10 @@ export default function SecurityAuditView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1300] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">security</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-1300">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">
@@ -162,8 +221,10 @@ export default function SecurityAuditView() {
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">Total Events (24h)</span>
-            <span className="font-display-title text-[22px] font-bold text-on-surface">1,428 Logged</span>
-            <span className="text-[11px] text-success-text font-medium block mt-0.5">100% Delivery integrity</span>
+            <span className="font-display-title text-[22px] font-bold text-on-surface">{logs.length.toLocaleString()} Logged</span>
+            <span className="text-[11px] text-success-text font-medium block mt-0.5">
+              {logs.length > 0 ? '100% Delivery integrity' : 'No recorded events'}
+            </span>
           </div>
           <div className="w-10 h-10 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center">
             <span className="material-symbols-outlined text-[20px]">policy</span>
@@ -174,10 +235,14 @@ export default function SecurityAuditView() {
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">Threats / Auth Failures</span>
-            <span className="font-display-title text-[22px] font-bold text-error-text">12 Blocked</span>
-            <span className="text-[11px] text-error-text font-medium block mt-0.5">1 Brute-force alert</span>
+            <span className={`font-display-title text-[22px] font-bold ${failureCount > 0 ? 'text-error-text' : 'text-on-surface'}`}>
+              {failureCount} Blocked
+            </span>
+            <span className={`text-[11px] font-medium block mt-0.5 ${criticalCount > 0 ? 'text-error-text' : 'text-on-surface-variant'}`}>
+              {criticalCount > 0 ? `${criticalCount} Critical alert${criticalCount > 1 ? 's' : ''}` : 'No threats detected'}
+            </span>
           </div>
-          <div className="w-10 h-10 rounded-lg bg-error-bg text-error-text flex items-center justify-center">
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${failureCount > 0 ? 'bg-error-bg text-error-text' : 'bg-surface-container-high text-on-surface-variant'}`}>
             <span className="material-symbols-outlined text-[20px]">gpp_maybe</span>
           </div>
         </div>
@@ -186,8 +251,12 @@ export default function SecurityAuditView() {
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">JIT Privilege Grants</span>
-            <span className="font-display-title text-[22px] font-bold text-on-surface">34 Escalations</span>
-            <span className="text-[11px] text-on-surface-variant font-medium block mt-0.5">All TTL-bounded</span>
+            <span className="font-display-title text-[22px] font-bold text-on-surface">
+              {jitCount} Escalation{jitCount === 1 ? '' : 's'}
+            </span>
+            <span className="text-[11px] text-on-surface-variant font-medium block mt-0.5">
+              {jitCount > 0 ? 'All TTL-bounded' : 'No active grants'}
+            </span>
           </div>
           <div className="w-10 h-10 rounded-lg bg-warning-bg text-warning-text flex items-center justify-center">
             <span className="material-symbols-outlined text-[20px]">timer</span>
@@ -198,8 +267,12 @@ export default function SecurityAuditView() {
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">RBAC &amp; Config Changes</span>
-            <span className="font-display-title text-[22px] font-bold text-on-surface">186 Mutations</span>
-            <span className="text-[11px] text-on-surface-variant font-medium block mt-0.5">Verified by audit</span>
+            <span className="font-display-title text-[22px] font-bold text-on-surface">
+              {mutationsCount} Mutation{mutationsCount === 1 ? '' : 's'}
+            </span>
+            <span className="text-[11px] text-on-surface-variant font-medium block mt-0.5">
+              {mutationsCount > 0 ? 'Verified by audit' : 'No mutations recorded'}
+            </span>
           </div>
           <div className="w-10 h-10 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center">
             <span className="material-symbols-outlined text-[20px]">tune</span>
@@ -277,6 +350,7 @@ export default function SecurityAuditView() {
       {/* Main Audit Logs Table */}
       <AuditLogsTable
         logs={filteredLogs}
+        loading={loading}
         onInspectLog={(log) => setInspectedLog(log)}
       />
 

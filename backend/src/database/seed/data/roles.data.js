@@ -30,6 +30,7 @@ export const systemRolesData = [
       "invitation.resend",
       "invitation.revoke",
       "access_request.read",
+      "access_request.create",
       "access_request.approve",
       "access_request.reject",
       "access_request.cancel",

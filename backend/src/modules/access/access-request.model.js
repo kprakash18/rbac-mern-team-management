@@ -47,9 +47,21 @@ const accessRequestSchema = new mongoose.Schema(
         "REJECTED",
         "CANCELLED",
         "EXPIRED",
+        "REVOKED",
       ],
       default: "PENDING",
       index: true,
+    },
+
+    approvalLevel: {
+      type: String,
+      enum: ["TEAM_ADMIN", "SUPER_ADMIN"],
+      default: "TEAM_ADMIN",
+    },
+
+    durationHours: {
+      type: Number,
+      default: null,
     },
 
     reviewedBy: {

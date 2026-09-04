@@ -1,0 +1,591 @@
+import { useState, useEffect, useCallback } from 'react';
+import api from '../../../../lib/api';
+import { useApp } from '@/context/useApp';
+import SearchInput from '../../../../components/shared/SearchInput';
+import EmptyState from '../../../../components/shared/EmptyState';
+
+const PRIORITY_STYLES = {
+  URGENT: 'bg-red-50 text-red-700 border-red-200 font-semibold',
+  HIGH: 'bg-amber-50 text-amber-800 border-amber-200 font-semibold',
+  MEDIUM: 'bg-slate-100 text-slate-700 border-slate-200 font-medium',
+  LOW: 'bg-slate-50 text-slate-500 border-slate-200 font-medium',
+  Urgent: 'bg-red-50 text-red-700 border-red-200 font-semibold',
+  High: 'bg-amber-50 text-amber-800 border-amber-200 font-semibold',
+  Medium: 'bg-slate-100 text-slate-700 border-slate-200 font-medium',
+  Low: 'bg-slate-50 text-slate-500 border-slate-200 font-medium',
+};
+
+const STATUS_STYLES = {
+  TODO: 'bg-slate-100 text-slate-700 border-slate-300',
+  IN_PROGRESS: 'bg-blue-50 text-blue-700 border-blue-200 font-medium',
+  IN_REVIEW: 'bg-purple-50 text-purple-700 border-purple-200 font-medium',
+  DONE: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-medium',
+  CANCELLED: 'bg-red-50 text-red-700 border-red-200 font-medium',
+};
+
+export default function TasksView({ currentUser, workspace }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
+  const currentUserId = currentUser?._id || currentUser?.id;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const [tasks, setTasks] = useState([]);
+  const [teamMembers, setTeamMembers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('ALL');
+  const [assigneeFilter, setAssigneeFilter] = useState('ALL'); // 'ALL' | 'ME'
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingTask, setEditingTask] = useState(null);
+  const [formData, setFormData] = useState({
+    title: '',
+    assignedTo: '',
+    priority: 'MEDIUM',
+    dueDate: '',
+    status: 'TODO',
+    remarks: '',
+  });
+
+  const fetchTasksAndMembers = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      setLoading(true);
+      const [tasksRes, membersRes] = await Promise.allSettled([
+        api.get(`/api/teams/${teamId}/tasks`),
+        api.get(`/api/teams/${teamId}/members?limit=100`),
+      ]);
+
+      if (tasksRes.status === 'fulfilled') {
+        const rawTasks = tasksRes.value.data?.data?.tasks || tasksRes.value.data?.data || [];
+        const normalized = rawTasks.map((t) => ({
+          ...t,
+          id: t._id || t.id,
+          remarks: t.description || t.remarks || '',
+          assignedTo: t.assignedTo?._id || t.assignedTo?.id || t.assignedTo,
+        }));
+        setTasks(normalized);
+      }
+
+      if (membersRes.status === 'fulfilled') {
+        const rawMembers = membersRes.value.data?.data?.members || membersRes.value.data?.data || [];
+        setTeamMembers(
+          rawMembers.map((m) => ({
+            id: m.userId?._id || m.user?._id || m.userId || m.id || m._id,
+            name: m.userId?.name || m.user?.name || m.name || 'Member',
+            email: m.userId?.email || m.user?.email || m.email || '',
+            initials: (m.userId?.name || m.user?.name || m.name || 'M')
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2),
+          }))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to load tasks:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchTasksAndMembers();
+  }, [fetchTasksAndMembers]);
+
+  const getMember = (id) =>
+    teamMembers.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' };
+
+  const handleOpenCreateModal = () => {
+    setEditingTask(null);
+    setFormData({
+      title: '',
+      assignedTo: currentUserId || teamMembers[0]?.id || '',
+      priority: 'MEDIUM',
+      dueDate: '',
+      status: 'TODO',
+      remarks: '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEditModal = (task) => {
+    setEditingTask(task);
+    setFormData({
+      title: task.title,
+      assignedTo: task.assignedTo || '',
+      priority: (task.priority || 'MEDIUM').toUpperCase(),
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
+      status: task.status || 'TODO',
+      remarks: task.remarks || '',
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveTask = async (e) => {
+    e.preventDefault();
+    if (!formData.title.trim() || !teamId) return;
+
+    try {
+      if (editingTask) {
+        const taskId = editingTask._id || editingTask.id;
+        const payload = {
+          title: formData.title,
+          status: formData.status,
+          priority: formData.priority,
+          description: formData.remarks,
+          assignedTo: formData.assignedTo || null,
+          dueDate: formData.dueDate || null,
+        };
+
+        const res = await api.patch(`/api/teams/${teamId}/tasks/${taskId}`, payload);
+        const updated = res.data?.data || payload;
+        setTasks((prev) =>
+          prev.map((t) => (t.id === taskId ? { ...t, ...updated, id: taskId, remarks: formData.remarks } : t))
+        );
+      } else {
+        const payload = {
+          title: formData.title,
+          assignedTo: formData.assignedTo || null,
+          priority: formData.priority,
+          status: formData.status,
+          description: formData.remarks,
+          dueDate: formData.dueDate || null,
+        };
+
+        const res = await api.post(`/api/teams/${teamId}/tasks`, payload);
+        const created = res.data?.data || payload;
+        const normalized = {
+          ...created,
+          id: created._id || created.id,
+          remarks: formData.remarks,
+        };
+        setTasks((prev) => [normalized, ...prev]);
+      }
+      setIsModalOpen(false);
+    } catch (err) {
+      console.error('Failed to save task:', err);
+      alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to save task.');
+    }
+  };
+
+  const handleDeleteTask = async (taskId) => {
+    if (!window.confirm('Delete this task?')) return;
+    try {
+      await api.delete(`/api/teams/${teamId}/tasks/${taskId}`);
+      setTasks((prev) => prev.filter((t) => t.id !== taskId && t._id !== taskId));
+    } catch (err) {
+      console.error('Failed to delete task:', err);
+      alert(err.response?.data?.error?.message || 'Failed to delete task.');
+    }
+  };
+
+  const handleQuickStatusChange = async (taskId, newStatus) => {
+    try {
+      await api.patch(`/api/teams/${teamId}/tasks/${taskId}`, { status: newStatus });
+      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      alert(err.response?.data?.error?.message || 'Failed to update task status.');
+    }
+  };
+
+  // Filter Tasks
+  const filteredTasks = tasks.filter((t) => {
+    const matchesSearch =
+      !searchQuery ||
+      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (t.remarks && t.remarks.toLowerCase().includes(searchQuery.toLowerCase()));
+
+    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+    const matchesAssignee = assigneeFilter === 'ALL' || t.assignedTo === currentUserId;
+
+    return matchesSearch && matchesStatus && matchesAssignee;
+  });
+
+  return (
+    <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
+      {/* Clean Header */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
+        <div>
+          <h1 className="font-display-title text-[24px] font-semibold text-on-surface tracking-tight">
+            Tasks &amp; Sprints
+          </h1>
+          <p className="font-body-sm text-body-sm text-on-surface-variant">
+            {tasks.length} tasks in Acme Engineering • {tasks.filter((t) => t.status === 'IN_PROGRESS').length} in progress
+          </p>
+        </div>
+
+        {isTeamAdmin && (
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="flex items-center gap-xs px-md py-2 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer self-start md:self-auto"
+          >
+            <span className="material-symbols-outlined text-[18px]">add_task</span>
+            <span>+ Create Task</span>
+          </button>
+        )}
+      </div>
+
+      {/* Simplified Filter & Search Bar */}
+      <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+        <div className="flex items-center gap-2 flex-1">
+          <SearchInput
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onClear={() => setSearchQuery('')}
+            placeholder="Search tasks or remarks..."
+            className="flex-1 max-w-md"
+          />
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* My Tasks vs All Tasks Toggle */}
+          <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-border-subtle">
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter('ALL')}
+              className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
+                assigneeFilter === 'ALL'
+                  ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              All Tasks
+            </button>
+            <button
+              type="button"
+              onClick={() => setAssigneeFilter('ME')}
+              className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
+                assigneeFilter === 'ME'
+                  ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
+                  : 'text-on-surface-variant hover:text-on-surface'
+              }`}
+            >
+              Assigned to Me
+            </button>
+          </div>
+
+          {/* Status Tabs */}
+          <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg border border-border-subtle flex-wrap">
+            {[
+              { key: 'ALL', label: 'All' },
+              { key: 'TODO', label: 'To Do' },
+              { key: 'IN_PROGRESS', label: 'In Progress' },
+              { key: 'IN_REVIEW', label: 'In Review' },
+              { key: 'DONE', label: 'Done' },
+              { key: 'CANCELLED', label: 'Cancelled' },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setStatusFilter(key)}
+                className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
+                  statusFilter === key
+                    ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Structured Consistent Table Layout */}
+      <div className="w-full bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
+            <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+            <span className="text-[13px] font-medium">Loading workspace tasks...</span>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-190">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-surface-container-low text-[12px] font-semibold text-on-surface-variant">
+                    <th className="py-3 px-4 w-32">Status</th>
+                    <th className="py-3 px-4">Task Details</th>
+                    <th className="py-3 px-4 w-28 text-center">Priority</th>
+                    <th className="py-3 px-4 w-36">Deadline</th>
+                    <th className="py-3 px-4 w-48">Assignee</th>
+                    <th className="py-3 px-4 w-20 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border-subtle text-body-sm">
+                  {filteredTasks.map((task) => {
+                    const assignee = getMember(task.assignedTo);
+                    const isAssignee = task.assignedTo === currentUserId;
+                    const canEdit = isAssignee || isTeamAdmin;
+
+                    return (
+                      <tr
+                        key={task.id}
+                        className="hover:bg-surface-container-low/60 transition-colors"
+                      >
+                        {/* Status Selector */}
+                        <td className="py-3.5 px-4 w-32 align-top">
+                          <select
+                            value={task.status}
+                            disabled={!canEdit}
+                            onChange={(e) => handleQuickStatusChange(task.id, e.target.value)}
+                            className={`w-full px-2.5 py-1 rounded-md text-[11px] font-semibold border cursor-pointer outline-none transition-colors ${
+                              STATUS_STYLES[task.status] || STATUS_STYLES.TODO
+                            } ${!canEdit ? 'opacity-70 cursor-not-allowed' : ''}`}
+                          >
+                            <option value="TODO">To Do</option>
+                            <option value="IN_PROGRESS">In Progress</option>
+                            <option value="IN_REVIEW">In Review</option>
+                            <option value="DONE">Done</option>
+                            <option value="CANCELLED">Cancelled</option>
+                          </select>
+                        </td>
+
+                        {/* Task Title & Remarks */}
+                        <td className="py-3.5 px-4 min-w-65 align-top">
+                          <div className="flex flex-col">
+                            <span className="font-label-bold text-[13px] text-on-surface leading-tight">
+                              {task.title}
+                            </span>
+                            {task.remarks && (
+                              <span className="text-[11px] text-on-surface-variant italic mt-1 line-clamp-1">
+                                Note: {task.remarks}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+
+                        {/* Priority (Fixed Width & Centered Alignment) */}
+                        <td className="py-3.5 px-4 w-28 text-center align-top">
+                          <span
+                            className={`inline-block w-20 px-2 py-0.5 rounded text-[11px] font-medium border text-center ${
+                              PRIORITY_STYLES[task.priority] || PRIORITY_STYLES.Medium
+                            }`}
+                          >
+                            {task.priority}
+                          </span>
+                        </td>
+
+                        {/* Deadline */}
+                        <td className="py-3.5 px-4 w-36 whitespace-nowrap align-top">
+                          <div className="flex items-center gap-1.5 text-[12px] text-on-surface-variant font-mono mt-0.5">
+                            <span className="material-symbols-outlined text-[15px]">calendar_today</span>
+                            <span>
+                              {task.dueDate
+                                ? new Date(task.dueDate).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })
+                                : 'No deadline'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Assignee */}
+                        <td className="py-3.5 px-4 w-48 align-top">
+                          <div className="flex items-center gap-2 mt-0.5">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                isAssignee ? 'bg-primary text-on-primary ring-1 ring-primary' : 'bg-surface-container-high text-on-surface'
+                              }`}
+                            >
+                              {assignee.initials}
+                            </div>
+                            <span className="text-[12px] font-medium text-on-surface truncate">
+                              {assignee.name} {isAssignee && '(You)'}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Actions */}
+                        <td className="py-3.5 px-4 w-20 text-right align-top">
+                          <div className="flex items-center justify-end gap-1 mt-0.5">
+                            {canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenEditModal(task)}
+                                className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
+                                title={isAssignee && !isTeamAdmin ? 'Update Status & Remarks' : 'Edit Task'}
+                              >
+                                <span className="material-symbols-outlined text-[18px]">edit</span>
+                              </button>
+                            )}
+                            {isTeamAdmin && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteTask(task.id)}
+                                className="p-1 rounded text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors cursor-pointer"
+                                title="Delete Task (Team Admin only)"
+                              >
+                                <span className="material-symbols-outlined text-[18px]">delete</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredTasks.length === 0 && (
+              <EmptyState
+                icon="task_alt"
+                title="No tasks match your filters"
+                message="Try clearing search or switching status tabs."
+              />
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Clean Create / Edit Task Modal */}
+      {isModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
+          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+            <div className="p-md border-b border-border-subtle flex items-center justify-between">
+              <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
+                {editingTask ? (isTeamAdmin ? 'Edit Task' : 'Update Status & Remarks') : 'New Task'}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsModalOpen(false)}
+                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveTask} className="p-md flex flex-col gap-3.5">
+              {/* Title */}
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">Title *</label>
+                <input
+                  type="text"
+                  required
+                  disabled={editingTask && !isTeamAdmin}
+                  value={formData.title}
+                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
+                  placeholder="e.g. Implement user profile caching"
+                  className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary ${
+                    editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                  }`}
+                />
+              </div>
+
+              {/* Assignee & Priority (Two Columns) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">Assignee</label>
+                  <select
+                    disabled={editingTask && !isTeamAdmin}
+                    value={formData.assignedTo}
+                    onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
+                    className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer ${
+                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="">Unassigned</option>
+                    {teamMembers.map((m) => (
+                      <option key={m.id} value={m.id}>
+                        {m.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">Priority</label>
+                  <select
+                    disabled={editingTask && !isTeamAdmin}
+                    value={formData.priority}
+                    onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
+                    className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer ${
+                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                  >
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Due Date & Status (Two Columns) */}
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">Due Date</label>
+                  <input
+                    type="text"
+                    disabled={editingTask && !isTeamAdmin}
+                    value={formData.dueDate}
+                    onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                    placeholder="e.g. Sep 15, 2026"
+                    className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary ${
+                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                    }`}
+                  />
+                </div>
+
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">Status</label>
+                  <select
+                    value={formData.status}
+                    onChange={(e) => setFormData({ ...formData, status: e.target.value })}
+                    className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer"
+                  >
+                    <option value="TODO">To Do</option>
+                    <option value="IN_PROGRESS">In Progress</option>
+                    <option value="IN_REVIEW">In Review</option>
+                    <option value="DONE">Done</option>
+                    <option value="CANCELLED">Cancelled</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Remarks */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-label-sm font-label-bold text-on-surface">Remarks / Progress Note</label>
+                  <span className="text-[11px] text-success-text font-medium">Assignee can update</span>
+                </div>
+                <textarea
+                  rows={2}
+                  value={formData.remarks}
+                  onChange={(e) => setFormData({ ...formData, remarks: e.target.value })}
+                  placeholder="Progress update, blockers, or completion notes..."
+                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                ></textarea>
+              </div>
+
+              {/* Modal Buttons */}
+              <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer"
+                >
+                  {editingTask ? 'Save Changes' : 'Create Task'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -9,6 +9,7 @@ import {
   NotFoundError,
   ConflictError,
 } from "../../common/errors/index.js";
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
 import mongoose from "mongoose";
 
 export async function createTeam({ name, description = "", createdBy }) {
@@ -88,7 +89,7 @@ export async function getUserTeams(userId) {
   const memberships = await Membership.find({
     userId,
     status: "ACTIVE",
-  }).select("teamId");
+  }).select("_id teamId");
 
   const teamIds = memberships.map((m) => m.teamId);
 
@@ -97,9 +98,36 @@ export async function getUserTeams(userId) {
     status: { $ne: "ARCHIVED" },
   })
     .populate("createdBy", "name email")
-    .sort({ name: 1 });
+    .sort({ name: 1 })
+    .lean();
 
-  return teams;
+  const membershipIds = memberships.map((m) => m._id);
+  const memRoles = await MembershipRole.find({
+    membershipId: { $in: membershipIds },
+    revokedAt: null,
+  })
+    .populate("roleId", "name isSystemRole")
+    .lean();
+
+  return teams.map((team) => {
+    const mem = memberships.find((m) => String(m.teamId) === String(team._id));
+    const roles = mem
+      ? memRoles
+          .filter((mr) => String(mr.membershipId) === String(mem._id))
+          .map((mr) => mr.roleId?.name)
+          .filter(Boolean)
+      : [];
+
+    const primaryRole = roles[0] || "Developer";
+    const isTeamAdmin = roles.some((r) => r.toLowerCase().includes("admin"));
+
+    return {
+      ...team,
+      role: primaryRole,
+      roles,
+      isTeamAdmin,
+    };
+  });
 }
 
 export async function listTeams({
@@ -118,9 +146,7 @@ export async function listTeams({
   if (search && typeof search === "string" && search.trim().length > 0) {
     query.name = { $regex: search.trim(), $options: "i" };
   }
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
   const [teams, total] = await Promise.all([
     Team.find(query)
       .populate("createdBy", "name email")
@@ -134,7 +160,7 @@ export async function listTeams({
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: getTotalPages(total, limitNum),
   };
 }
 export async function getTeamById(teamId) {
@@ -201,6 +227,7 @@ export async function archiveTeam(teamId) {
 
 export const teamService = {
   createTeam,
+  getUserTeams,
   listTeams,
   getTeamById,
   updateTeam,
