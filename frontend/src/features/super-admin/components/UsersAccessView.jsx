@@ -5,6 +5,18 @@ import ManageUserModal from './ManageUserModal';
 
 const MOCK_USERS = [
   {
+    id: 'usr-mv',
+    name: 'Marcus Vance',
+    email: 'marcus.v@acme.corp',
+    status: 'Active',
+    statusType: 'active',
+    workspaces: [{ name: 'Engineering Core', role: 'Developer', isTeamAdmin: false, isHigh: false }],
+    lastLogin: '1 hour ago',
+    avatar: '',
+    initials: 'MV',
+    mustChangePassword: false,
+  },
+  {
     id: 'usr-1',
     name: 'Alice Johnson',
     email: 'alice.j@example.com',
@@ -54,7 +66,13 @@ const MOCK_USERS = [
 ];
 
 export default function UsersAccessView() {
-  const [users, setUsers] = useState(MOCK_USERS);
+  const [users, setUsers] = useState(() => {
+    try {
+      const stored = localStorage.getItem('platform_users_list');
+      if (stored) return JSON.parse(stored);
+    } catch {}
+    return MOCK_USERS;
+  });
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -76,16 +94,43 @@ export default function UsersAccessView() {
   };
 
   const handleSaveManagedUser = (updatedUser) => {
-    setUsers((prev) =>
-      prev.map((u) => (u.id === updatedUser.id ? updatedUser : u))
-    );
+    setUsers((prev) => {
+      const nextList = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
+      try {
+        localStorage.setItem('platform_users_list', JSON.stringify(nextList));
+      } catch (err) {
+        console.error('Failed to save to localStorage', err);
+      }
+      return nextList;
+    });
+
+    try {
+      const currentSession = JSON.parse(localStorage.getItem('auth_session') || '{}');
+      if (currentSession.email && currentSession.email.toLowerCase() === updatedUser.email.toLowerCase()) {
+        currentSession.mustChangePassword = Boolean(updatedUser.mustChangePassword);
+        currentSession.status = updatedUser.status;
+        currentSession.accountStatus = (updatedUser.status || 'ACTIVE').toUpperCase();
+        localStorage.setItem('auth_session', JSON.stringify(currentSession));
+      }
+    } catch {
+      // ignore
+    }
   };
 
   const handleInviteUser = (newUserData) => {
     const assignedWorkspaces = newUserData.assignments?.map((a) => ({
       name: a.workspace,
-      isHigh: false,
-    })) || [{ name: newUserData.workspace, isHigh: false }];
+      role: a.role,
+      isTeamAdmin: Boolean(a.isTeamAdmin),
+      isHigh: Boolean(a.isTeamAdmin),
+    })) || [
+      {
+        name: newUserData.workspace,
+        role: newUserData.role,
+        isTeamAdmin: Boolean(newUserData.isTeamAdmin),
+        isHigh: Boolean(newUserData.isTeamAdmin),
+      },
+    ];
 
     setUsers((prev) => {
       const existingIndex = prev.findIndex(
@@ -101,6 +146,7 @@ export default function UsersAccessView() {
         const updated = {
           ...existing,
           workspaces: [...existing.workspaces, ...newUniqueWorkspaces],
+          isTeamAdmin: existing.isTeamAdmin || Boolean(newUserData.isTeamAdmin),
           isSuperAdmin: newUserData.isSuperAdmin !== undefined ? newUserData.isSuperAdmin : existing.isSuperAdmin,
         };
         const nextList = [...prev];
@@ -116,6 +162,7 @@ export default function UsersAccessView() {
         status: 'Invited',
         statusType: 'invited',
         workspaces: assignedWorkspaces,
+        isTeamAdmin: Boolean(newUserData.isTeamAdmin),
         isSuperAdmin: Boolean(newUserData.isSuperAdmin),
         lastLogin: 'Never',
         avatar: '',
@@ -254,6 +301,11 @@ export default function UsersAccessView() {
                               local_police
                             </span>
                           )}
+                          {user.isTeamAdmin && !user.isSuperAdmin && (
+                            <span className="material-symbols-outlined text-amber-500 text-[16px]" title="Team Admin (Workspace Administrator)">
+                              crown
+                            </span>
+                          )}
                         </div>
                         <span className="text-on-surface-variant">{user.email}</span>
                       </div>
@@ -280,19 +332,32 @@ export default function UsersAccessView() {
                         <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant mr-xs"></span>Disabled
                       </span>
                     )}
+                    {user.mustChangePassword && (
+                      <div className="mt-1">
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 font-label-sm text-[11px] font-medium border border-amber-300" title="Super Admin forced password reset on next login">
+                          <span className="material-symbols-outlined text-[12px] mr-1">lock_reset</span>PW Reset Required
+                        </span>
+                      </div>
+                    )}
                   </td>
                   <td className="py-lg px-lg">
                     <div className="flex gap-xs flex-wrap">
                       {user.workspaces.map((ws, i) => (
                         <span
                           key={i}
-                          className={`px-xs py-base rounded-md font-label-sm text-label-sm shadow-sm ${
-                            ws.isHigh
+                          className={`px-xs py-base rounded-md font-label-sm text-label-sm shadow-sm flex items-center gap-1 ${
+                            ws.isTeamAdmin
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-semibold'
+                              : ws.isHigh
                               ? 'bg-surface-container-high text-on-surface-variant'
                               : 'bg-secondary-container text-on-secondary-container'
                           } ${ws.isOpacity ? 'opacity-50' : ''}`}
                         >
-                          {ws.name}
+                          {ws.isTeamAdmin && (
+                            <span className="material-symbols-outlined text-[13px] text-amber-600">crown</span>
+                          )}
+                          <span>{ws.name}</span>
+                          {ws.role && <span className="text-[10px] opacity-75 font-normal">({ws.role})</span>}
                         </span>
                       ))}
                     </div>

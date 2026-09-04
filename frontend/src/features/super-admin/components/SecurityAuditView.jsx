@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { INITIAL_AUDIT_LOGS, AUDIT_CATEGORIES } from '../constants/audit.constants';
+import { INITIAL_AUDIT_LOGS, AUDIT_CATEGORIES } from '@/constants';
 import AuditLogsTable from './audit/AuditLogsTable.jsx';
 import AuditLogDetailsModal from './audit/AuditLogDetailsModal.jsx';
 

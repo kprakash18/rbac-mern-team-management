@@ -1,5 +1,10 @@
 import { useState } from 'react';
-import { TEAM_JIT_REQUESTS, AVAILABLE_JIT_ROLES } from '../constants/workspaceApp.constants';
+import { TEAM_JIT_REQUESTS, AVAILABLE_JIT_ROLES } from '@/constants';
+import { getStorage, setStorage } from '../../../../lib/storage';
+import ConfirmModal from '../../../../components/shared/ConfirmModal';
+import Toast from '../../../../components/shared/Toast';
+import SearchInput from '../../../../components/shared/SearchInput';
+import EmptyState from '../../../../components/shared/EmptyState';
 
 const DURATIONS = ['30m', '1h', '2h', '4h', '8h'];
 
@@ -19,15 +24,24 @@ const STATUS_BADGES = {
 
 export default function JitRequestView({ currentUser }) {
   const currentUserId = currentUser?.id || 'usr-dm';
-  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
-  const [requests, setRequests] = useState(TEAM_JIT_REQUESTS);
+  const [requests, setRequests] = useState(() => getStorage('workspace_jit_requests', TEAM_JIT_REQUESTS));
+
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'APPROVED' | 'PAST'
   const [requesterFilter, setRequesterFilter] = useState('ALL'); // 'ALL' | 'ME'
 
   // Modal State for New Request
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [confirmRevokeReq, setConfirmRevokeReq] = useState(null);
+  const [confirmRejectReq, setConfirmRejectReq] = useState(null);
+  const [confirmWithdrawReq, setConfirmWithdrawReq] = useState(null);
+  const [editingRequest, setEditingRequest] = useState(null);
+  const [editTicketId, setEditTicketId] = useState('');
+  const [editJustification, setEditJustification] = useState('');
+  const [editDuration, setEditDuration] = useState('2h');
+  const [rejectReason, setRejectReason] = useState('Access not required for current sprint task.');
   const [selectedRole, setSelectedRole] = useState('K8S_WRITE');
   const [duration, setDuration] = useState('2h');
   const [ticketId, setTicketId] = useState('');
@@ -40,59 +54,102 @@ export default function JitRequestView({ currentUser }) {
     setTimeout(() => setToast(null), 3500);
   };
 
+  const persistRequests = (next) => {
+    setRequests(next);
+    setStorage('workspace_jit_requests', next);
+  };
+
   // Actions for Team Admin
   const handleApprove = (reqId) => {
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === reqId
-          ? {
-              ...r,
-              status: 'APPROVED',
-              statusLabel: 'Active',
-              approvedBy: currentUser?.name || 'Diana Morales',
-              expiresAt: `${r.requestedDuration} remaining`,
-            }
-          : r
-      )
+    const next = requests.map((r) =>
+      r.id === reqId
+        ? {
+            ...r,
+            status: 'APPROVED',
+            statusLabel: 'Active',
+            approvedBy: currentUser?.name || 'Diana Morales',
+            expiresAt: `${r.requestedDuration} remaining`,
+          }
+        : r
     );
+    persistRequests(next);
     showToast('JIT access request approved. Lease is now active.');
   };
 
-  const handleReject = (reqId) => {
-    const reason = window.prompt('Enter rejection reason (optional):', 'Access not required for current sprint task.');
-    if (reason === null) return; // cancelled
-
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === reqId
-          ? {
-              ...r,
-              status: 'REJECTED',
-              statusLabel: 'Rejected',
-              rejectionReason: reason || 'Rejected by Team Admin.',
-              approvedBy: currentUser?.name || 'Diana Morales',
-            }
-          : r
-      )
+  const handleConfirmReject = () => {
+    if (!confirmRejectReq) return;
+    const reqId = confirmRejectReq.id;
+    const next = requests.map((r) =>
+      r.id === reqId
+        ? {
+            ...r,
+            status: 'REJECTED',
+            statusLabel: 'Rejected',
+            rejectionReason: rejectReason || 'Rejected by Team Admin.',
+            approvedBy: currentUser?.name || 'Diana Morales',
+          }
+        : r
     );
+    persistRequests(next);
+    setConfirmRejectReq(null);
     showToast('JIT access request rejected.', 'error');
   };
 
-  const handleRevoke = (reqId) => {
-    if (!window.confirm('Revoke this active lease immediately?')) return;
-    setRequests((prev) =>
-      prev.map((r) =>
-        r.id === reqId
-          ? {
-              ...r,
-              status: 'EXPIRED',
-              statusLabel: 'Revoked Early',
-              expiresAt: 'Revoked by Admin',
-            }
-          : r
-      )
+  const handleConfirmRevoke = () => {
+    if (!confirmRevokeReq) return;
+    const reqId = confirmRevokeReq.id;
+    const next = requests.map((r) =>
+      r.id === reqId
+        ? {
+            ...r,
+            status: 'EXPIRED',
+            statusLabel: 'Revoked Early',
+            expiresAt: 'Revoked by Admin',
+          }
+        : r
     );
-    showToast('Active JIT lease revoked early.');
+    persistRequests(next);
+    setConfirmRevokeReq(null);
+    showToast('Active JIT lease revoked early by Team Admin.');
+  };
+
+  const handleConfirmWithdraw = () => {
+    if (!confirmWithdrawReq) return;
+    const reqId = confirmWithdrawReq.id;
+    const next = requests.filter((r) => r.id !== reqId);
+    persistRequests(next);
+    setConfirmWithdrawReq(null);
+    showToast('Access request withdrawn successfully.');
+  };
+
+  const handleStartEditRequest = (req) => {
+    setEditingRequest(req);
+    setEditTicketId(req.ticketId || '');
+    setEditJustification(req.justification || '');
+    setEditDuration(req.requestedDuration || '2h');
+  };
+
+  const handleSaveEditRequest = (e) => {
+    e.preventDefault();
+    if (!editingRequest) return;
+    if (!editTicketId.trim() || !editJustification.trim()) {
+      showToast('Please fill in both Ticket ID and Justification.', 'error');
+      return;
+    }
+
+    const next = requests.map((r) =>
+      r.id === editingRequest.id
+        ? {
+            ...r,
+            ticketId: editTicketId.trim(),
+            justification: editJustification.trim(),
+            requestedDuration: editDuration,
+          }
+        : r
+    );
+    persistRequests(next);
+    setEditingRequest(null);
+    showToast('Pending JIT request updated successfully.');
   };
 
   const handleSubmitRequest = (e) => {
@@ -166,20 +223,7 @@ export default function JitRequestView({ currentUser }) {
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
       {/* Toast Notification */}
-      {toast && (
-        <div
-          className={`fixed top-6 right-6 z-50 px-md py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-[13px] font-semibold transition-all animate-in slide-in-from-top-4 duration-200 border ${
-            toast.type === 'error'
-              ? 'bg-red-50 text-red-700 border-red-200'
-              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">
-            {toast.type === 'error' ? 'cancel' : 'check_circle'}
-          </span>
-          {toast.msg}
-        </div>
-      )}
+      <Toast message={toast?.msg} type={toast?.type} onClose={() => setToast(null)} />
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
@@ -250,18 +294,13 @@ export default function JitRequestView({ currentUser }) {
       {/* Filter & Search Bar */}
       <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex items-center flex-1 max-w-md">
-            <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]">
-              search
-            </span>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm font-body-sm text-on-surface placeholder:text-on-surface-variant focus:bg-surface-container-lowest focus:border-primary outline-none transition-colors"
-              placeholder="Search by teammate, role, or ticket..."
-              type="text"
-            />
-          </div>
+          <SearchInput
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onClear={() => setSearchQuery('')}
+            placeholder="Search by teammate, role, or ticket..."
+            className="flex-1 max-w-md"
+          />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -332,7 +371,7 @@ export default function JitRequestView({ currentUser }) {
             </thead>
             <tbody className="divide-y divide-border-subtle text-body-sm">
               {filteredRequests.map((req) => {
-                const isRequester = req.memberId === currentUserId;
+                const isRequester = req.memberId === currentUserId || req.requesterId === currentUserId;
                 const statusInfo = STATUS_BADGES[req.status] || STATUS_BADGES.PENDING;
 
                 return (
@@ -439,10 +478,34 @@ export default function JitRequestView({ currentUser }) {
                             </button>
                             <button
                               type="button"
-                              onClick={() => handleReject(req.id)}
+                              onClick={() => {
+                                setRejectReason('Access not required for current sprint task.');
+                                setConfirmRejectReq(req);
+                              }}
                               className="px-2 py-1 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-[11px] font-medium transition-colors cursor-pointer"
                             >
                               Reject
+                            </button>
+                          </div>
+                        ) : isRequester ? (
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleStartEditRequest(req)}
+                              className="px-2 py-1 rounded-md border border-border-subtle text-on-surface hover:bg-surface-container text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
+                              title="Edit pending request"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">edit</span>
+                              <span>Edit</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmWithdrawReq(req)}
+                              className="px-2 py-1 rounded-md border border-border-subtle text-on-surface-variant hover:text-error hover:border-error/40 hover:bg-error-container/20 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
+                              title="Withdraw your pending request"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">close</span>
+                              <span>Withdraw</span>
                             </button>
                           </div>
                         ) : (
@@ -454,10 +517,11 @@ export default function JitRequestView({ currentUser }) {
                         isTeamAdmin ? (
                           <button
                             type="button"
-                            onClick={() => handleRevoke(req.id)}
-                            className="px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-medium transition-colors cursor-pointer"
+                            onClick={() => setConfirmRevokeReq(req)}
+                            className="px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
                           >
-                            Revoke
+                            <span className="material-symbols-outlined text-[13px]">block</span>
+                            <span>Revoke</span>
                           </button>
                         ) : (
                           <span className="text-[11px] text-emerald-700 font-medium">Active</span>
@@ -474,13 +538,11 @@ export default function JitRequestView({ currentUser }) {
         </div>
 
         {filteredRequests.length === 0 && (
-          <div className="py-12 text-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-[36px] block mb-1 text-on-surface-variant/50">
-              verified
-            </span>
-            <span className="font-semibold text-on-surface block">No access requests found</span>
-            <span className="text-[12px]">Try selecting "All Team Members" or clearing filters.</span>
-          </div>
+          <EmptyState
+            icon="verified"
+            title="No access requests found"
+            message='Try selecting "All Team Members" or clearing filters.'
+          />
         )}
       </div>
 
@@ -607,6 +669,167 @@ export default function JitRequestView({ currentUser }) {
                     {submitting ? 'Submitting...' : 'Submit Request'}
                   </button>
                 </div>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Revoke Lease Confirmation Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmRevokeReq)}
+        title="Revoke Active JIT Lease?"
+        description={`Are you sure you want to terminate the active lease for ${confirmRevokeReq?.requesterName} (${confirmRevokeReq?.roleName})? Elevated privileges will be invalidated immediately.`}
+        confirmText="Yes, Revoke Lease"
+        cancelText="Keep Active"
+        confirmVariant="danger"
+        icon="block"
+        onConfirm={handleConfirmRevoke}
+        onClose={() => setConfirmRevokeReq(null)}
+      >
+        {confirmRevokeReq && (
+          <div className="p-2.5 rounded-lg bg-surface-container-low border border-border-subtle flex items-center justify-between text-[11px] text-on-surface-variant mt-2">
+            <span>Ticket: <span className="font-mono font-bold text-on-surface">{confirmRevokeReq.ticketId}</span></span>
+            <span>Remaining: <span className="font-semibold text-error">{confirmRevokeReq.expiresAt}</span></span>
+          </div>
+        )}
+      </ConfirmModal>
+
+      {/* Reject Request Modal with Reason */}
+      <ConfirmModal
+        isOpen={Boolean(confirmRejectReq)}
+        title="Reject Access Request"
+        description={`Provide a brief rejection rationale for ${confirmRejectReq?.requesterName}:`}
+        confirmText="Confirm Rejection"
+        cancelText="Cancel"
+        confirmVariant="danger"
+        icon="cancel"
+        onConfirm={handleConfirmReject}
+        onClose={() => setConfirmRejectReq(null)}
+      >
+        <textarea
+          rows={2}
+          value={rejectReason}
+          onChange={(e) => setRejectReason(e.target.value)}
+          className="w-full mt-2 p-2.5 rounded-lg bg-surface-container-lowest border border-border-subtle text-on-surface text-[12px] outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+          placeholder="Reason for rejection..."
+        />
+      </ConfirmModal>
+
+      {/* Withdraw Request Modal */}
+      <ConfirmModal
+        isOpen={Boolean(confirmWithdrawReq)}
+        title="Withdraw Access Request?"
+        description={`Are you sure you want to cancel and withdraw your pending JIT request for ${confirmWithdrawReq?.roleName} (Ticket #${confirmWithdrawReq?.ticketId})?`}
+        confirmText="Yes, Withdraw Request"
+        cancelText="Keep Request"
+        confirmVariant="danger"
+        icon="cancel_schedule_send"
+        onConfirm={handleConfirmWithdraw}
+        onClose={() => setConfirmWithdrawReq(null)}
+      />
+
+      {/* Edit Pending Request Modal (PATCH /api/teams/:id/access-requests/:id) */}
+      {editingRequest && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
+          <div className="w-full max-w-lg bg-surface-container-lowest rounded-2xl shadow-2xl p-lg flex flex-col gap-md border border-border-subtle animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-sm border-b border-border-subtle">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[20px]">edit_note</span>
+                </div>
+                <div>
+                  <h3 className="font-headline-md text-[16px] font-bold text-on-surface">
+                    Edit Pending JIT Request
+                  </h3>
+                  <p className="text-[12px] text-on-surface-variant">
+                    Update your ticket ID, duration, or justification before review.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingRequest(null)}
+                className="p-1 rounded-md text-on-surface-variant hover:text-on-surface hover:bg-surface-container cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditRequest} className="flex flex-col gap-4">
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Elevated Role
+                </label>
+                <input
+                  type="text"
+                  disabled
+                  value={editingRequest.requestedRoleLabel || editingRequest.roleName}
+                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface opacity-70 cursor-not-allowed"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                    Ticket ID / Issue Key
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={editTicketId}
+                    onChange={(e) => setEditTicketId(e.target.value)}
+                    placeholder="e.g. INC-8492"
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                    Requested Duration
+                  </label>
+                  <select
+                    value={editDuration}
+                    onChange={(e) => setEditDuration(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container-lowest border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer"
+                  >
+                    <option value="30m">30 minutes</option>
+                    <option value="1h">1 hour</option>
+                    <option value="2h">2 hours</option>
+                    <option value="4h">4 hours</option>
+                    <option value="8h">8 hours (Full Shift)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
+                  Business &amp; Technical Justification
+                </label>
+                <textarea
+                  required
+                  rows={3}
+                  value={editJustification}
+                  onChange={(e) => setEditJustification(e.target.value)}
+                  placeholder="Explain why this elevated lease is necessary..."
+                  className="w-full px-3 py-2 bg-surface-container-lowest border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                />
+              </div>
+
+              <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
+                <button
+                  type="button"
+                  onClick={() => setEditingRequest(null)}
+                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold cursor-pointer shadow-sm"
+                >
+                  Save Changes
+                </button>
               </div>
             </form>
           </div>
