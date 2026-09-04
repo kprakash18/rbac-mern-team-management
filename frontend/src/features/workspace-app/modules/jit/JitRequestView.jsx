@@ -5,7 +5,7 @@ import ConfirmModal from '../../../../components/shared/ConfirmModal';
 import Toast from '../../../../components/shared/Toast';
 import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
-import { AVAILABLE_JIT_ROLES } from '@/constants';
+
 
 const DURATIONS = ['30m', '1h', '2h', '4h', '8h'];
 
@@ -20,7 +20,9 @@ const STATUS_BADGES = {
   PENDING: { label: 'Pending Approval', class: 'bg-amber-50 text-amber-800 border-amber-200' },
   APPROVED: { label: 'Active Lease', class: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
   EXPIRED: { label: 'Expired', class: 'bg-slate-100 text-slate-600 border-slate-200' },
+  REVOKED: { label: 'Revoked Early', class: 'bg-rose-50 text-rose-700 border-rose-200' },
   REJECTED: { label: 'Rejected', class: 'bg-red-50 text-red-700 border-red-200' },
+  CANCELLED: { label: 'Cancelled', class: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
 
 export default function JitRequestView({ currentUser, workspace }) {
@@ -28,6 +30,9 @@ export default function JitRequestView({ currentUser, workspace }) {
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+  const isSuperAdmin = Boolean(currentUser?.isSuperAdmin);
+  // canApproveAll: Super Admins can approve any request; Team Admins can only approve non-Team-Admin requests
+  const canApproveAll = isSuperAdmin;
 
   const [requests, setRequests] = useState([]);
   const [permissionsCatalog, setPermissionsCatalog] = useState([]);
@@ -71,25 +76,52 @@ export default function JitRequestView({ currentUser, workspace }) {
       if (reqsRes.status === 'fulfilled') {
         const raw = reqsRes.value.data?.data?.accessRequests || reqsRes.value.data?.data || [];
         const formatted = raw.map((r) => {
-          const reqUser = r.requesterId || r.userId || {};
-          const perm = r.permissionId || {};
+          // requesterId is populated by backend: { _id, name, email }
+          const reqUser = (r.requesterId && typeof r.requesterId === 'object') ? r.requesterId : {};
+          const perm = (r.permissionId && typeof r.permissionId === 'object') ? r.permissionId : {};
+          const name = reqUser.name || reqUser.email || 'Member';
+          const durationLabel = r.durationHours
+            ? (r.durationHours < 1 ? `${Math.round(r.durationHours * 60)}m` : `${r.durationHours}h`)
+            : r.durationMinutes
+              ? `${r.durationMinutes}m`
+              : '—';
           return {
+            // spread raw first so explicit fields below always win
+            ...r,
             id: r._id || r.id,
             _id: r._id || r.id,
-            roleTitle: perm.key || 'Custom Permission',
+            // requester identity (populated)
+            memberName: name,
+            memberInitials: name.slice(0, 2).toUpperCase(),
+            memberEmail: reqUser.email || '',
+            memberId: reqUser._id?.toString() || reqUser.id?.toString() || (typeof r.requesterId === 'string' ? r.requesterId : ''),
+            requesterId: reqUser._id?.toString() || reqUser.id?.toString() || (typeof r.requesterId === 'string' ? r.requesterId : ''),
+            // permission label (populated)
+            requestedRoleLabel: perm.key || perm.name || 'Custom Permission',
             roleKey: perm.key || 'permission',
+            risk: perm.category === 'Security' || perm.category === 'Admin' ? 'High' : 'Medium',
             riskLevel: perm.category === 'Security' || perm.category === 'Admin' ? 'High' : 'Medium',
-            requesterName: reqUser.name || 'Member',
-            requesterEmail: reqUser.email || '',
-            requesterInitials: (reqUser.name || 'M').slice(0, 2).toUpperCase(),
-            requesterId: reqUser._id || reqUser.id || reqUser,
+            // other display fields
             justification: r.reason || '',
             ticketId: r.ticketId || `REQ-${(r._id || '').slice(-4).toUpperCase()}`,
-            requestedDuration: `${r.durationMinutes || 60}m`,
-            createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Recent',
+            requestedDuration: durationLabel,
+            createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Recent',
             status: r.status || 'PENDING',
-            statusLabel: r.status === 'APPROVED' ? 'Active' : r.status === 'PENDING' ? 'Pending Approval' : r.status,
-            ...r,
+            statusLabel:
+              r.status === 'APPROVED'
+                ? 'Active'
+                : r.status === 'PENDING'
+                ? 'Pending Approval'
+                : r.status === 'REVOKED'
+                ? 'Revoked Early'
+                : r.status === 'REJECTED'
+                ? 'Rejected'
+                : r.status === 'CANCELLED'
+                ? 'Cancelled'
+                : r.status,
+            // approval hierarchy — set by backend, drives UI gating
+            approvalLevel: r.approvalLevel || 'TEAM_ADMIN',
+            needsSuperAdminApproval: r.approvalLevel === 'SUPER_ADMIN',
           };
         });
         setRequests(formatted);
@@ -98,7 +130,8 @@ export default function JitRequestView({ currentUser, workspace }) {
       if (permsRes.status === 'fulfilled') {
         const rawPerms = permsRes.value.data?.data?.permissions || permsRes.value.data?.data || [];
         setPermissionsCatalog(rawPerms);
-        if (rawPerms.length > 0 && !selectedRole) {
+        // Always reset to first permission when catalog loads (ensures a valid default)
+        if (rawPerms.length > 0) {
           setSelectedRole(rawPerms[0]._id || rawPerms[0].key);
         }
       }
@@ -134,7 +167,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       fetchRequestsAndCatalog();
     } catch (err) {
       console.error('Failed to approve request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to approve request.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to approve request.', 'error');
     }
   };
 
@@ -159,9 +192,10 @@ export default function JitRequestView({ currentUser, workspace }) {
       );
       setConfirmRejectReq(null);
       showToast('JIT access request rejected.', 'error');
+      fetchRequestsAndCatalog();
     } catch (err) {
       console.error('Failed to reject request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to reject request.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to reject request.', 'error');
     }
   };
 
@@ -169,13 +203,13 @@ export default function JitRequestView({ currentUser, workspace }) {
     if (!confirmRevokeReq || !teamId) return;
     const reqId = confirmRevokeReq.id;
     try {
-      await api.delete(`/api/teams/${teamId}/access-requests/${reqId}`);
+      await api.delete(`/api/teams/${teamId}/access-requests/${reqId}/revoke`);
       setRequests((prev) =>
         prev.map((r) =>
           r.id === reqId
             ? {
                 ...r,
-                status: 'EXPIRED',
+                status: 'REVOKED',
                 statusLabel: 'Revoked Early',
               }
             : r
@@ -186,7 +220,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       fetchRequestsAndCatalog();
     } catch (err) {
       console.error('Failed to revoke request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to revoke grant.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to revoke grant.', 'error');
     }
   };
 
@@ -200,7 +234,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       showToast('Access request withdrawn successfully.');
     } catch (err) {
       console.error('Failed to withdraw request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to withdraw request.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to withdraw request.', 'error');
     }
   };
 
@@ -240,7 +274,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       showToast('Pending JIT request updated successfully.');
     } catch (err) {
       console.error('Failed to update request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to update request.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to update request.', 'error');
     }
   };
 
@@ -260,6 +294,7 @@ export default function JitRequestView({ currentUser, workspace }) {
 
       const payload = {
         permissionId: targetPermission?._id,
+        permissionKey: targetPermission?.key,
         reason: justification.trim(),
         durationMinutes: minutes,
       };
@@ -297,7 +332,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       showToast('Elevation request submitted successfully!');
     } catch (err) {
       console.error('Failed to submit request:', err);
-      showToast(err.response?.data?.error?.message || 'Failed to submit access request.', 'error');
+      showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to submit access request.', 'error');
     } finally {
       setSubmitting(false);
     }
@@ -318,7 +353,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       statusFilter === 'ALL' ||
       (statusFilter === 'PENDING' && r.status === 'PENDING') ||
       (statusFilter === 'APPROVED' && r.status === 'APPROVED') ||
-      (statusFilter === 'PAST' && (r.status === 'EXPIRED' || r.status === 'REJECTED'));
+      (statusFilter === 'PAST' && (r.status === 'EXPIRED' || r.status === 'REJECTED' || r.status === 'REVOKED' || r.status === 'CANCELLED'));
 
     return matchesSearch && matchesRequester && matchesStatus;
   });
@@ -485,6 +520,17 @@ export default function JitRequestView({ currentUser, workspace }) {
                 <tbody className="divide-y divide-border-subtle text-body-sm">
                   {filteredRequests.map((req) => {
                     const isRequester = req.memberId === currentUserId || req.requesterId === currentUserId;
+                    // A request needs Super Admin approval when the requester is themselves a Team Admin.
+                    // The backend stores approvalLevel, but if not set we derive it from the requester's role
+                    // returned by the populate. We flag it in formatting via a field the frontend can trust.
+                    const needsSuperAdminApproval =
+                      req.approvalLevel === 'SUPER_ADMIN' ||
+                      req.needsSuperAdminApproval;
+
+                    // Approve/Reject visible to: Super Admin always, Team Admin only if request doesn't need SA
+                    const canActOnRequest =
+                      canApproveAll || (isTeamAdmin && !needsSuperAdminApproval && req.memberId !== currentUserId);
+
                     const statusInfo = STATUS_BADGES[req.status] || STATUS_BADGES.PENDING;
 
                     return (
@@ -570,7 +616,7 @@ export default function JitRequestView({ currentUser, workspace }) {
                         {/* Action / Governance */}
                         <td className="py-3.5 px-4 w-40 text-right align-top">
                           {req.status === 'PENDING' ? (
-                            req.approvalLevel === 'SUPER_ADMIN' ? (
+                            needsSuperAdminApproval && !canApproveAll ? (
                               <div className="flex flex-col items-end">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 inline-flex items-center gap-1">
                                   <span className="material-symbols-outlined text-[12px]">security</span>
@@ -580,7 +626,7 @@ export default function JitRequestView({ currentUser, workspace }) {
                                   Elevation restricted
                                 </span>
                               </div>
-                            ) : isTeamAdmin ? (
+                            ) : canActOnRequest ? (
                               <div className="flex items-center justify-end gap-1.5">
                                 <button
                                   type="button"
@@ -677,22 +723,28 @@ export default function JitRequestView({ currentUser, workspace }) {
             </div>
 
             <form onSubmit={handleSubmitRequest} className="p-md flex flex-col gap-3.5">
-              {/* Role */}
+              {/* Permission / Capability */}
               <div>
                 <label className="text-label-sm font-label-bold text-on-surface block mb-1">
-                  Target Role / Capability *
+                  Target Permission / Capability *
                 </label>
-                <select
-                  value={selectedRole}
-                  onChange={(e) => setSelectedRole(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer"
-                >
-                  {AVAILABLE_JIT_ROLES.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.label} ({r.risk} Risk)
-                    </option>
-                  ))}
-                </select>
+                {permissionsCatalog.length > 0 ? (
+                  <select
+                    value={selectedRole}
+                    onChange={(e) => setSelectedRole(e.target.value)}
+                    className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer"
+                  >
+                    {permissionsCatalog.map((p) => (
+                      <option key={p._id} value={p._id}>
+                        {p.key} {p.category ? `(${p.category.replace(/_/g, ' ')})` : ''}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface-variant">
+                    Loading permissions…
+                  </div>
+                )}
               </div>
 
               {/* Ticket & Duration (2 columns) */}

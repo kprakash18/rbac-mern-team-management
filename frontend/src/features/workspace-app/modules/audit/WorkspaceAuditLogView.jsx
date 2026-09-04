@@ -38,6 +38,18 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
       const rawLogs = res.data?.data?.logs || res.data?.data || [];
       const formatted = rawLogs.map((log) => {
         const actor = log.actorId || {};
+        const act = (log.action || '').toLowerCase();
+        const category =
+          act.includes('access') || act.includes('grant') || act.includes('jit')
+            ? 'JIT_ELEVATION'
+            : act.includes('role') || act.includes('permission')
+            ? 'ROLE_MANAGEMENT'
+            : act.includes('membership') || act.includes('invite') || act.includes('member')
+            ? 'MEMBERSHIP'
+            : act.includes('task')
+            ? 'TASK_OPERATIONS'
+            : 'SECURITY';
+
         return {
           id: log._id || log.id,
           _id: log._id || log.id,
@@ -51,10 +63,10 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
           },
           action: log.action || 'ACTION',
           actionLabel: (log.action || 'System Event').replace('.', ' ').toUpperCase(),
-          category: log.action?.includes('role') ? 'ROLE_MANAGEMENT' : log.action?.includes('membership') ? 'MEMBERSHIP' : 'SECURITY',
+          category,
           severity: log.result === 'FAILURE' ? 'CRITICAL' : 'INFO',
           resource: log.targetType || 'Resource',
-          details: log.metadata ? JSON.stringify(log.metadata) : `${log.action} performed successfully`,
+          details: log.metadata ? (typeof log.metadata === 'object' ? Object.entries(log.metadata).map(([k, v]) => `${k}: ${v}`).join(' | ') : String(log.metadata)) : `${log.action} performed successfully`,
           ipAddress: log.ipAddress || '127.0.0.1',
           status: log.result || 'SUCCESS',
         };

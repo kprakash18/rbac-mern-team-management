@@ -33,8 +33,11 @@ export default function ChatView({ currentUser, workspace }) {
         const formatted = raw.map((m) => {
           const u = m.user || m.userId || {};
           const name = u.name || m.name || 'Member';
+          const userId = String(u._id || u.id || (typeof m.userId === 'string' ? m.userId : null) || m._id || m.id);
           return {
-            id: m._id || m.id,
+            id: userId,
+            userId,
+            membershipId: m._id || m.id,
             name,
             email: u.email || m.email || '',
             role: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
@@ -47,15 +50,31 @@ export default function ChatView({ currentUser, workspace }) {
       .catch((err) => console.error('Failed to load chat team members:', err));
   }, [teamId]);
 
-  const [groups, setGroups] = useState(() => getStorage('workspace_chat_groups', INITIAL_GROUPS));
+  const [groups, setGroups] = useState(() =>
+    teamId ? getStorage(`workspace_chat_groups_${teamId}`, INITIAL_GROUPS) : INITIAL_GROUPS
+  );
 
   const persistGroups = (newGroups) => {
     setGroups(newGroups);
-    setStorage('workspace_chat_groups', newGroups);
+    if (teamId) setStorage(`workspace_chat_groups_${teamId}`, newGroups);
   };
 
   const [activeGroupId, setActiveGroupId] = useState('grp-general');
-  const [messages, setMessages] = useState(() => getStorage('workspace_chat_messages', INITIAL_MESSAGES));
+  const [messages, setMessages] = useState(() =>
+    teamId ? getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES) : INITIAL_MESSAGES
+  );
+
+  // Re-initialize state whenever active teamId changes
+  useEffect(() => {
+    if (!teamId) return;
+    const storedGroups = getStorage(`workspace_chat_groups_${teamId}`, INITIAL_GROUPS);
+    setGroups(storedGroups);
+    setActiveGroupId(storedGroups[0]?.id || 'grp-general');
+
+    const storedMessages = getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES);
+    setMessages(storedMessages);
+  }, [teamId]);
+
   const [inputText, setInputText] = useState('');
   const [searchChannel, setSearchChannel] = useState('');
   const [isSocketLive, setIsSocketLive] = useState(false);
@@ -86,7 +105,29 @@ export default function ChatView({ currentUser, workspace }) {
   const typingTimeoutRef = useRef(null);
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
-  const activeMessages = messages[activeGroupId] || [];
+  const rawActiveMessages = messages[activeGroupId] || [];
+
+  // Deduplicate active messages by ID and collapse temporary local messages
+  const activeMessages = (() => {
+    const seen = new Set();
+    const serverMsgKeys = new Set(
+      rawActiveMessages
+        .filter((m) => m._id && !String(m.id).startsWith('msg-'))
+        .map((m) => `${m.senderId}_${m.text}`)
+    );
+
+    return rawActiveMessages.filter((m) => {
+      const key = m._id || m.id;
+      if (seen.has(key)) return false;
+      seen.add(key);
+
+      // If this is a stale local temporary message whose text already exists from server, skip it
+      if (String(m.id).startsWith('msg-') && serverMsgKeys.has(`${m.senderId}_${m.text}`)) {
+        return false;
+      }
+      return true;
+    });
+  })();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -118,16 +159,22 @@ export default function ChatView({ currentUser, workspace }) {
       // 1. Join room
       socket.emit('team:join', { teamId }, (res) => {
         if (res?.ok) {
-          // 2. Fetch history from backend
-          socket.emit('chat:history', { teamId, limit: 50 }, (histRes) => {
-            if (histRes?.ok && histRes.messages?.length > 0) {
+          // 2. Fetch history from backend specifically for this group
+          socket.emit('chat:history', { teamId, groupId: activeGroupId, limit: 50 }, (histRes) => {
+            if (histRes?.ok && histRes.messages) {
               const formattedMsgs = histRes.messages.map((m) => ({
                 id: m._id || m.id,
                 _id: m._id || m.id,
+                groupId: m.groupId || activeGroupId,
                 senderId: m.sender?.id || m.sender?._id || m.senderId || 'member',
                 senderName: m.sender?.name || m.senderName || 'Team Member',
                 senderRole: m.sender?.role || 'Member',
-                senderInitials: (m.sender?.name || 'M').slice(0, 2).toUpperCase(),
+                senderInitials: (m.sender?.name || 'M')
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase(),
                 text: m.content || m.text,
                 isEdited: Boolean(m.isEdited),
                 timestamp: m.createdAt
@@ -138,11 +185,15 @@ export default function ChatView({ currentUser, workspace }) {
 
               setMessages((prev) => {
                 const existing = prev[activeGroupId] || [];
-                const existingIds = new Set(existing.map((e) => e.id));
-                const newOnly = formattedMsgs.filter((n) => !existingIds.has(n.id));
-                const merged = [...existing, ...newOnly];
+                const serverMsgKeys = new Set(formattedMsgs.map((f) => `${f.senderId}_${f.text}`));
+                const cleanedExisting = existing.filter(
+                  (e) => !String(e.id).startsWith('msg-') || !serverMsgKeys.has(`${e.senderId}_${e.text}`)
+                );
+                const existingIds = new Set(cleanedExisting.map((e) => e._id || e.id));
+                const newOnly = formattedMsgs.filter((n) => !existingIds.has(n._id || n.id));
+                const merged = [...cleanedExisting, ...newOnly];
                 const next = { ...prev, [activeGroupId]: merged };
-                setStorage('workspace_chat_messages', next);
+                if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
                 return next;
               });
             }
@@ -150,17 +201,28 @@ export default function ChatView({ currentUser, workspace }) {
         }
       });
 
-      // 3. Listen for real-time messages
+      // 3. Listen for real-time messages scoped to group
       const onChatMessage = (incomingMsg) => {
         if (!incomingMsg || (incomingMsg.teamId && incomingMsg.teamId !== teamId)) return;
+        const msgId = incomingMsg._id || incomingMsg.id;
+        const targetGroupId = incomingMsg.groupId || activeGroupId;
+        const senderId = incomingMsg.sender?.id || incomingMsg.sender?._id || incomingMsg.senderId;
+        const content = incomingMsg.content || incomingMsg.text;
+
         const normalized = {
-          id: incomingMsg._id || incomingMsg.id || `msg-${Date.now()}`,
-          _id: incomingMsg._id || incomingMsg.id,
-          senderId: incomingMsg.sender?.id || incomingMsg.sender?._id || incomingMsg.senderId,
+          id: msgId,
+          _id: msgId,
+          groupId: targetGroupId,
+          senderId,
           senderName: incomingMsg.sender?.name || incomingMsg.senderName || 'Team Member',
           senderRole: incomingMsg.sender?.role || 'Member',
-          senderInitials: (incomingMsg.sender?.name || 'M').slice(0, 2).toUpperCase(),
-          text: incomingMsg.content || incomingMsg.text,
+          senderInitials: (incomingMsg.sender?.name || 'M')
+            .split(' ')
+            .map((n) => n[0])
+            .join('')
+            .slice(0, 2)
+            .toUpperCase(),
+          text: content,
           isEdited: Boolean(incomingMsg.isEdited),
           timestamp: incomingMsg.createdAt
             ? new Date(incomingMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
@@ -169,10 +231,30 @@ export default function ChatView({ currentUser, workspace }) {
         };
 
         setMessages((prev) => {
-          const currentGroupMsgs = prev[activeGroupId] || [];
-          if (currentGroupMsgs.some((m) => m.id === normalized.id)) return prev;
-          const next = { ...prev, [activeGroupId]: [...currentGroupMsgs, normalized] };
-          setStorage('workspace_chat_messages', next);
+          const currentGroupMsgs = prev[targetGroupId] || [];
+          // If message already exists by real DB ID, ignore
+          if (currentGroupMsgs.some((m) => m._id === msgId || m.id === msgId)) {
+            return prev;
+          }
+
+          // If current user sent this and there's a temporary local message matching text, replace it
+          const tempIdx = currentGroupMsgs.findIndex(
+            (m) =>
+              (!m._id || String(m.id).startsWith('msg-')) &&
+              String(m.senderId) === String(senderId) &&
+              m.text === content
+          );
+
+          let updated;
+          if (tempIdx !== -1) {
+            updated = [...currentGroupMsgs];
+            updated[tempIdx] = normalized;
+          } else {
+            updated = [...currentGroupMsgs, normalized];
+          }
+
+          const next = { ...prev, [targetGroupId]: updated };
+          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
@@ -181,14 +263,15 @@ export default function ChatView({ currentUser, workspace }) {
       const onMessageUpdated = (data) => {
         if (!data?.messageId) return;
         setMessages((prev) => {
-          const currentGroupMsgs = prev[activeGroupId] || [];
+          const targetGroupId = data.groupId || activeGroupId;
+          const currentGroupMsgs = prev[targetGroupId] || [];
           const nextGroupMsgs = currentGroupMsgs.map((m) =>
             m.id === data.messageId || m._id === data.messageId
               ? { ...m, text: data.content, isEdited: true }
               : m
           );
-          const next = { ...prev, [activeGroupId]: nextGroupMsgs };
-          setStorage('workspace_chat_messages', next);
+          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
+          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
@@ -197,19 +280,20 @@ export default function ChatView({ currentUser, workspace }) {
       const onMessageDeleted = (data) => {
         if (!data?.messageId) return;
         setMessages((prev) => {
-          const currentGroupMsgs = prev[activeGroupId] || [];
+          const targetGroupId = data.groupId || activeGroupId;
+          const currentGroupMsgs = prev[targetGroupId] || [];
           const nextGroupMsgs = currentGroupMsgs.filter(
             (m) => m.id !== data.messageId && m._id !== data.messageId
           );
-          const next = { ...prev, [activeGroupId]: nextGroupMsgs };
-          setStorage('workspace_chat_messages', next);
+          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
+          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
 
       // 6. Listen for typing indicators
       const onTyping = (data) => {
-        if (!data || data.userId === currentUserId) return;
+        if (!data || data.userId === currentUserId || (data.groupId && data.groupId !== activeGroupId)) return;
         setTypingUsers((prev) => {
           const next = { ...prev };
           if (data.isTyping) {
@@ -221,10 +305,38 @@ export default function ChatView({ currentUser, workspace }) {
         });
       };
 
+      // 7. Listen for real-time group creations & invitations
+      const onGroupCreated = (data) => {
+        if (!data?.group || data.teamId !== teamId) return;
+        if (data.group.memberIds?.includes(currentUserId)) {
+          setGroups((prev) => {
+            if (prev.some((g) => g.id === data.group.id)) return prev;
+            const next = [...prev, data.group];
+            if (teamId) setStorage(`workspace_chat_groups_${teamId}`, next);
+            return next;
+          });
+        }
+      };
+
+      const onGroupMembersAdded = (data) => {
+        if (!data?.groupId || data.teamId !== teamId) return;
+        setGroups((prev) => {
+          const next = prev.map((g) =>
+            g.id === data.groupId
+              ? { ...g, memberIds: Array.from(new Set([...(g.memberIds || []), ...(data.addedUserIds || [])])) }
+              : g
+          );
+          if (teamId) setStorage(`workspace_chat_groups_${teamId}`, next);
+          return next;
+        });
+      };
+
       socket.on('chat:message', onChatMessage);
       socket.on('chat:message_updated', onMessageUpdated);
       socket.on('chat:message_deleted', onMessageDeleted);
       socket.on('chat:typing', onTyping);
+      socket.on('chat:group_created', onGroupCreated);
+      socket.on('chat:group_members_added', onGroupMembersAdded);
 
       return () => {
         socket.off('connect', onConnect);
@@ -233,6 +345,8 @@ export default function ChatView({ currentUser, workspace }) {
         socket.off('chat:message_updated', onMessageUpdated);
         socket.off('chat:message_deleted', onMessageDeleted);
         socket.off('chat:typing', onTyping);
+        socket.off('chat:group_created', onGroupCreated);
+        socket.off('chat:group_members_added', onGroupMembersAdded);
         socket.emit('team:leave', { teamId });
       };
     }
@@ -246,43 +360,63 @@ export default function ChatView({ currentUser, workspace }) {
 
     const content = inputText.trim();
     const isBroadcast = isTeamAdmin && isSystemBroadcastMode;
+    const tempId = `msg-${Date.now()}`;
+    const userInitials = (currentUser?.name || 'Alice Vance')
+      .split(' ')
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase();
 
     const localMsg = {
-      id: `msg-${Date.now()}`,
+      id: tempId,
+      groupId: activeGroupId,
       senderId: currentUserId,
-      senderName: currentUser?.name || 'Diana Morales',
-      senderRole: currentUser?.role || 'Lead Architect',
-      senderInitials: currentUser?.initials || 'DM',
+      senderName: currentUser?.name || 'Alice Vance',
+      senderRole: currentUser?.role || 'Team Admin',
+      senderInitials: userInitials,
       text: content,
       isSystemBroadcast: isBroadcast,
       timestamp: 'Just now',
+      createdAt: new Date().toISOString(),
     };
 
+    // Optimistically add message
     setMessages((prev) => {
       const nextMessages = {
         ...prev,
         [activeGroupId]: [...(prev[activeGroupId] || []), localMsg],
       };
-      setStorage('workspace_chat_messages', nextMessages);
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
       return nextMessages;
     });
 
     const socket = getSocket();
     if (socket?.connected && teamId) {
-      socket.emit('chat:send', { teamId, content }, (res) => {
+      socket.emit('chat:send', { teamId, groupId: activeGroupId, content }, (res) => {
         if (res?.ok && res.message?._id) {
+          const realId = res.message._id;
           setMessages((prev) => {
             const groupMsgs = prev[activeGroupId] || [];
-            const nextGroupMsgs = groupMsgs.map((m) =>
-              m.id === localMsg.id ? { ...m, id: res.message._id, _id: res.message._id } : m
+            // Replace temporary message with confirmed real message ID
+            const mapped = groupMsgs.map((m) =>
+              m.id === tempId ? { ...m, id: realId, _id: realId } : m
             );
-            const next = { ...prev, [activeGroupId]: nextGroupMsgs };
-            setStorage('workspace_chat_messages', next);
+            // Ensure no duplicate IDs exist
+            const seen = new Set();
+            const deduped = mapped.filter((m) => {
+              const k = m._id || m.id;
+              if (seen.has(k)) return false;
+              seen.add(k);
+              return true;
+            });
+            const next = { ...prev, [activeGroupId]: deduped };
+            if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
             return next;
           });
         }
       });
-      socket.emit('chat:typing', { teamId, isTyping: false });
+      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
     }
 
     setInputText('');
@@ -295,10 +429,10 @@ export default function ChatView({ currentUser, workspace }) {
 
     const socket = getSocket();
     if (socket?.connected && teamId) {
-      socket.emit('chat:typing', { teamId, isTyping: true });
+      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: true });
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
-        socket.emit('chat:typing', { teamId, isTyping: false });
+        socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
       }, 2500);
     }
   };
@@ -323,7 +457,7 @@ export default function ChatView({ currentUser, workspace }) {
         m.id === msgId ? { ...m, text: content, isEdited: true } : m
       );
       const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      setStorage('workspace_chat_messages', nextMessages);
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
       return nextMessages;
     });
 
@@ -341,7 +475,7 @@ export default function ChatView({ currentUser, workspace }) {
       const currentGroupMsgs = prev[activeGroupId] || [];
       const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId && m._id !== msgId);
       const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      setStorage('workspace_chat_messages', nextMessages);
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
       return nextMessages;
     });
 
@@ -387,23 +521,37 @@ export default function ChatView({ currentUser, workspace }) {
 
     const updatedGroups = [...groups, newGroup];
     persistGroups(updatedGroups);
-    setMessages((prev) => ({
-      ...prev,
-      [newGroup.id]: [
-        {
-          id: `msg-welcome-${Date.now()}`,
-          senderId: currentUserId,
-          senderName: currentUser?.name || 'Diana Morales',
-          senderRole: currentUser?.role || 'Lead Architect',
-          senderInitials: currentUser?.initials || 'DM',
-          text: `👋 Created channel #${formattedName} with ${newGroup.memberIds.length} members.`,
-          timestamp: 'Just now',
-        },
-      ],
-    }));
+    setMessages((prev) => {
+      const next = {
+        ...prev,
+        [newGroup.id]: [
+          {
+            id: `msg-welcome-${Date.now()}`,
+            senderId: currentUserId,
+            senderName: currentUser?.name || 'Member',
+            senderRole: currentUser?.role || 'Team Admin',
+            senderInitials: (currentUser?.name || 'M')
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase(),
+            text: `👋 Created channel #${formattedName} with ${newGroup.memberIds.length} members.`,
+            timestamp: 'Just now',
+          },
+        ],
+      };
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
+      return next;
+    });
 
     setActiveGroupId(newGroup.id);
     setIsCreateModalOpen(false);
+
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:group_create', { teamId, group: newGroup });
+    }
   };
 
   const handleOpenInviteModal = () => {
@@ -440,19 +588,34 @@ export default function ChatView({ currentUser, workspace }) {
           {
             id: `msg-inv-${Date.now()}`,
             senderId: currentUserId,
-            senderName: currentUser?.name || 'User',
+            senderName: currentUser?.name || 'Member',
             senderRole: currentUser?.role || 'Member',
-            senderInitials: currentUser?.initials || 'U',
+            senderInitials: (currentUser?.name || 'M')
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .slice(0, 2)
+              .toUpperCase(),
             text: `🎉 Added ${invitedNames} to #${activeGroup.name}.`,
             timestamp: 'Just now',
           },
         ],
       };
-      setStorage('workspace_chat_messages', nextMessages);
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
       return nextMessages;
     });
 
     setIsInviteModalOpen(false);
+
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:group_members_add', {
+        teamId,
+        groupId: activeGroupId,
+        groupName: activeGroup.name,
+        addedUserIds: inviteSelectedIds,
+      });
+    }
   };
 
   const handleConfirmDeleteGroup = () => {
@@ -464,7 +627,7 @@ export default function ChatView({ currentUser, workspace }) {
     setMessages((prev) => {
       const nextMessages = { ...prev };
       delete nextMessages[targetId];
-      setStorage('workspace_chat_messages', nextMessages);
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
       return nextMessages;
     });
 

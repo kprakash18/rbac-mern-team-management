@@ -39,7 +39,7 @@ accessRouter.patch(
 accessRouter.delete(
   "/:requestId",
   authenticate,
-  requirePermission("access_request.create"),
+  requirePermission("access_request.cancel"),
   accessController.deleteAccessRequestController
 );
 
@@ -58,7 +58,15 @@ accessRouter.post(
   accessController.rejectAccessRequestController
 );
 
-// --- 4. Grant Revocation ---
+// --- 4. Early Revocation via Request ID ---
+accessRouter.delete(
+  "/:requestId/revoke",
+  authenticate,
+  requirePermission("access_grant.revoke"),
+  accessController.revokeByRequestIdController
+);
+
+// --- 5. Grant Revocation (by grantId) ---
 accessRouter.delete(
   "/grants/:grantId",
   authenticate,

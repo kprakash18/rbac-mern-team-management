@@ -19,12 +19,19 @@ const api = axios.create({
 });
 
 // ─── Request Interceptor ──────────────────────────────────────────────────────
-// Attach Bearer token to every outgoing request if a session exists.
+// Attach Bearer token and active team context to every outgoing request if available.
 api.interceptors.request.use((config) => {
   const session = getStorage(STORAGE_KEYS.AUTH);
   if (session?.token) {
     config.headers.Authorization = `Bearer ${session.token}`;
   }
+
+  const activeWorkspace = getStorage(STORAGE_KEYS.WORKSPACE);
+  const activeTeamId = activeWorkspace?._id || activeWorkspace?.id;
+  if (activeTeamId && !config.headers['x-team-id']) {
+    config.headers['x-team-id'] = activeTeamId;
+  }
+
   return config;
 });
 

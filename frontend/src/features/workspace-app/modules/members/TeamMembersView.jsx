@@ -3,7 +3,6 @@ import InviteTeamMemberModal from './InviteTeamMemberModal';
 import ManageMemberRoleModal from './ManageMemberRoleModal';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
-import { setStorage } from '@/lib/storage';
 import { useToast } from '../../../../lib/useToast';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
 import Toast from '../../../../components/shared/Toast';
@@ -45,7 +44,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
     try {
       setLoading(true);
       const [membersRes, invitesRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members`),
+        api.get(`/api/teams/${teamId}/members?limit=100`),
         api.get(`/api/teams/${teamId}/invitations`),
       ]);
 
@@ -63,6 +62,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
             email: userObj.email || m.email || '',
             role: roleName,
             teamRole: roleName,
+            permissions: m.permissions || [],
             department: m.department || 'Engineering',
             status: m.status === 'ACTIVE' ? 'Active' : m.status === 'SUSPENDED' ? 'Suspended' : m.status || 'Active',
             joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'Active',
@@ -116,7 +116,11 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
     const target = members.find((m) => m.id === memberId || m.membershipId === memberId);
     if (!target || !teamId) return;
 
-    const action = target.status === 'Suspended' ? 'reactivate' : 'suspend';
+    const isSuspended =
+      target.status === 'Suspended' ||
+      target.status === 'SUSPENDED' ||
+      target.status?.toLowerCase() === 'suspended';
+    const action = isSuspended ? 'reactivate' : 'suspend';
     const mId = target.membershipId || target.id;
     try {
       await api.patch(`/api/teams/${teamId}/members/${mId}/${action}`);
@@ -128,6 +132,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         setSelectedMember((prev) => ({ ...prev, status: newStatus }));
       }
       showToast(`Member status updated to ${newStatus}.`);
+      fetchMembersAndInvitations();
     } catch (err) {
       console.error('Failed to update status:', err);
       showToast(err.response?.data?.error?.message || 'Failed to update member status.', 'error');
@@ -164,37 +169,48 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
     fetchMembersAndInvitations();
   };
 
-  const handleConfirmRevokeInvite = (inviteId) => {
-    setPendingInvitations((prev) => {
-      const next = prev.filter((inv) => inv.id !== inviteId);
-      setStorage('workspace_pending_invitations', next);
-      return next;
-    });
-    setConfirmRevokeInvite(null);
-    showToast('Invitation successfully revoked.');
+  const handleConfirmRevokeInvite = async (inviteId) => {
+    if (!teamId) return;
+    try {
+      await api.delete(`/api/teams/${teamId}/invitations/${inviteId}`);
+      setPendingInvitations((prev) => prev.filter((inv) => inv.id !== inviteId));
+      setConfirmRevokeInvite(null);
+      showToast('Invitation successfully revoked.');
+      fetchMembersAndInvitations();
+    } catch (err) {
+      console.error('Failed to revoke invitation:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to revoke invitation.', 'error');
+    }
   };
 
-  const handleCreateInvite = ({ name, email, role, department }) => {
-    const newInv = {
-      id: `inv-${Date.now()}`,
-      name: name.trim() || 'Invited Teammate',
-      email: email.trim(),
-      role: role || 'Developer',
-      department: department || 'Engineering',
-      invitedBy: currentUser?.name || 'Diana Morales',
-      sentDate: 'Just now',
-      expiresDate: 'In 48 hours',
-      status: 'Pending Acceptance',
-    };
+  const handleCreateInvite = async ({ email, role }) => {
+    if (!teamId) return;
+    try {
+      const rolesRes = await api.get('/api/roles', { params: { teamId } });
+      const rolesList = rolesRes.data?.data || [];
+      const matchedRole = rolesList.find(
+        (r) => r.name.toLowerCase() === (role || 'developer').toLowerCase()
+      );
+      const roleIds = matchedRole ? [matchedRole._id] : [];
 
-    setPendingInvitations((prev) => {
-      const nextList = [newInv, ...prev];
-      setStorage('workspace_pending_invitations', nextList);
-      return nextList;
-    });
-    setIsInviteModalOpen(false);
-    setActiveMainTab('invitations');
-    showToast(`Invitation dispatched to ${email}.`);
+      await api.post(`/api/teams/${teamId}/invitations`, {
+        email: email.trim().toLowerCase(),
+        roleIds,
+      });
+
+      setIsInviteModalOpen(false);
+      setActiveMainTab('invitations');
+      showToast(`Invitation dispatched to ${email}.`);
+      fetchMembersAndInvitations();
+    } catch (err) {
+      console.error('Failed to send invitation:', err);
+      showToast(
+        err.response?.data?.error?.message ||
+          err.response?.data?.message ||
+          'Failed to send invitation.',
+        'error'
+      );
+    }
   };
 
   const filteredMembers = members.filter((member) => {
@@ -804,28 +820,22 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                     </div>
                     <div className="flex items-center justify-between border-t border-border-subtle/60 pt-2">
                       <span className="text-on-surface-variant">Status</span>
-                      <span className="text-success-text font-semibold">{selectedMember.status}</span>
+                      <span
+                        className={`font-semibold ${
+                          selectedMember.status === 'Active'
+                            ? 'text-success-text'
+                            : selectedMember.status === 'Suspended'
+                            ? 'text-zinc-600 dark:text-zinc-400'
+                            : 'text-warning-text'
+                        }`}
+                      >
+                        {selectedMember.status}
+                      </span>
                     </div>
                     <div className="flex items-center justify-between border-t border-border-subtle/60 pt-2">
                       <span className="text-on-surface-variant">Joined Workspace</span>
                       <span className="text-on-surface">{selectedMember.joinedDate}</span>
                     </div>
-                  </div>
-                </div>
-
-                {/* Permissions Summary */}
-                <div className="flex flex-col gap-2.5">
-                  <h4 className="text-label-bold text-label-bold text-on-surface">Active Capabilities</h4>
-                  <div className="flex flex-col gap-2">
-                    {selectedMember.permissions.map((perm, idx) => (
-                      <div
-                        key={idx}
-                        className="p-2.5 rounded-lg bg-surface-container-low/80 border border-border-subtle flex items-center gap-2 text-[12px]"
-                      >
-                        <span className="material-symbols-outlined text-[16px] text-primary">check_circle</span>
-                        <span className="font-medium text-on-surface">{perm}</span>
-                      </div>
-                    ))}
                   </div>
                 </div>
 
@@ -963,6 +973,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         <ManageMemberRoleModal
           isOpen={Boolean(roleEditingMember)}
           member={roleEditingMember}
+          teamId={teamId}
           onClose={() => setRoleEditingMember(null)}
           onSaveRole={handleSaveMemberRole}
         />
