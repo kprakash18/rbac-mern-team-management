@@ -120,6 +120,8 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
 
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+
 export async function listTeamMembers({
   teamId,
   status,
@@ -127,9 +129,8 @@ export async function listTeamMembers({
   limit = 20,
 } = {}) {
   if (!mongoose.Types.ObjectId.isValid(teamId)) {
-    throw new BadRequestError("Invalid teamId format.");
+    throw new BadRequestError("Invalid team ID format.");
   }
-
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") {
     throw new NotFoundError("Team not found.");
@@ -142,9 +143,7 @@ export async function listTeamMembers({
     query.status = { $ne: "REMOVED" };
   }
 
-  const pageNum = Math.max(1, parseInt(page, 10) || 1);
-  const limitNum = Math.min(100, Math.max(1, parseInt(limit, 10) || 20));
-  const skip = (pageNum - 1) * limitNum;
+  const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [members, total] = await Promise.all([
     Membership.find(query)
@@ -160,7 +159,7 @@ export async function listTeamMembers({
     total,
     page: pageNum,
     limit: limitNum,
-    totalPages: Math.ceil(total / limitNum),
+    totalPages: getTotalPages(total, limitNum),
   };
 }
 

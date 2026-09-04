@@ -11,17 +11,11 @@ import JitRequestView from '../modules/jit/JitRequestView';
 import AnnouncementsView from '../modules/announcements/AnnouncementsView';
 import TeamSettingsModal from '../modules/announcements/TeamSettingsModal';
 import WorkspaceAuditLogView from '../modules/audit/WorkspaceAuditLogView';
-import { MOCK_ANNOUNCEMENTS, MOCK_CURRENT_USER, WORKSPACE_PERSONAS } from '@/constants';
 
 export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const [activeView, setActiveView] = useState('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  const initialPersonaId =
-    WORKSPACE_PERSONAS.find((p) => p.email?.toLowerCase() === currentUser?.email?.toLowerCase())?.id ||
-    (currentUser?.email?.includes('marcus') ? 'usr-mv' : currentUser?.id) ||
-    'usr-dm';
-  const [selectedPersonaId, setSelectedPersonaId] = useState(initialPersonaId);
-  const [announcements, setAnnouncements] = useState(MOCK_ANNOUNCEMENTS);
+  const [announcements, setAnnouncements] = useState([]);
   const [dismissedBannerIds, setDismissedBannerIds] = useState([]);
 
   // Active Workspace State & Team Settings Modal (PATCH /api/teams/:teamId)
@@ -44,7 +38,10 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         const nextList = list.map((w) => (w.id === updated.id ? { ...w, ...updated } : w));
         localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
       }
-    } catch {}
+    } catch (err) {
+      console.error(err);
+    }
+    setIsTeamSettingsOpen(false);
   };
 
   // Persistent Direct Messaging State
@@ -58,7 +55,13 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     setIsDirectMessageMinimized(false);
   };
 
-  const user = WORKSPACE_PERSONAS.find((p) => p.id === selectedPersonaId) || currentUser || MOCK_CURRENT_USER;
+  const user = currentUser || {
+    name: 'Team Member',
+    email: 'user@example.com',
+    role: 'Member',
+    teamRoleTitle: 'Developer',
+    initials: 'TM',
+  };
   const unreadAnnouncementsCount = announcements.filter((a) => !a.isRead).length;
 
   const pinnedAnnouncement = announcements.find((a) => a.isSticky && !dismissedBannerIds.includes(a.id));
@@ -94,24 +97,28 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
           <MyDashboardView
             currentUser={user}
             workspace={currentWorkspace}
-            personas={WORKSPACE_PERSONAS}
-            onSwitchPersona={setSelectedPersonaId}
             onNavigate={handleNavigate}
           />
         );
       case 'tasks':
-        return <TasksView currentUser={user} />;
+        return <TasksView currentUser={user} workspace={currentWorkspace} />;
       case 'team-members':
-        return <TeamMembersView currentUser={user} onOpenDirectMessage={handleOpenDirectMessage} />;
+        return (
+          <TeamMembersView
+            currentUser={user}
+            workspace={currentWorkspace}
+            onOpenDirectMessage={handleOpenDirectMessage}
+          />
+        );
       case 'chat':
-        return <ChatView currentUser={user} />;
+        return <ChatView currentUser={user} workspace={currentWorkspace} />;
       case 'jit-request':
       case 'jit-access':
-        return <JitRequestView currentUser={user} />;
+        return <JitRequestView currentUser={user} workspace={currentWorkspace} />;
       case 'my-permissions':
         return (
           <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex-1">
-            <MyPermissionsView currentUser={user} />
+            <MyPermissionsView currentUser={user} workspace={currentWorkspace} />
           </div>
         );
       case 'announcements':
@@ -163,8 +170,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
           <WorkspaceAppTopbar
             workspace={currentWorkspace}
             currentUser={user}
-            personas={WORKSPACE_PERSONAS}
-            onSwitchPersona={setSelectedPersonaId}
             onOpenTeamSettings={() => setIsTeamSettingsOpen(true)}
             unreadAnnouncementsCount={unreadAnnouncementsCount}
             onAnnouncementsClick={() => setActiveView('announcements')}

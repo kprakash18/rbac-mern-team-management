@@ -2,6 +2,7 @@ import { AUDIT_SEVERITY } from '@/constants';
 
 export default function AuditLogsTable({
   logs,
+  loading = false,
   onInspectLog,
 }) {
   return (
@@ -21,7 +22,16 @@ export default function AuditLogsTable({
             </tr>
           </thead>
           <tbody className="divide-y divide-surface-variant">
-            {logs.length === 0 ? (
+            {loading ? (
+              <tr>
+                <td colSpan="8" className="py-2xl text-center text-on-surface-variant">
+                  <div className="flex flex-col items-center justify-center gap-xs">
+                    <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+                    <span className="font-label-bold text-on-surface">Loading security events...</span>
+                  </div>
+                </td>
+              </tr>
+            ) : logs.length === 0 ? (
               <tr>
                 <td colSpan="8" className="py-2xl text-center text-on-surface-variant">
                   <div className="flex flex-col items-center justify-center gap-xs">

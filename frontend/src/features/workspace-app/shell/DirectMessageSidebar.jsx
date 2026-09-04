@@ -1,84 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
 
-const SEED_CONVERSATIONS = {
-  'usr-cd': [
-    {
-      id: 'dm-cd-1',
-      senderId: 'usr-cd',
-      text: 'Hey! Just wanted to confirm that the replica buffer pool adjustment passed the staging stress test with 0 IOPS spikes.',
-      timestamp: '10:14 AM',
-    },
-    {
-      id: 'dm-cd-2',
-      senderId: 'currentUser',
-      text: 'Awesome work Charlie. Let us monitor replication lag during the peak traffic window before closing the incident.',
-      timestamp: '10:20 AM',
-    },
-    {
-      id: 'dm-cd-3',
-      senderId: 'usr-cd',
-      text: 'Sounds good, I have Prometheus alerts configured with PagerDuty for any lag > 50ms.',
-      timestamp: '10:22 AM',
-    },
-  ],
-  'usr-aj': [
-    {
-      id: 'dm-aj-1',
-      senderId: 'usr-aj',
-      text: 'CI/CD runner environment tokens have been rotated with HashiCorp Vault. All pipeline builds are green.',
-      timestamp: '09:40 AM',
-    },
-    {
-      id: 'dm-aj-2',
-      senderId: 'currentUser',
-      text: 'Thanks Alice! Great job getting this done ahead of the SOC2 audit window.',
-      timestamp: '09:45 AM',
-    },
-  ],
-  'usr-mv': [
-    {
-      id: 'dm-mv-1',
-      senderId: 'usr-mv',
-      text: 'API service release v2.4.1 canary deployment is 100% shifted with zero HTTP 5xx errors.',
-      timestamp: 'Yesterday',
-    },
-    {
-      id: 'dm-mv-2',
-      senderId: 'currentUser',
-      text: 'Confirmed on DataDog metrics. Zero regressions observed.',
-      timestamp: 'Yesterday',
-    },
-  ],
-  'usr-er': [
-    {
-      id: 'dm-er-1',
-      senderId: 'usr-er',
-      text: 'The Q3 SOC2 audit evidence folder is prepared. We just need the final sign-off on the JIT privilege elevation log.',
-      timestamp: '11:05 AM',
-    },
-    {
-      id: 'dm-er-2',
-      senderId: 'currentUser',
-      text: 'Reviewing the exported IAM assume-role trails right now. Looks very thorough.',
-      timestamp: '11:15 AM',
-    },
-  ],
-  'usr-sl': [
-    {
-      id: 'dm-sl-1',
-      senderId: 'usr-sl',
-      text: 'Figma tokens for dark-mode WCAG AAA contrast ratio have been synced to the package release.',
-      timestamp: '08:30 AM',
-    },
-    {
-      id: 'dm-sl-2',
-      senderId: 'currentUser',
-      text: 'Looks great Sophia! Clean typography and color contrast look much better.',
-      timestamp: '08:45 AM',
-    },
-  ],
-};
-
 export default function DirectMessageSidebar({
   targetMember,
   currentUser,
@@ -87,21 +8,14 @@ export default function DirectMessageSidebar({
   onClose,
   onToggleMinimize,
 }) {
-  const currentUserId = currentUser?.id || 'usr-dm';
-  const memberId = targetMember?.id || 'usr-cd';
+  const currentUserId = currentUser?._id || currentUser?.id || 'current_user';
+  const memberId = targetMember?._id || targetMember?.id || 'target_user';
 
-  const [conversationMap, setConversationMap] = useState(SEED_CONVERSATIONS);
+  const [conversationMap, setConversationMap] = useState({});
   const [inputText, setInputText] = useState('');
   const messagesEndRef = useRef(null);
 
-  const activeMessages = conversationMap[memberId] || [
-    {
-      id: `init-${memberId}`,
-      senderId: memberId,
-      text: `Hi! Feel free to leave a note or ask about sprint tasks.`,
-      timestamp: 'Just now',
-    },
-  ];
+  const activeMessages = conversationMap[memberId] || [];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -150,7 +64,7 @@ export default function DirectMessageSidebar({
           </div>
 
           <div className="min-w-0 pr-2">
-            <span className="font-label-bold text-[13px] text-on-surface block truncate max-w-[140px]">
+            <span className="font-label-bold text-[13px] text-on-surface block truncate max-w-35">
               {targetMember.name}
             </span>
             <span className="text-[10px] text-emerald-600 font-semibold block">Online • Click to Expand</span>
@@ -174,7 +88,7 @@ export default function DirectMessageSidebar({
 
   // Expanded Persistent Right Sidebar
   return (
-    <aside className="fixed top-0 right-0 w-full sm:w-[380px] h-screen bg-surface-container-lowest border-l border-border-subtle shadow-2xl z-50 flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-200">
+    <aside className="fixed top-0 right-0 w-full sm:w-95 h-screen bg-surface-container-lowest border-l border-border-subtle shadow-2xl z-50 flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-200">
       {/* Header */}
       <div className="p-3.5 border-b border-border-subtle bg-surface-container-lowest flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1">

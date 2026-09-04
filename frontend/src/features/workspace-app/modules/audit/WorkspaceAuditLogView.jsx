@@ -1,109 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import api from '../../../../lib/api';
+import { useApp } from '@/context/useApp';
 import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
 import Toast from '../../../../components/shared/Toast';
 import { useToast } from '../../../../lib/useToast';
-
-const WORKSPACE_AUDIT_EVENTS = [
-  {
-    id: 'evt-aud-901',
-    timestamp: '10m ago',
-    isoDate: '2026-09-04T06:20:00Z',
-    actor: { name: 'Diana Morales', email: 'diana.m@acme.corp', initials: 'DM', role: 'Lead Architect' },
-    action: 'JIT_LEASE_APPROVED',
-    actionLabel: 'JIT Elevation Approved',
-    category: 'JIT_ELEVATION',
-    severity: 'WARNING',
-    resource: 'prod_cluster_primary',
-    details: 'Approved temporary DB Read-Write elevation for Charlie Davis (60m TTL, Ticket #INC-8492).',
-    ipAddress: '10.240.12.8',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-902',
-    timestamp: '42m ago',
-    isoDate: '2026-09-04T05:48:00Z',
-    actor: { name: 'Diana Morales', email: 'diana.m@acme.corp', initials: 'DM', role: 'Lead Architect' },
-    action: 'ROLE_REASSIGNED',
-    actionLabel: 'Member Role Updated',
-    category: 'ROLE_MANAGEMENT',
-    severity: 'INFO',
-    resource: 'usr-cd (Charlie Davis)',
-    details: 'Reassigned member role from Project Manager to Senior Staff SRE with cluster governance capability.',
-    ipAddress: '10.240.12.8',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-903',
-    timestamp: '1h 15m ago',
-    isoDate: '2026-09-04T05:15:00Z',
-    actor: { name: 'Elena Rostova', email: 'elena.r@acme.corp', initials: 'ER', role: 'Security Auditor' },
-    action: 'EVIDENCE_EXPORTED',
-    actionLabel: 'Compliance Log Export',
-    category: 'SECURITY',
-    severity: 'INFO',
-    resource: 'workspace_compliance_q3',
-    details: 'Exported quarterly SOC2 Type II audit trail and cryptographic access logs.',
-    ipAddress: '10.240.15.22',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-904',
-    timestamp: '2h 30m ago',
-    isoDate: '2026-09-04T04:00:00Z',
-    actor: { name: 'Diana Morales', email: 'diana.m@acme.corp', initials: 'DM', role: 'Lead Architect' },
-    action: 'INVITATION_CREATED',
-    actionLabel: 'Team Invite Dispatched',
-    category: 'MEMBERSHIP',
-    severity: 'INFO',
-    resource: 'rachel.z@acme.corp',
-    details: 'Dispatched workspace invitation for Senior Staff SRE with 48-hour expiration.',
-    ipAddress: '10.240.12.8',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-905',
-    timestamp: 'Yesterday, 17:45',
-    isoDate: '2026-09-03T17:45:00Z',
-    actor: { name: 'System Gatekeeper', email: 'system@acme.corp', initials: 'SG', isSystem: true },
-    action: 'JIT_LEASE_EXPIRED',
-    actionLabel: 'JIT Elevation Expired',
-    category: 'JIT_ELEVATION',
-    severity: 'INFO',
-    resource: 'role_vault_admin',
-    details: 'Lease TTL timer completed. Automated revocation of temporary credentials completed.',
-    ipAddress: '127.0.0.1',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-906',
-    timestamp: 'Yesterday, 14:10',
-    isoDate: '2026-09-03T14:10:00Z',
-    actor: { name: 'Marcus Vance', email: 'marcus.v@acme.corp', initials: 'MV', role: 'Senior Backend Developer' },
-    action: 'TASK_COMPLETED',
-    actionLabel: 'Sprint Task Resolved',
-    category: 'TASK_OPERATIONS',
-    severity: 'INFO',
-    resource: 'tsk-105',
-    details: 'Marked "Deploy API service release v2.4.1" as DONE with production zero downtime.',
-    ipAddress: '10.240.18.91',
-    status: 'SUCCESS',
-  },
-  {
-    id: 'evt-aud-907',
-    timestamp: 'Sep 2, 2026, 09:20',
-    isoDate: '2026-09-02T09:20:00Z',
-    actor: { name: 'Unknown Agent', email: 'untrusted@external.net', initials: 'UA', isAnomaly: true },
-    action: 'FAILED_TOKEN_AUTH',
-    actionLabel: 'Unauthorized API Access',
-    category: 'SECURITY',
-    severity: 'CRITICAL',
-    resource: '/api/teams/acme-eng/secrets',
-    details: 'Expired bearer token provided. Automated IP rate limiting triggered.',
-    ipAddress: '198.51.100.24',
-    status: 'BLOCKED',
-  },
-];
 
 const CATEGORY_CONFIG = {
   ALL: { label: 'All Categories', icon: 'list' },
@@ -115,16 +16,60 @@ const CATEGORY_CONFIG = {
 };
 
 export default function WorkspaceAuditLogView({ currentUser, workspace, onNavigate }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
   const isAuditor = currentUser?.role?.toLowerCase().includes('auditor');
   const hasAccess = isTeamAdmin || isAuditor;
 
-  const [logs] = useState(WORKSPACE_AUDIT_EVENTS);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [toast, showToast] = useToast();
+
+  const fetchAuditLogs = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      setLoading(true);
+      const res = await api.get(`/api/teams/${teamId}/audit-logs`);
+      const rawLogs = res.data?.data?.logs || res.data?.data || [];
+      const formatted = rawLogs.map((log) => {
+        const actor = log.actorId || {};
+        return {
+          id: log._id || log.id,
+          _id: log._id || log.id,
+          timestamp: log.createdAt ? new Date(log.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
+          isoDate: log.createdAt || new Date().toISOString(),
+          actor: {
+            name: actor.name || 'System',
+            email: actor.email || 'system@internal',
+            initials: (actor.name || 'S').slice(0, 2).toUpperCase(),
+            role: actor.role || 'Member',
+          },
+          action: log.action || 'ACTION',
+          actionLabel: (log.action || 'System Event').replace('.', ' ').toUpperCase(),
+          category: log.action?.includes('role') ? 'ROLE_MANAGEMENT' : log.action?.includes('membership') ? 'MEMBERSHIP' : 'SECURITY',
+          severity: log.result === 'FAILURE' ? 'CRITICAL' : 'INFO',
+          resource: log.targetType || 'Resource',
+          details: log.metadata ? JSON.stringify(log.metadata) : `${log.action} performed successfully`,
+          ipAddress: log.ipAddress || '127.0.0.1',
+          status: log.result || 'SUCCESS',
+        };
+      });
+      setLogs(formatted);
+    } catch (err) {
+      console.error('Failed to load audit logs:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchAuditLogs();
+  }, [fetchAuditLogs]);
 
   if (!hasAccess) {
     return (
@@ -280,7 +225,7 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
           onChange={(e) => setSearchQuery(e.target.value)}
           onClear={() => setSearchQuery('')}
           placeholder="Search by actor, action, resource, or IP address..."
-          className="flex-1 min-w-[240px]"
+          className="flex-1 min-w-60"
         />
 
         {/* Category Filter */}
@@ -314,7 +259,12 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
 
       {/* Events Table / Feed */}
       <div className="bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
-        {filteredLogs.length === 0 ? (
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
+            <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+            <span className="text-[13px] font-medium">Loading workspace audit events...</span>
+          </div>
+        ) : filteredLogs.length === 0 ? (
           <EmptyState
             icon="search_off"
             title="No audit events found"

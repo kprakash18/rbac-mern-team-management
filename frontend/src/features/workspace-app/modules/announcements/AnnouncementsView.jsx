@@ -27,10 +27,10 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
   };
 
   const handleOpenBroadcastModal = () => {
-    setBroadcastTitle('Today is deployment day — hope everyone is ready!');
-    setBroadcastType('MAINTENANCE');
-    setBroadcastBody('We are beginning our scheduled deployment phase for production services. Please freeze all non-essential database schema alterations and verify rollback plans.');
-    setIsSticky(true);
+    setBroadcastTitle('');
+    setBroadcastType('ANNOUNCEMENT');
+    setBroadcastBody('');
+    setIsSticky(false);
     setRequiresAck(false);
     setIsBroadcastModalOpen(true);
   };
@@ -55,7 +55,7 @@ export default function AnnouncementsView({ currentUser, announcements = [], onA
       isSticky,
       requiresAck,
       sentAt: new Date().toISOString(),
-      sentBy: `${currentUser?.name || 'Diana Morales'} (Team Admin)`,
+      sentBy: `${currentUser?.name || 'Admin'} (${currentUser?.teamRoleTitle || 'Team Admin'})`,
       isRead: false,
       isAcknowledged: false,
     };

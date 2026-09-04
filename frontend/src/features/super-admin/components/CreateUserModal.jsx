@@ -1,12 +1,14 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   WORKSPACE_ROLES_MAP,
   DEFAULT_WORKSPACE,
 } from '@/constants';
+import api from '@/lib/api';
 
 export default function CreateUserModal({ isOpen, onClose, onInvite, existingUsers = [] }) {
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
+  const [teams, setTeams] = useState([]);
   const [assignments, setAssignments] = useState([
     {
       workspace: DEFAULT_WORKSPACE,
@@ -16,13 +18,29 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   ]);
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
 
+  useEffect(() => {
+    if (!isOpen) return;
+    api.get('/api/teams')
+      .then((res) => {
+        const list = res.data?.data?.teams || res.data?.data || [];
+        if (Array.isArray(list) && list.length > 0) {
+          setTeams(list);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen]);
+
+  const workspaceOptions = teams.length > 0
+    ? Array.from(new Set([...teams.map((t) => t.name), ...Object.keys(WORKSPACE_ROLES_MAP)]))
+    : Object.keys(WORKSPACE_ROLES_MAP);
+
   const resetForm = () => {
     setFullName('');
     setEmail('');
     setAssignments([
       {
-        workspace: DEFAULT_WORKSPACE,
-        role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+        workspace: workspaceOptions[0] || DEFAULT_WORKSPACE,
+        role: WORKSPACE_ROLES_MAP[workspaceOptions[0] || DEFAULT_WORKSPACE]?.[0] || 'Developer',
         isTeamAdmin: false,
       },
     ]);
@@ -54,15 +72,15 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   if (!isOpen) return null;
 
   const handleAddAssignment = () => {
-    const nextWorkspace = Object.keys(WORKSPACE_ROLES_MAP).find(
+    const nextWorkspace = workspaceOptions.find(
       (ws) => !assignments.some((a) => a.workspace === ws)
-    ) || 'Production';
+    ) || workspaceOptions[0] || 'Production';
 
     setAssignments((prev) => [
       ...prev,
       {
         workspace: nextWorkspace,
-        role: WORKSPACE_ROLES_MAP[nextWorkspace][0] || 'Viewer',
+        role: WORKSPACE_ROLES_MAP[nextWorkspace]?.[0] || 'Developer',
         isTeamAdmin: false,
       },
     ]);
@@ -120,7 +138,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/50 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-[580px] bg-surface-container-lowest rounded-xl shadow-xl border border-border-subtle flex flex-col max-h-[90vh]">
+      <div className="relative w-full max-w-145 bg-surface-container-lowest rounded-xl shadow-xl border border-border-subtle flex flex-col max-h-[90vh]">
         {/* Modal Header */}
         <div className="flex items-center justify-between p-lg border-b border-border-subtle">
           <div className="flex items-center gap-sm">
@@ -206,7 +224,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
                             onChange={(e) => handleWorkspaceChange(index, e.target.value)}
                             className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
                           >
-                            {Object.keys(WORKSPACE_ROLES_MAP).map((ws) => (
+                            {workspaceOptions.map((ws) => (
                               <option key={ws} value={ws}>
                                 {ws}
                               </option>

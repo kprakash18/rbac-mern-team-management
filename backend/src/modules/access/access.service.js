@@ -86,6 +86,8 @@ export async function createAccessRequest({
   return accessRequest;
 }
 
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+
 export async function getAccessRequestsByTeam({ teamId, query = {} }) {
   const { status, targetUserId, page = 1, limit = 20 } = query;
 
@@ -93,9 +95,7 @@ export async function getAccessRequestsByTeam({ teamId, query = {} }) {
   if (status) filter.status = status;
   if (targetUserId) filter.targetUserId = targetUserId;
 
-  const pageNumber = Math.max(Number(page) || 1, 1);
-  const pageSize = Math.min(Math.max(Number(limit) || 20, 1), 100);
-  const skip = (pageNumber - 1) * pageSize;
+  const { page: pageNumber, limit: pageSize, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [requests, total] = await Promise.all([
     AccessRequest.find(filter)
@@ -111,7 +111,7 @@ export async function getAccessRequestsByTeam({ teamId, query = {} }) {
     total,
     page: pageNumber,
     limit: pageSize,
-    totalPages: Math.ceil(total / pageSize),
+    totalPages: getTotalPages(total, pageSize),
   };
 }
 
