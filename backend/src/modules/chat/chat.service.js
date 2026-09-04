@@ -3,9 +3,10 @@ import ChatMessage from "./chat-message.model.js";
 /**
  * 1. Persist a new chat message in MongoDB
  */
-export async function saveChatMessage({ teamId, senderId, content, messageType = "TEXT" }) {
+export async function saveChatMessage({ teamId, groupId = "grp-general", senderId, content, messageType = "TEXT" }) {
   const message = await ChatMessage.create({
     teamId,
+    groupId: groupId || "grp-general",
     senderId,
     content: content.trim(),
     messageType,
@@ -15,12 +16,12 @@ export async function saveChatMessage({ teamId, senderId, content, messageType =
 }
 
 /**
- * 2. Retrieve chat messages for a team with cursor-based pagination (before timestamp)
+ * 2. Retrieve chat messages for a team and specific group/channel with cursor-based pagination
  */
-export async function getTeamChatHistory({ teamId, limit = 50, before = null }) {
+export async function getTeamChatHistory({ teamId, groupId = "grp-general", limit = 50, before = null }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
 
-  const filter = { teamId };
+  const filter = { teamId, groupId: groupId || "grp-general" };
   if (before) {
     const beforeDate = new Date(before);
     if (!isNaN(beforeDate.getTime())) {
@@ -40,6 +41,7 @@ export async function getTeamChatHistory({ teamId, limit = 50, before = null }) 
   const messages = slicedMessages.reverse().map((msg) => ({
     _id: msg._id,
     teamId: msg.teamId,
+    groupId: msg.groupId || "grp-general",
     sender: {
       id: msg.senderId?._id || msg.senderId,
       name: msg.senderId?.name || "Unknown",

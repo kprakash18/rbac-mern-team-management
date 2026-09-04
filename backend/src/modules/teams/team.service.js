@@ -89,7 +89,7 @@ export async function getUserTeams(userId) {
   const memberships = await Membership.find({
     userId,
     status: "ACTIVE",
-  }).select("teamId");
+  }).select("_id teamId");
 
   const teamIds = memberships.map((m) => m.teamId);
 
@@ -98,9 +98,36 @@ export async function getUserTeams(userId) {
     status: { $ne: "ARCHIVED" },
   })
     .populate("createdBy", "name email")
-    .sort({ name: 1 });
+    .sort({ name: 1 })
+    .lean();
 
-  return teams;
+  const membershipIds = memberships.map((m) => m._id);
+  const memRoles = await MembershipRole.find({
+    membershipId: { $in: membershipIds },
+    revokedAt: null,
+  })
+    .populate("roleId", "name isSystemRole")
+    .lean();
+
+  return teams.map((team) => {
+    const mem = memberships.find((m) => String(m.teamId) === String(team._id));
+    const roles = mem
+      ? memRoles
+          .filter((mr) => String(mr.membershipId) === String(mem._id))
+          .map((mr) => mr.roleId?.name)
+          .filter(Boolean)
+      : [];
+
+    const primaryRole = roles[0] || "Developer";
+    const isTeamAdmin = roles.some((r) => r.toLowerCase().includes("admin"));
+
+    return {
+      ...team,
+      role: primaryRole,
+      roles,
+      isTeamAdmin,
+    };
+  });
 }
 
 export async function listTeams({

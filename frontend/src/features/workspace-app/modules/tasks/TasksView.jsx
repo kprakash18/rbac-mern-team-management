@@ -5,6 +5,10 @@ import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
 
 const PRIORITY_STYLES = {
+  URGENT: 'bg-red-50 text-red-700 border-red-200 font-semibold',
+  HIGH: 'bg-amber-50 text-amber-800 border-amber-200 font-semibold',
+  MEDIUM: 'bg-slate-100 text-slate-700 border-slate-200 font-medium',
+  LOW: 'bg-slate-50 text-slate-500 border-slate-200 font-medium',
   Urgent: 'bg-red-50 text-red-700 border-red-200 font-semibold',
   High: 'bg-amber-50 text-amber-800 border-amber-200 font-semibold',
   Medium: 'bg-slate-100 text-slate-700 border-slate-200 font-medium',
@@ -38,7 +42,7 @@ export default function TasksView({ currentUser, workspace }) {
   const [formData, setFormData] = useState({
     title: '',
     assignedTo: '',
-    priority: 'Medium',
+    priority: 'MEDIUM',
     dueDate: '',
     status: 'TODO',
     remarks: '',
@@ -50,7 +54,7 @@ export default function TasksView({ currentUser, workspace }) {
       setLoading(true);
       const [tasksRes, membersRes] = await Promise.allSettled([
         api.get(`/api/teams/${teamId}/tasks`),
-        api.get(`/api/teams/${teamId}/members`),
+        api.get(`/api/teams/${teamId}/members?limit=100`),
       ]);
 
       if (tasksRes.status === 'fulfilled') {
@@ -68,10 +72,10 @@ export default function TasksView({ currentUser, workspace }) {
         const rawMembers = membersRes.value.data?.data?.members || membersRes.value.data?.data || [];
         setTeamMembers(
           rawMembers.map((m) => ({
-            id: m.user?._id || m.userId?._id || m._id,
-            name: m.user?.name || m.userId?.name || m.name || 'Member',
-            email: m.user?.email || m.userId?.email || m.email || '',
-            initials: (m.user?.name || m.name || 'M')
+            id: m.userId?._id || m.user?._id || m.userId || m.id || m._id,
+            name: m.userId?.name || m.user?.name || m.name || 'Member',
+            email: m.userId?.email || m.user?.email || m.email || '',
+            initials: (m.userId?.name || m.user?.name || m.name || 'M')
               .split(' ')
               .map((n) => n[0])
               .join('')
@@ -99,8 +103,8 @@ export default function TasksView({ currentUser, workspace }) {
     setFormData({
       title: '',
       assignedTo: currentUserId || teamMembers[0]?.id || '',
-      priority: 'Medium',
-      dueDate: new Date(Date.now() + 7 * 86400000).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+      priority: 'MEDIUM',
+      dueDate: '',
       status: 'TODO',
       remarks: '',
     });
@@ -111,10 +115,10 @@ export default function TasksView({ currentUser, workspace }) {
     setEditingTask(task);
     setFormData({
       title: task.title,
-      assignedTo: task.assignedTo,
-      priority: task.priority,
-      dueDate: task.dueDate || '',
-      status: task.status,
+      assignedTo: task.assignedTo || '',
+      priority: (task.priority || 'MEDIUM').toUpperCase(),
+      dueDate: task.dueDate ? new Date(task.dueDate).toISOString().split('T')[0] : '',
+      status: task.status || 'TODO',
       remarks: task.remarks || '',
     });
     setIsModalOpen(true);
@@ -132,8 +136,9 @@ export default function TasksView({ currentUser, workspace }) {
           status: formData.status,
           priority: formData.priority,
           description: formData.remarks,
+          assignedTo: formData.assignedTo || null,
+          dueDate: formData.dueDate || null,
         };
-        if (formData.assignedTo) payload.assignedTo = formData.assignedTo;
 
         const res = await api.patch(`/api/teams/${teamId}/tasks/${taskId}`, payload);
         const updated = res.data?.data || payload;
@@ -143,10 +148,11 @@ export default function TasksView({ currentUser, workspace }) {
       } else {
         const payload = {
           title: formData.title,
-          assignedTo: formData.assignedTo || currentUserId,
+          assignedTo: formData.assignedTo || null,
           priority: formData.priority,
           status: formData.status,
           description: formData.remarks,
+          dueDate: formData.dueDate || null,
         };
 
         const res = await api.post(`/api/teams/${teamId}/tasks`, payload);
@@ -161,7 +167,7 @@ export default function TasksView({ currentUser, workspace }) {
       setIsModalOpen(false);
     } catch (err) {
       console.error('Failed to save task:', err);
-      alert(err.response?.data?.error?.message || 'Failed to save task.');
+      alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to save task.');
     }
   };
 
@@ -369,7 +375,15 @@ export default function TasksView({ currentUser, workspace }) {
                         <td className="py-3.5 px-4 w-36 whitespace-nowrap align-top">
                           <div className="flex items-center gap-1.5 text-[12px] text-on-surface-variant font-mono mt-0.5">
                             <span className="material-symbols-outlined text-[15px]">calendar_today</span>
-                            <span>{task.dueDate}</span>
+                            <span>
+                              {task.dueDate
+                                ? new Date(task.dueDate).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    year: 'numeric',
+                                  })
+                                : 'No deadline'}
+                            </span>
                           </div>
                         </td>
 
@@ -478,6 +492,7 @@ export default function TasksView({ currentUser, workspace }) {
                       editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
+                    <option value="">Unassigned</option>
                     {teamMembers.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
@@ -496,10 +511,10 @@ export default function TasksView({ currentUser, workspace }) {
                       editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
-                    <option value="Low">Low</option>
-                    <option value="Medium">Medium</option>
-                    <option value="High">High</option>
-                    <option value="Urgent">Urgent</option>
+                    <option value="LOW">Low</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HIGH">High</option>
+                    <option value="URGENT">Urgent</option>
                   </select>
                 </div>
               </div>
