@@ -2,6 +2,7 @@ import { useState } from 'react';
 import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
 import Toast from '../../../../components/shared/Toast';
+import { useToast } from '../../../../lib/useToast';
 
 const WORKSPACE_AUDIT_EVENTS = [
   {
@@ -123,12 +124,7 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [selectedEvent, setSelectedEvent] = useState(null);
-  const [toastMessage, setToastMessage] = useState('');
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
-  };
+  const [toast, showToast] = useToast();
 
   if (!hasAccess) {
     return (
@@ -212,7 +208,7 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
   return (
     <div className="flex flex-col w-full max-w-7xl mx-auto p-md sm:p-lg gap-lg animate-in fade-in duration-150">
       {/* Toast Notification */}
-      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+      <Toast message={toast?.msg} type={toast?.type} />
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md border-b border-border-subtle pb-md">

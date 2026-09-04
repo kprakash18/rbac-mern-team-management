@@ -4,6 +4,8 @@ import BroadcastCard from './broadcasts/BroadcastCard.jsx';
 import CreateEditBroadcastModal from './broadcasts/CreateEditBroadcastModal.jsx';
 import BroadcastDetailsDrawer from './broadcasts/BroadcastDetailsDrawer.jsx';
 import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
 
 export default function SystemBroadcastsView() {
   const [broadcasts, setBroadcasts] = useState(INITIAL_BROADCASTS);
@@ -21,11 +23,7 @@ export default function SystemBroadcastsView() {
   const [isEndEarlyMode, setIsEndEarlyMode] = useState(false);
 
   // Toast Notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
 
   // Filtered broadcasts
   const filteredBroadcasts = broadcasts.filter((bc) => {
@@ -113,13 +111,10 @@ export default function SystemBroadcastsView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl max-w-5xl mx-auto">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1300] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">info</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-[1300]">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">

@@ -11,6 +11,8 @@ import NewGrantModal from './jit/NewGrantModal.jsx';
 import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import RequestDetailsModal from './jit/RequestDetailsModal.jsx';
 import JitFilterModal from './jit/JitFilterModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
 
 export default function JitAccessView() {
   const [activeTab, setActiveTab] = useState('active');
@@ -30,11 +32,7 @@ export default function JitAccessView() {
   const [selectedRequestDetails, setSelectedRequestDetails] = useState(null);
 
   // Toast notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
 
   // Real-time ticking timer for active grants with automatic expiration transition
   useEffect(() => {
@@ -190,13 +188,10 @@ export default function JitAccessView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1200] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">info</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-[1200]">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-lg">
