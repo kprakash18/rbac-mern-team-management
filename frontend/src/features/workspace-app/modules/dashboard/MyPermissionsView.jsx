@@ -1,12 +1,72 @@
-import { MY_PERMISSIONS } from '@/constants';
+import { useState, useEffect } from 'react';
+import api from '@/lib/api';
+import { useApp } from '@/context/useApp';
 
-export default function MyPermissionsView() {
-  const grantedCount = MY_PERMISSIONS.categories.reduce(
-    (sum, cat) => sum + cat.permissions.filter(p => p.granted).length, 0
-  );
-  const totalCount = MY_PERMISSIONS.categories.reduce(
-    (sum, cat) => sum + cat.permissions.length, 0
-  );
+export default function MyPermissionsView({ currentUser, workspace }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
+  const [grantedKeys, setGrantedKeys] = useState([]);
+  const [allPermissions, setAllPermissions] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadPermissions() {
+      if (!teamId) return;
+      try {
+        setLoading(true);
+        const [myPermsRes, allPermsRes] = await Promise.allSettled([
+          api.get(`/api/authorization/permissions?teamId=${teamId}`),
+          api.get('/api/permissions'),
+        ]);
+
+        if (myPermsRes.status === 'fulfilled') {
+          const keys = myPermsRes.value.data?.data?.permissions || [];
+          setGrantedKeys(keys);
+        }
+
+        if (allPermsRes.status === 'fulfilled') {
+          const perms = allPermsRes.value.data?.data?.permissions || allPermsRes.value.data?.data || [];
+          setAllPermissions(perms);
+        }
+      } catch (err) {
+        console.error('Failed to load permissions:', err);
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    loadPermissions();
+  }, [teamId]);
+
+  const categoriesMap = {};
+  allPermissions.forEach((p) => {
+    const cat = p.category || 'General';
+    if (!categoriesMap[cat]) categoriesMap[cat] = [];
+    categoriesMap[cat].push({
+      key: p.key,
+      name: p.name || p.key,
+      description: p.description || p.key,
+      granted: grantedKeys.includes(p.key) || grantedKeys.includes('*'),
+    });
+  });
+
+  const categories = Object.entries(categoriesMap).map(([name, perms]) => ({
+    name,
+    icon: name === 'Security' ? 'security' : name === 'Admin' ? 'admin_panel_settings' : 'tune',
+    permissions: perms,
+  }));
+
+  const grantedCount = grantedKeys.length;
+  const totalCount = allPermissions.length || grantedCount;
+
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
+        <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+        <span className="text-[13px] font-medium">Loading permissions...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-xl">
@@ -32,19 +92,19 @@ export default function MyPermissionsView() {
           <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: '"FILL" 1' }}>shield_person</span>
         </div>
         <div>
-          <span className="text-on-primary/70 text-[11px] font-semibold uppercase tracking-widest block">Your Assigned Role</span>
-          <span className="text-[20px] font-bold block">{MY_PERMISSIONS.roleName}</span>
-          <span className="text-on-primary/80 text-[12px] block">{MY_PERMISSIONS.roleDescription}</span>
+          <span className="text-on-primary/70 text-[11px] font-semibold uppercase tracking-widest block">Your Active Role</span>
+          <span className="text-[20px] font-bold block">{currentUser?.role || currentUser?.teamRoleTitle || 'Team Member'}</span>
+          <span className="text-on-primary/80 text-[12px] block">Permissions dynamically evaluated for this workspace</span>
         </div>
         <div className="ml-auto text-right shrink-0">
           <span className="text-[28px] font-bold block">{grantedCount}</span>
-          <span className="text-on-primary/70 text-[11px]">of {totalCount} granted</span>
+          <span className="text-on-primary/70 text-[11px]">of {totalCount} active</span>
         </div>
       </div>
 
       {/* Permission Categories */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
-        {MY_PERMISSIONS.categories.map((category) => {
+        {categories.map((category) => {
           const catGranted = category.permissions.filter(p => p.granted).length;
           return (
             <div
@@ -73,7 +133,7 @@ export default function MyPermissionsView() {
                         {perm.granted ? 'check_circle' : 'cancel'}
                       </span>
                       <span className={`text-[13px] font-medium ${perm.granted ? 'text-on-surface' : 'text-on-surface-variant line-through opacity-60'}`}>
-                        {perm.label}
+                        {perm.name || perm.key}
                       </span>
                     </div>
                     <code className="text-[10px] font-mono text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">

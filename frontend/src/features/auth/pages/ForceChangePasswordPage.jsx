@@ -1,14 +1,18 @@
 import { useState } from 'react';
+import api from '@/lib/api';
+import { setStorage } from '@/lib/storage';
 
 const LOGO_URL =
   'https://lh3.googleusercontent.com/aida/AEtjO1WLIu2LRhEp60WPBOijAnaRzKBTf6_iGJW5f7YjKdP4j5AkV5ph5c6SGH5kSkBQrLEUAXS45mO8ubfByXHXeO2diwg7HJFE0G6blLrN4_AlWrhkJpz4_jJxaoy-1w8GLSLpQwmST0KeRyihgg8Q4-3jjEXkmZ7l8lZhc8B64Ytsk6GMdVwbgnBRFJ1gE1Tkc8o3qiLad7T0iBiWGW8XkaRqXcMiRlf3VcvAE-oAlih3NTl3Hsb1MpJDCGZi';
 
 export default function ForceChangePasswordPage({ user, onPasswordChanged, onCancel }) {
+  const currentPassword = user?.initialPassword || 'Password123!';
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  const [loading, setLoading] = useState(false);
 
   // Password strength calculation
   const calculateStrength = (pwd) => {
@@ -27,8 +31,9 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
 
   const strength = calculateStrength(newPassword);
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     if (e) e.preventDefault();
+    if (loading) return;
     setErrorMessage('');
 
     if (!newPassword || newPassword.length < 8) {
@@ -41,46 +46,37 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
       return;
     }
 
-    const updatedUser = {
-      ...(user || {
-        id: 'usr-invited',
-        email: 'invited@example.com',
-        name: 'Invited User',
-        role: 'Developer',
-        accountStatus: 'ACTIVE',
-      }),
-      mustChangePassword: false,
-      accountStatus: 'ACTIVE',
-      password: newPassword,
-    };
-
-    localStorage.setItem('auth_session', JSON.stringify(updatedUser));
-
+    setLoading(true);
     try {
-      const stored = localStorage.getItem('platform_users_list');
-      if (stored) {
-        const list = JSON.parse(stored);
-        const updatedList = list.map((u) =>
-          u.email.toLowerCase() === updatedUser.email.toLowerCase()
-            ? {
-                ...u,
-                mustChangePassword: false,
-                password: newPassword,
-                status: 'Active',
-                statusType: 'active',
-              }
-            : u
-        );
-        localStorage.setItem('platform_users_list', JSON.stringify(updatedList));
-      }
-    } catch (err) {
-      console.error(err);
-    }
+      const response = await api.post('/api/auth/change-password', {
+        currentPassword: currentPassword || user?.initialPassword || 'Password123!',
+        newPassword,
+      });
 
-    if (onPasswordChanged) {
-      onPasswordChanged(updatedUser);
-    } else {
-      window.location.href = '/';
+      const returnedUser = response.data?.data?.user;
+      const updatedUser = {
+        ...user,
+        ...(returnedUser || {}),
+        mustChangePassword: false,
+        accountStatus: 'ACTIVE',
+      };
+
+      setStorage('auth_session', updatedUser);
+
+      if (onPasswordChanged) {
+        onPasswordChanged(updatedUser);
+      } else {
+        window.location.href = '/';
+      }
+    } catch (apiError) {
+      const serverMsg =
+        apiError.response?.data?.error?.message ||
+        apiError.response?.data?.message ||
+        apiError.message ||
+        'Failed to change password. Please verify current password.';
+      setErrorMessage(serverMsg);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -102,10 +98,10 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
         </div>
       </header>
 
-      <main className="flex-1 w-full max-w-[640px] mx-auto px-container-margin pb-section-gap">
+      <main className="flex-1 w-full max-w-160 mx-auto px-container-margin pb-section-gap">
         <div className="flex flex-col w-full items-center justify-center">
           <div
-            className="w-full max-w-[440px] bg-surface-container-lowest rounded-lg shadow-sm border border-surface-container-highest p-container-margin"
+            className="w-full max-w-110 bg-surface-container-lowest rounded-lg shadow-sm border border-surface-container-highest p-container-margin"
             style={{
               backgroundColor: 'rgb(255, 255, 255)',
               border: '1px solid rgb(226, 232, 240)',
@@ -139,7 +135,7 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 Secure your account
               </h2>
               <p
-                className="font-body-md text-body-md text-on-surface-variant text-center max-w-[320px]"
+                className="font-body-md text-body-md text-on-surface-variant text-center max-w-80"
                 style={{ color: 'rgb(71, 85, 105)', lineHeight: 1.6 }}
               >
                 Please set a new password to replace your temporary one.
@@ -167,11 +163,12 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </label>
                 <div className="relative w-full">
                   <input
-                    className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant rounded-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors pr-10 focus:ring-2"
+                    className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant rounded-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none transition-colors pr-10 disabled:opacity-60"
                     id="new-password"
                     placeholder="••••••••"
                     type={showNewPassword ? 'text' : 'password'}
                     value={newPassword}
+                    disabled={loading}
                     onChange={(e) => {
                       setNewPassword(e.target.value);
                       if (errorMessage) setErrorMessage('');
@@ -179,9 +176,10 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                     required
                   />
                   <button
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-outline-variant hover:text-on-surface transition-colors cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-outline-variant hover:text-on-surface transition-colors cursor-pointer disabled:opacity-50"
                     onClick={() => setShowNewPassword(!showNewPassword)}
                     type="button"
+                    disabled={loading}
                     aria-label="Toggle password visibility"
                   >
                     <span className="material-symbols-outlined text-[20px]" id="icon-new-password">
@@ -226,11 +224,12 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </label>
                 <div className="relative w-full">
                   <input
-                    className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant rounded-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-1 focus:ring-primary focus:outline-none transition-colors pr-10 focus:ring-2"
+                    className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant rounded-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none transition-colors pr-10 disabled:opacity-60"
                     id="confirm-password"
                     placeholder="••••••••"
                     type={showConfirmPassword ? 'text' : 'password'}
                     value={confirmPassword}
+                    disabled={loading}
                     onChange={(e) => {
                       setConfirmPassword(e.target.value);
                       if (errorMessage) setErrorMessage('');
@@ -238,9 +237,10 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                     required
                   />
                   <button
-                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-outline-variant hover:text-on-surface transition-colors cursor-pointer"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-outline-variant hover:text-on-surface transition-colors cursor-pointer disabled:opacity-50"
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     type="button"
+                    disabled={loading}
                     aria-label="Toggle password visibility"
                   >
                     <span className="material-symbols-outlined text-[20px]" id="icon-confirm-password">
@@ -252,18 +252,27 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
 
               {/* Action */}
               <button
-                className="w-full h-12 mt-stack-sm bg-surface-container-highest text-outline font-label-md text-label-md rounded-md transition-colors hover:bg-surface-container-highest cursor-pointer"
+                className="w-full h-12 mt-stack-sm bg-surface-container-highest text-outline font-label-md text-label-md rounded-md transition-colors hover:bg-surface-container-highest cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: 'rgb(0, 0, 0)', color: 'rgb(255, 255, 255)' }}
                 type="submit"
+                disabled={loading}
               >
-                Update password
+                {loading ? (
+                  <>
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    <span>Updating password...</span>
+                  </>
+                ) : (
+                  'Update password'
+                )}
               </button>
 
               {onCancel && (
                 <button
                   type="button"
                   onClick={onCancel}
-                  className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface text-center cursor-pointer -mt-2"
+                  disabled={loading}
+                  className="text-label-sm font-label-sm text-on-surface-variant hover:text-on-surface text-center cursor-pointer -mt-2 disabled:opacity-50"
                 >
                   Return to sign in
                 </button>

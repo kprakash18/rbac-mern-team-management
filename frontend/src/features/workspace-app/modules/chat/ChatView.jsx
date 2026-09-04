@@ -1,129 +1,51 @@
 import { useState, useRef, useEffect } from 'react';
-import { WORKSPACE_TEAM_MEMBERS } from '@/constants';
+import api from '@/lib/api';
 import { getStorage, setStorage } from '../../../../lib/storage';
+import { getSocket } from '../../../../lib/socket';
+import { useApp } from '@/context/useApp';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
 
 const INITIAL_GROUPS = [
   {
     id: 'grp-general',
     name: 'general',
-    topic: 'Company-wide updates, announcements, and team banter',
-    createdBy: 'usr-dm',
-    memberIds: ['usr-dm', 'usr-cd', 'usr-aj', 'usr-er', 'usr-mv', 'usr-sl'],
+    topic: 'Workspace general chat channel',
+    memberIds: [],
     isDefault: true,
-  },
-  {
-    id: 'grp-core-platform',
-    name: 'core-platform',
-    topic: 'Platform architecture, microservices, and database clustering',
-    createdBy: 'usr-dm',
-    memberIds: ['usr-dm', 'usr-cd', 'usr-mv'],
-    isDefault: false,
-  },
-  {
-    id: 'grp-sprint-releases',
-    name: 'sprint-releases',
-    topic: 'Active sprint tasks, code reviews, and CI/CD canary deployments',
-    createdBy: 'usr-dm',
-    memberIds: ['usr-dm', 'usr-aj', 'usr-mv', 'usr-sl'],
-    isDefault: false,
-  },
-  {
-    id: 'grp-secops-bridge',
-    name: 'secops-bridge',
-    topic: 'Incident response, SOC2 audit evidence, and security governance',
-    createdBy: 'usr-dm',
-    memberIds: ['usr-dm', 'usr-cd', 'usr-er'],
-    isDefault: false,
   },
 ];
 
-const INITIAL_MESSAGES = {
-  'grp-general': [
-    {
-      id: 'msg-1',
-      senderId: 'usr-dm',
-      senderName: 'Diana Morales',
-      senderRole: 'Lead Architect',
-      senderInitials: 'DM',
-      text: 'Good morning everyone! Reminder that our Q3 SOC2 audit evidence collection window starts this Friday.',
-      timestamp: '09:15 AM',
-    },
-    {
-      id: 'msg-2',
-      senderId: 'usr-er',
-      senderName: 'Elena Rostova',
-      senderRole: 'Security Auditor',
-      senderInitials: 'ER',
-      text: 'All audit evidence templates have been shared in the governance folder. Please ensure your JIT justification logs are linked.',
-      timestamp: '09:22 AM',
-    },
-    {
-      id: 'msg-3',
-      senderId: 'usr-mv',
-      senderName: 'Marcus Vance',
-      senderRole: 'Senior Backend Developer',
-      senderInitials: 'MV',
-      text: 'API service release v2.4.1 deployment completed with 0 errors.',
-      timestamp: '10:04 AM',
-    },
-  ],
-  'grp-core-platform': [
-    {
-      id: 'msg-201',
-      senderId: 'usr-cd',
-      senderName: 'Charlie Davis',
-      senderRole: 'Senior Staff SRE',
-      senderInitials: 'CD',
-      text: 'Aurora Postgres replica in US-East-1 IOPS baseline has fully stabilized after the buffer pool parameter adjustments.',
-      timestamp: '08:45 AM',
-    },
-    {
-      id: 'msg-202',
-      senderId: 'usr-dm',
-      senderName: 'Diana Morales',
-      senderRole: 'Lead Architect',
-      senderInitials: 'DM',
-      text: 'Great work Charlie. Let us monitor replication lag during peak traffic hours before closing ticket INC-8492.',
-      timestamp: '09:02 AM',
-    },
-  ],
-  'grp-sprint-releases': [
-    {
-      id: 'msg-301',
-      senderId: 'usr-sl',
-      senderName: 'Sophia Lin',
-      senderRole: 'Lead UI Engineer',
-      senderInitials: 'SL',
-      text: 'Design System color contrast tokens have been updated in PR #142 for WCAG AA compliance.',
-      timestamp: '11:10 AM',
-    },
-    {
-      id: 'msg-302',
-      senderId: 'usr-aj',
-      senderName: 'Alice Johnson',
-      senderRole: 'DevOps Engineer',
-      senderInitials: 'AJ',
-      text: 'Automated E2E frontend build pass was green. Ready to merge.',
-      timestamp: '11:32 AM',
-    },
-  ],
-  'grp-secops-bridge': [
-    {
-      id: 'msg-401',
-      senderId: 'usr-er',
-      senderName: 'Elena Rostova',
-      senderRole: 'Security Auditor',
-      senderInitials: 'ER',
-      text: 'SecOps bridge initialized. Standing by for Vault transit rotation attestation sign-off.',
-      timestamp: 'Yesterday',
-    },
-  ],
-};
+const INITIAL_MESSAGES = {};
 
-export default function ChatView({ currentUser }) {
-  const currentUserId = currentUser?.id || 'usr-dm';
+export default function ChatView({ currentUser, workspace }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
+  const currentUserId = currentUser?._id || currentUser?.id || 'usr-current';
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const [teamMembers, setTeamMembers] = useState([]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    api.get(`/api/teams/${teamId}/members`)
+      .then((res) => {
+        const raw = res.data?.data?.members || res.data?.data || [];
+        const formatted = raw.map((m) => {
+          const u = m.user || m.userId || {};
+          const name = u.name || m.name || 'Member';
+          return {
+            id: m._id || m.id,
+            name,
+            email: u.email || m.email || '',
+            role: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
+            teamRole: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
+            initials: name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
+          };
+        });
+        setTeamMembers(formatted);
+      })
+      .catch((err) => console.error('Failed to load chat team members:', err));
+  }, [teamId]);
 
   const [groups, setGroups] = useState(() => getStorage('workspace_chat_groups', INITIAL_GROUPS));
 
@@ -136,6 +58,8 @@ export default function ChatView({ currentUser }) {
   const [messages, setMessages] = useState(() => getStorage('workspace_chat_messages', INITIAL_MESSAGES));
   const [inputText, setInputText] = useState('');
   const [searchChannel, setSearchChannel] = useState('');
+  const [isSocketLive, setIsSocketLive] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({});
 
   // Editing & Deleting Messages State
   const [editingMessageId, setEditingMessageId] = useState(null);
@@ -159,6 +83,7 @@ export default function ChatView({ currentUser }) {
   const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
 
   const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
   const activeMessages = messages[activeGroupId] || [];
@@ -171,34 +96,211 @@ export default function ChatView({ currentUser }) {
     scrollToBottom();
   }, [activeGroupId, messages]);
 
+  // Real-time WebSocket connection & room subscription
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) {
+      setIsSocketLive(false);
+      return;
+    }
+
+    if (socket.connected) {
+      setIsSocketLive(true);
+    }
+
+    const onConnect = () => setIsSocketLive(true);
+    const onDisconnect = () => setIsSocketLive(false);
+
+    socket.on('connect', onConnect);
+    socket.on('disconnect', onDisconnect);
+
+    if (teamId) {
+      // 1. Join room
+      socket.emit('team:join', { teamId }, (res) => {
+        if (res?.ok) {
+          // 2. Fetch history from backend
+          socket.emit('chat:history', { teamId, limit: 50 }, (histRes) => {
+            if (histRes?.ok && histRes.messages?.length > 0) {
+              const formattedMsgs = histRes.messages.map((m) => ({
+                id: m._id || m.id,
+                _id: m._id || m.id,
+                senderId: m.sender?.id || m.sender?._id || m.senderId || 'member',
+                senderName: m.sender?.name || m.senderName || 'Team Member',
+                senderRole: m.sender?.role || 'Member',
+                senderInitials: (m.sender?.name || 'M').slice(0, 2).toUpperCase(),
+                text: m.content || m.text,
+                isEdited: Boolean(m.isEdited),
+                timestamp: m.createdAt
+                  ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                  : 'Recent',
+                createdAt: m.createdAt,
+              }));
+
+              setMessages((prev) => {
+                const existing = prev[activeGroupId] || [];
+                const existingIds = new Set(existing.map((e) => e.id));
+                const newOnly = formattedMsgs.filter((n) => !existingIds.has(n.id));
+                const merged = [...existing, ...newOnly];
+                const next = { ...prev, [activeGroupId]: merged };
+                setStorage('workspace_chat_messages', next);
+                return next;
+              });
+            }
+          });
+        }
+      });
+
+      // 3. Listen for real-time messages
+      const onChatMessage = (incomingMsg) => {
+        if (!incomingMsg || (incomingMsg.teamId && incomingMsg.teamId !== teamId)) return;
+        const normalized = {
+          id: incomingMsg._id || incomingMsg.id || `msg-${Date.now()}`,
+          _id: incomingMsg._id || incomingMsg.id,
+          senderId: incomingMsg.sender?.id || incomingMsg.sender?._id || incomingMsg.senderId,
+          senderName: incomingMsg.sender?.name || incomingMsg.senderName || 'Team Member',
+          senderRole: incomingMsg.sender?.role || 'Member',
+          senderInitials: (incomingMsg.sender?.name || 'M').slice(0, 2).toUpperCase(),
+          text: incomingMsg.content || incomingMsg.text,
+          isEdited: Boolean(incomingMsg.isEdited),
+          timestamp: incomingMsg.createdAt
+            ? new Date(incomingMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+            : 'Just now',
+          createdAt: incomingMsg.createdAt || new Date().toISOString(),
+        };
+
+        setMessages((prev) => {
+          const currentGroupMsgs = prev[activeGroupId] || [];
+          if (currentGroupMsgs.some((m) => m.id === normalized.id)) return prev;
+          const next = { ...prev, [activeGroupId]: [...currentGroupMsgs, normalized] };
+          setStorage('workspace_chat_messages', next);
+          return next;
+        });
+      };
+
+      // 4. Listen for message edits
+      const onMessageUpdated = (data) => {
+        if (!data?.messageId) return;
+        setMessages((prev) => {
+          const currentGroupMsgs = prev[activeGroupId] || [];
+          const nextGroupMsgs = currentGroupMsgs.map((m) =>
+            m.id === data.messageId || m._id === data.messageId
+              ? { ...m, text: data.content, isEdited: true }
+              : m
+          );
+          const next = { ...prev, [activeGroupId]: nextGroupMsgs };
+          setStorage('workspace_chat_messages', next);
+          return next;
+        });
+      };
+
+      // 5. Listen for message deletions
+      const onMessageDeleted = (data) => {
+        if (!data?.messageId) return;
+        setMessages((prev) => {
+          const currentGroupMsgs = prev[activeGroupId] || [];
+          const nextGroupMsgs = currentGroupMsgs.filter(
+            (m) => m.id !== data.messageId && m._id !== data.messageId
+          );
+          const next = { ...prev, [activeGroupId]: nextGroupMsgs };
+          setStorage('workspace_chat_messages', next);
+          return next;
+        });
+      };
+
+      // 6. Listen for typing indicators
+      const onTyping = (data) => {
+        if (!data || data.userId === currentUserId) return;
+        setTypingUsers((prev) => {
+          const next = { ...prev };
+          if (data.isTyping) {
+            next[data.userId] = data.name || 'A teammate';
+          } else {
+            delete next[data.userId];
+          }
+          return next;
+        });
+      };
+
+      socket.on('chat:message', onChatMessage);
+      socket.on('chat:message_updated', onMessageUpdated);
+      socket.on('chat:message_deleted', onMessageDeleted);
+      socket.on('chat:typing', onTyping);
+
+      return () => {
+        socket.off('connect', onConnect);
+        socket.off('disconnect', onDisconnect);
+        socket.off('chat:message', onChatMessage);
+        socket.off('chat:message_updated', onMessageUpdated);
+        socket.off('chat:message_deleted', onMessageDeleted);
+        socket.off('chat:typing', onTyping);
+        socket.emit('team:leave', { teamId });
+      };
+    }
+  }, [teamId, activeGroupId, currentUserId]);
+
   const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
     if (!inputText.trim()) return;
 
-    const newMsg = {
+    const content = inputText.trim();
+    const isBroadcast = isTeamAdmin && isSystemBroadcastMode;
+
+    const localMsg = {
       id: `msg-${Date.now()}`,
       senderId: currentUserId,
       senderName: currentUser?.name || 'Diana Morales',
       senderRole: currentUser?.role || 'Lead Architect',
       senderInitials: currentUser?.initials || 'DM',
-      text: inputText.trim(),
-      isSystemBroadcast: isTeamAdmin && isSystemBroadcastMode,
+      text: content,
+      isSystemBroadcast: isBroadcast,
       timestamp: 'Just now',
     };
 
     setMessages((prev) => {
       const nextMessages = {
         ...prev,
-        [activeGroupId]: [...(prev[activeGroupId] || []), newMsg],
+        [activeGroupId]: [...(prev[activeGroupId] || []), localMsg],
       };
       setStorage('workspace_chat_messages', nextMessages);
       return nextMessages;
     });
 
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:send', { teamId, content }, (res) => {
+        if (res?.ok && res.message?._id) {
+          setMessages((prev) => {
+            const groupMsgs = prev[activeGroupId] || [];
+            const nextGroupMsgs = groupMsgs.map((m) =>
+              m.id === localMsg.id ? { ...m, id: res.message._id, _id: res.message._id } : m
+            );
+            const next = { ...prev, [activeGroupId]: nextGroupMsgs };
+            setStorage('workspace_chat_messages', next);
+            return next;
+          });
+        }
+      });
+      socket.emit('chat:typing', { teamId, isTyping: false });
+    }
+
     setInputText('');
     setIsSystemBroadcastMode(false);
+  };
+
+  const handleInputChange = (e) => {
+    const val = e.target.value;
+    setInputText(val);
+
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:typing', { teamId, isTyping: true });
+      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
+      typingTimeoutRef.current = setTimeout(() => {
+        socket.emit('chat:typing', { teamId, isTyping: false });
+      }, 2500);
+    }
   };
 
   const handleStartEdit = (msg) => {
@@ -213,15 +315,23 @@ export default function ChatView({ currentUser }) {
 
   const handleSaveEdit = (msgId) => {
     if (!editingText.trim()) return;
+    const content = editingText.trim();
+
     setMessages((prev) => {
       const currentGroupMsgs = prev[activeGroupId] || [];
       const nextGroupMsgs = currentGroupMsgs.map((m) =>
-        m.id === msgId ? { ...m, text: editingText.trim(), isEdited: true } : m
+        m.id === msgId ? { ...m, text: content, isEdited: true } : m
       );
       const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
       setStorage('workspace_chat_messages', nextMessages);
       return nextMessages;
     });
+
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:edit', { teamId, messageId: msgId, content });
+    }
+
     setEditingMessageId(null);
     setEditingText('');
   };
@@ -229,11 +339,17 @@ export default function ChatView({ currentUser }) {
   const handleDeleteMessage = (msgId) => {
     setMessages((prev) => {
       const currentGroupMsgs = prev[activeGroupId] || [];
-      const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId);
+      const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId && m._id !== msgId);
       const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
       setStorage('workspace_chat_messages', nextMessages);
       return nextMessages;
     });
+
+    const socket = getSocket();
+    if (socket?.connected && teamId) {
+      socket.emit('chat:delete', { teamId, messageId: msgId });
+    }
+
     setDeletingMessage(null);
   };
 
@@ -312,7 +428,7 @@ export default function ChatView({ currentUser }) {
     );
     persistGroups(updatedGroups);
 
-    const invitedNames = WORKSPACE_TEAM_MEMBERS.filter((m) => inviteSelectedIds.includes(m.id))
+    const invitedNames = teamMembers.filter((m) => inviteSelectedIds.includes(m.id))
       .map((m) => m.name)
       .join(', ');
 
@@ -324,9 +440,9 @@ export default function ChatView({ currentUser }) {
           {
             id: `msg-inv-${Date.now()}`,
             senderId: currentUserId,
-            senderName: currentUser?.name || 'Diana Morales',
-            senderRole: currentUser?.role || 'Lead Architect',
-            senderInitials: currentUser?.initials || 'DM',
+            senderName: currentUser?.name || 'User',
+            senderRole: currentUser?.role || 'Member',
+            senderInitials: currentUser?.initials || 'U',
             text: `🎉 Added ${invitedNames} to #${activeGroup.name}.`,
             timestamp: 'Just now',
           },
@@ -401,8 +517,8 @@ export default function ChatView({ currentUser }) {
     return hasMembership && matchesSearch;
   });
 
-  const activeGroupMembers = WORKSPACE_TEAM_MEMBERS.filter((m) => activeGroup.memberIds.includes(m.id));
-  const availableToInvite = WORKSPACE_TEAM_MEMBERS.filter((m) => !activeGroup.memberIds.includes(m.id));
+  const activeGroupMembers = teamMembers.filter((m) => activeGroup?.memberIds?.includes(m.id));
+  const availableToInvite = teamMembers.filter((m) => !activeGroup?.memberIds?.includes(m.id));
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-md flex flex-col flex-1 h-[calc(100vh-80px)]">
@@ -528,6 +644,21 @@ export default function ChatView({ currentUser }) {
                     Default
                   </span>
                 )}
+
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
+                    isSocketLive
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                      : 'bg-slate-100 text-slate-600 border-slate-200'
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      isSocketLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
+                    }`}
+                  ></span>
+                  <span>{isSocketLive ? 'Live WebSocket' : 'Connecting...'}</span>
+                </span>
               </div>
               <p className="text-[12px] text-on-surface-variant truncate mt-0.5">{activeGroup.topic}</p>
             </div>
@@ -667,7 +798,7 @@ export default function ChatView({ currentUser }) {
                     </div>
 
                     {isEditing ? (
-                      <div className="w-full min-w-[280px] p-2.5 rounded-xl bg-surface-container-lowest border-2 border-primary shadow-md flex flex-col gap-2 animate-in zoom-in-95 duration-100">
+                      <div className="w-full min-w-70 p-2.5 rounded-xl bg-surface-container-lowest border-2 border-primary shadow-md flex flex-col gap-2 animate-in zoom-in-95 duration-100">
                         <textarea
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
@@ -755,6 +886,16 @@ export default function ChatView({ currentUser }) {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Typing Indicator */}
+          {Object.keys(typingUsers).length > 0 && (
+            <div className="px-4 py-1 flex items-center gap-1.5 text-[11px] text-primary font-medium animate-pulse bg-primary/5 border-t border-border-subtle/50">
+              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
+              <span>
+                {Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
+              </span>
+            </div>
+          )}
+
           {/* Message Input Bar */}
           <form onSubmit={handleSendMessage} className="p-3 border-t border-border-subtle bg-surface-container-lowest shrink-0">
             {isSystemBroadcastMode && (
@@ -781,7 +922,7 @@ export default function ChatView({ currentUser }) {
               <input
                 type="text"
                 value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
+                onChange={handleInputChange}
                 placeholder={
                   isSystemBroadcastMode
                     ? 'Type system broadcast to all users (e.g. "Today is deployment day hope everyone is ready")...'
@@ -886,7 +1027,7 @@ export default function ChatView({ currentUser }) {
                 </div>
 
                 <div className="max-h-48 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
-                  {WORKSPACE_TEAM_MEMBERS.map((member) => {
+                  {teamMembers.map((member) => {
                     const isSelected = selectedMemberIds.includes(member.id);
                     const isCreator = member.id === currentUserId;
 
@@ -1055,7 +1196,7 @@ export default function ChatView({ currentUser }) {
         onClose={() => setDeletingMessage(null)}
       >
         {deletingMessage && (
-          <div className="p-2 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant italic truncate max-w-[240px] mt-1">
+          <div className="p-2 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant italic truncate max-w-60 mt-1">
             "{deletingMessage.text}"
           </div>
         )}

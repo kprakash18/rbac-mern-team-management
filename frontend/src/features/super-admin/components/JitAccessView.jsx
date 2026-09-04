@@ -1,9 +1,4 @@
-import { useState, useEffect } from 'react';
-import {
-  INITIAL_ACTIVE_GRANTS,
-  INITIAL_PENDING_REQUESTS,
-  INITIAL_JIT_HISTORY,
-} from '@/constants';
+import { useState, useEffect, useCallback } from 'react';
 import ActiveGrantsTable from './jit/ActiveGrantsTable.jsx';
 import PendingRequestsTable from './jit/PendingRequestsTable.jsx';
 import JitHistoryTable from './jit/JitHistoryTable.jsx';
@@ -13,12 +8,13 @@ import RequestDetailsModal from './jit/RequestDetailsModal.jsx';
 import JitFilterModal from './jit/JitFilterModal.jsx';
 import Toast from '../../../components/shared/Toast.jsx';
 import { useToast } from '../../../lib/useToast.js';
+import api from '@/lib/api';
 
 export default function JitAccessView() {
   const [activeTab, setActiveTab] = useState('active');
-  const [grants, setGrants] = useState(INITIAL_ACTIVE_GRANTS);
-  const [pendingRequests, setPendingRequests] = useState(INITIAL_PENDING_REQUESTS);
-  const [history, setHistory] = useState(INITIAL_JIT_HISTORY);
+  const [grants, setGrants] = useState([]);
+  const [pendingRequests, setPendingRequests] = useState([]);
+  const [history, setHistory] = useState([]);
 
   // Filters
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -33,6 +29,72 @@ export default function JitAccessView() {
 
   // Toast notification
   const [toast, showToast] = useToast(3500);
+
+  const fetchJitRequests = useCallback(async () => {
+    try {
+      const teamsRes = await api.get('/api/teams');
+      const teams = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
+      if (teams.length > 0) {
+        const teamId = teams[0]._id || teams[0].id;
+        const res = await api.get(`/api/teams/${teamId}/access-requests`);
+        const requests = Array.isArray(res.data?.data) ? res.data?.data : [];
+
+        const pending = requests.filter((r) => r.status === 'PENDING').map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          justification: r.justification || r.reason || 'Operational task',
+          duration: `${r.durationMinutes || 60}m`,
+          requestedAt: r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : 'Just now',
+          timeRemainingSec: (r.durationMinutes || 60) * 60,
+        }));
+
+        const active = requests.filter((r) => r.status === 'APPROVED' || r.status === 'ACTIVE').map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          grantedBy: r.approvedBy?.name || 'System Admin',
+          grantedAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
+          timeRemainingSec: 3600,
+          totalDurationSec: 3600,
+        }));
+
+        const hist = requests.filter((r) => ['REJECTED', 'EXPIRED', 'REVOKED'].includes(r.status)).map((r) => ({
+          id: r._id || r.id,
+          user: {
+            name: r.userId?.name || 'Developer',
+            email: r.userId?.email || 'dev@example.com',
+            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
+          },
+          workspace: teams[0].name,
+          role: r.targetRole || 'Elevated Access',
+          status: r.status,
+          decisionBy: r.approvedBy?.name || 'System Admin',
+          decisionAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
+        }));
+
+        setPendingRequests(pending);
+        setGrants(active);
+        setHistory(hist);
+      }
+    } catch (err) {
+      console.warn('Failed to load JIT requests:', err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchJitRequests();
+  }, [fetchJitRequests]);
 
   // Real-time ticking timer for active grants with automatic expiration transition
   useEffect(() => {
@@ -189,7 +251,7 @@ export default function JitAccessView() {
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
       {/* Toast Notification */}
-      <div className="fixed top-6 right-6 z-[1200]">
+      <div className="fixed top-6 right-6 z-1200">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 

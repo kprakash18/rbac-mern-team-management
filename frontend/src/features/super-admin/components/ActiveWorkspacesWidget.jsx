@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { MOCK_ACTIVE_WORKSPACES } from '@/constants';
 
 export default function ActiveWorkspacesWidget({
-  workspaces = MOCK_ACTIVE_WORKSPACES,
+  workspaces = [],
+  loading = false,
   onCreateWorkspaceClick,
   onEditWorkspaceClick,
   onJumpInWorkspace,
@@ -81,7 +81,12 @@ export default function ActiveWorkspacesWidget({
 
       {/* Workspaces List */}
       <div className="bg-card-bg shadow-sm rounded-xl overflow-hidden w-full flex flex-col border border-border-subtle/50">
-        {filteredWorkspaces.length === 0 ? (
+        {loading ? (
+          <div className="p-xl text-center flex flex-col items-center justify-center gap-2 text-on-surface-variant">
+            <span className="material-symbols-outlined animate-spin text-primary text-[28px]">progress_activity</span>
+            <span className="text-body-sm">Loading workspaces...</span>
+          </div>
+        ) : filteredWorkspaces.length === 0 ? (
           <div className="p-xl text-center flex flex-col items-center gap-2">
             <span className="material-symbols-outlined text-outline text-[32px]">folder_off</span>
             <span className="text-body-sm text-on-surface-variant">

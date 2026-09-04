@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 
-export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
+export default function LoginForm({ onSubmit, onInputChange, initialValues, loading = false }) {
   const [email, setEmail] = useState(initialValues?.email || '');
   const [password, setPassword] = useState(initialValues?.password || '');
   const [showPassword, setShowPassword] = useState(false);
@@ -15,6 +15,7 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
+    if (loading) return;
     onSubmit({ email, password, rememberMe });
   };
 
@@ -36,12 +37,13 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
           Email address
         </label>
         <input
-          className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all placeholder:text-outline"
+          className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all placeholder:text-outline disabled:opacity-60"
           id="email"
           placeholder="admin@platform.internal"
           type="email"
           value={email}
           onChange={handleEmailChange}
+          disabled={loading}
           required
         />
       </div>
@@ -58,18 +60,20 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
         </div>
         <div className="relative w-full">
           <input
-            className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all pr-10"
+            className="w-full px-3 py-2 rounded-lg border border-border-subtle bg-surface-container-low text-body-sm text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:bg-surface-container-lowest transition-all pr-10 disabled:opacity-60"
             id="password"
             type={showPassword ? 'text' : 'password'}
             value={password}
             onChange={handlePasswordChange}
             placeholder="••••••••"
+            disabled={loading}
             required
           />
           <button
             aria-label="Toggle password visibility"
-            className="absolute inset-y-0 right-0 px-3 flex items-center text-outline hover:text-on-surface focus:outline-none cursor-pointer"
+            className="absolute inset-y-0 right-0 px-3 flex items-center text-outline hover:text-on-surface focus:outline-none cursor-pointer disabled:opacity-50"
             type="button"
+            disabled={loading}
             onClick={() => setShowPassword(!showPassword)}
           >
             <span className="material-symbols-outlined text-[18px]">
@@ -82,10 +86,11 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
       {/* Remember Me Checkbox */}
       <div className="flex items-center gap-2">
         <input
-          className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer"
+          className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer disabled:opacity-60"
           id="remember"
           type="checkbox"
           checked={rememberMe}
+          disabled={loading}
           onChange={(e) => setRememberMe(e.target.checked)}
         />
         <label
@@ -98,13 +103,23 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues }) {
 
       {/* Submit Button */}
       <button
-        className="w-full bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg hover:bg-on-primary-fixed focus:outline-none focus:ring-2 focus:ring-primary transition-all mt-2 flex items-center justify-center gap-2 group cursor-pointer shadow-sm text-[14px]"
+        className="w-full bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg hover:bg-on-primary-fixed focus:outline-none focus:ring-2 focus:ring-primary transition-all mt-2 flex items-center justify-center gap-2 group cursor-pointer shadow-sm text-[14px] disabled:opacity-70 disabled:cursor-not-allowed"
         type="submit"
+        disabled={loading}
       >
-        <span>Sign In</span>
-        <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-0.5">
-          arrow_forward
-        </span>
+        {loading ? (
+          <>
+            <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+            <span>Signing In...</span>
+          </>
+        ) : (
+          <>
+            <span>Sign In</span>
+            <span className="material-symbols-outlined text-[18px] transition-transform group-hover:translate-x-0.5">
+              arrow_forward
+            </span>
+          </>
+        )}
       </button>
     </form>
   );

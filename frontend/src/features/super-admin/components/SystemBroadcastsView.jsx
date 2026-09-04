@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import { INITIAL_BROADCASTS } from '@/constants';
 import BroadcastCard from './broadcasts/BroadcastCard.jsx';
 import CreateEditBroadcastModal from './broadcasts/CreateEditBroadcastModal.jsx';
 import BroadcastDetailsDrawer from './broadcasts/BroadcastDetailsDrawer.jsx';
@@ -8,7 +7,7 @@ import Toast from '../../../components/shared/Toast.jsx';
 import { useToast } from '../../../lib/useToast.js';
 
 export default function SystemBroadcastsView() {
-  const [broadcasts, setBroadcasts] = useState(INITIAL_BROADCASTS);
+  const [broadcasts, setBroadcasts] = useState([]);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -112,7 +111,7 @@ export default function SystemBroadcastsView() {
   return (
     <div className="flex flex-col w-full p-xl gap-xl max-w-5xl mx-auto">
       {/* Toast Notification */}
-      <div className="fixed top-6 right-6 z-[1300]">
+      <div className="fixed top-6 right-6 z-1300">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 

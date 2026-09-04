@@ -1,10 +1,11 @@
-import { useState } from 'react';
-import { TEAM_JIT_REQUESTS, AVAILABLE_JIT_ROLES } from '@/constants';
-import { getStorage, setStorage } from '../../../../lib/storage';
+import { useState, useEffect, useCallback } from 'react';
+import api from '../../../../lib/api';
+import { useApp } from '@/context/useApp';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
 import Toast from '../../../../components/shared/Toast';
 import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
+import { AVAILABLE_JIT_ROLES } from '@/constants';
 
 const DURATIONS = ['30m', '1h', '2h', '4h', '8h'];
 
@@ -22,11 +23,15 @@ const STATUS_BADGES = {
   REJECTED: { label: 'Rejected', class: 'bg-red-50 text-red-700 border-red-200' },
 };
 
-export default function JitRequestView({ currentUser }) {
-  const currentUserId = currentUser?.id || 'usr-dm';
+export default function JitRequestView({ currentUser, workspace }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
+  const currentUserId = currentUser?._id || currentUser?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
-  const [requests, setRequests] = useState(() => getStorage('workspace_jit_requests', TEAM_JIT_REQUESTS));
+  const [requests, setRequests] = useState([]);
+  const [permissionsCatalog, setPermissionsCatalog] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PENDING' | 'APPROVED' | 'PAST'
@@ -42,7 +47,7 @@ export default function JitRequestView({ currentUser }) {
   const [editJustification, setEditJustification] = useState('');
   const [editDuration, setEditDuration] = useState('2h');
   const [rejectReason, setRejectReason] = useState('Access not required for current sprint task.');
-  const [selectedRole, setSelectedRole] = useState('K8S_WRITE');
+  const [selectedRole, setSelectedRole] = useState('');
   const [duration, setDuration] = useState('2h');
   const [ticketId, setTicketId] = useState('');
   const [justification, setJustification] = useState('');
@@ -54,72 +59,149 @@ export default function JitRequestView({ currentUser }) {
     setTimeout(() => setToast(null), 3500);
   };
 
-  const persistRequests = (next) => {
-    setRequests(next);
-    setStorage('workspace_jit_requests', next);
-  };
+  const fetchRequestsAndCatalog = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      setLoading(true);
+      const [reqsRes, permsRes] = await Promise.allSettled([
+        api.get(`/api/teams/${teamId}/access-requests`),
+        api.get('/api/permissions'),
+      ]);
+
+      if (reqsRes.status === 'fulfilled') {
+        const raw = reqsRes.value.data?.data?.accessRequests || reqsRes.value.data?.data || [];
+        const formatted = raw.map((r) => {
+          const reqUser = r.requesterId || r.userId || {};
+          const perm = r.permissionId || {};
+          return {
+            id: r._id || r.id,
+            _id: r._id || r.id,
+            roleTitle: perm.key || 'Custom Permission',
+            roleKey: perm.key || 'permission',
+            riskLevel: perm.category === 'Security' || perm.category === 'Admin' ? 'High' : 'Medium',
+            requesterName: reqUser.name || 'Member',
+            requesterEmail: reqUser.email || '',
+            requesterInitials: (reqUser.name || 'M').slice(0, 2).toUpperCase(),
+            requesterId: reqUser._id || reqUser.id || reqUser,
+            justification: r.reason || '',
+            ticketId: r.ticketId || `REQ-${(r._id || '').slice(-4).toUpperCase()}`,
+            requestedDuration: `${r.durationMinutes || 60}m`,
+            createdAt: r.createdAt ? new Date(r.createdAt).toLocaleDateString() : 'Recent',
+            status: r.status || 'PENDING',
+            statusLabel: r.status === 'APPROVED' ? 'Active' : r.status === 'PENDING' ? 'Pending Approval' : r.status,
+            ...r,
+          };
+        });
+        setRequests(formatted);
+      }
+
+      if (permsRes.status === 'fulfilled') {
+        const rawPerms = permsRes.value.data?.data?.permissions || permsRes.value.data?.data || [];
+        setPermissionsCatalog(rawPerms);
+        if (rawPerms.length > 0 && !selectedRole) {
+          setSelectedRole(rawPerms[0]._id || rawPerms[0].key);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load access requests:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId, selectedRole]);
+
+  useEffect(() => {
+    fetchRequestsAndCatalog();
+  }, [fetchRequestsAndCatalog]);
 
   // Actions for Team Admin
-  const handleApprove = (reqId) => {
-    const next = requests.map((r) =>
-      r.id === reqId
-        ? {
-            ...r,
-            status: 'APPROVED',
-            statusLabel: 'Active',
-            approvedBy: currentUser?.name || 'Diana Morales',
-            expiresAt: `${r.requestedDuration} remaining`,
-          }
-        : r
-    );
-    persistRequests(next);
-    showToast('JIT access request approved. Lease is now active.');
+  const handleApprove = async (reqId) => {
+    if (!teamId) return;
+    try {
+      await api.post(`/api/teams/${teamId}/access-requests/${reqId}/approve`);
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === reqId
+            ? {
+                ...r,
+                status: 'APPROVED',
+                statusLabel: 'Active',
+                approvedBy: currentUser?.name || 'Admin',
+              }
+            : r
+        )
+      );
+      showToast('JIT access request approved. Lease is now active.');
+      fetchRequestsAndCatalog();
+    } catch (err) {
+      console.error('Failed to approve request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to approve request.', 'error');
+    }
   };
 
-  const handleConfirmReject = () => {
-    if (!confirmRejectReq) return;
+  const handleConfirmReject = async () => {
+    if (!confirmRejectReq || !teamId) return;
     const reqId = confirmRejectReq.id;
-    const next = requests.map((r) =>
-      r.id === reqId
-        ? {
-            ...r,
-            status: 'REJECTED',
-            statusLabel: 'Rejected',
-            rejectionReason: rejectReason || 'Rejected by Team Admin.',
-            approvedBy: currentUser?.name || 'Diana Morales',
-          }
-        : r
-    );
-    persistRequests(next);
-    setConfirmRejectReq(null);
-    showToast('JIT access request rejected.', 'error');
+    try {
+      await api.post(`/api/teams/${teamId}/access-requests/${reqId}/reject`, {
+        reason: rejectReason || 'Rejected by Team Admin.',
+      });
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === reqId
+            ? {
+                ...r,
+                status: 'REJECTED',
+                statusLabel: 'Rejected',
+                rejectionReason: rejectReason || 'Rejected by Team Admin.',
+              }
+            : r
+        )
+      );
+      setConfirmRejectReq(null);
+      showToast('JIT access request rejected.', 'error');
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to reject request.', 'error');
+    }
   };
 
-  const handleConfirmRevoke = () => {
-    if (!confirmRevokeReq) return;
+  const handleConfirmRevoke = async () => {
+    if (!confirmRevokeReq || !teamId) return;
     const reqId = confirmRevokeReq.id;
-    const next = requests.map((r) =>
-      r.id === reqId
-        ? {
-            ...r,
-            status: 'EXPIRED',
-            statusLabel: 'Revoked Early',
-            expiresAt: 'Revoked by Admin',
-          }
-        : r
-    );
-    persistRequests(next);
-    setConfirmRevokeReq(null);
-    showToast('Active JIT lease revoked early by Team Admin.');
+    try {
+      await api.delete(`/api/teams/${teamId}/access-requests/${reqId}`);
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === reqId
+            ? {
+                ...r,
+                status: 'EXPIRED',
+                statusLabel: 'Revoked Early',
+              }
+            : r
+        )
+      );
+      setConfirmRevokeReq(null);
+      showToast('Active JIT lease revoked early.');
+      fetchRequestsAndCatalog();
+    } catch (err) {
+      console.error('Failed to revoke request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to revoke grant.', 'error');
+    }
   };
 
-  const handleConfirmWithdraw = () => {
-    if (!confirmWithdrawReq) return;
+  const handleConfirmWithdraw = async () => {
+    if (!confirmWithdrawReq || !teamId) return;
     const reqId = confirmWithdrawReq.id;
-    const next = requests.filter((r) => r.id !== reqId);
-    persistRequests(next);
-    setConfirmWithdrawReq(null);
-    showToast('Access request withdrawn successfully.');
+    try {
+      await api.delete(`/api/teams/${teamId}/access-requests/${reqId}`);
+      setRequests((prev) => prev.filter((r) => r.id !== reqId && r._id !== reqId));
+      setConfirmWithdrawReq(null);
+      showToast('Access request withdrawn successfully.');
+    } catch (err) {
+      console.error('Failed to withdraw request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to withdraw request.', 'error');
+    }
   };
 
   const handleStartEditRequest = (req) => {
@@ -129,72 +211,96 @@ export default function JitRequestView({ currentUser }) {
     setEditDuration(req.requestedDuration || '2h');
   };
 
-  const handleSaveEditRequest = (e) => {
+  const handleSaveEditRequest = async (e) => {
     e.preventDefault();
-    if (!editingRequest) return;
-    if (!editTicketId.trim() || !editJustification.trim()) {
-      showToast('Please fill in both Ticket ID and Justification.', 'error');
+    if (!editingRequest || !teamId) return;
+    if (!editJustification.trim()) {
+      showToast('Please fill in Justification.', 'error');
       return;
     }
 
-    const next = requests.map((r) =>
-      r.id === editingRequest.id
-        ? {
-            ...r,
-            ticketId: editTicketId.trim(),
-            justification: editJustification.trim(),
-            requestedDuration: editDuration,
-          }
-        : r
-    );
-    persistRequests(next);
-    setEditingRequest(null);
-    showToast('Pending JIT request updated successfully.');
+    try {
+      const minutes = parseInt(editDuration, 10) * (editDuration.includes('h') ? 60 : 1) || 120;
+      await api.patch(`/api/teams/${teamId}/access-requests/${editingRequest.id}`, {
+        reason: editJustification.trim(),
+        durationMinutes: minutes,
+      });
+      setRequests((prev) =>
+        prev.map((r) =>
+          r.id === editingRequest.id
+            ? {
+                ...r,
+                justification: editJustification.trim(),
+                requestedDuration: editDuration,
+              }
+            : r
+        )
+      );
+      setEditingRequest(null);
+      showToast('Pending JIT request updated successfully.');
+    } catch (err) {
+      console.error('Failed to update request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to update request.', 'error');
+    }
   };
 
-  const handleSubmitRequest = (e) => {
+  const handleSubmitRequest = async (e) => {
     e.preventDefault();
-    if (!ticketId.trim() || !justification.trim()) {
-      showToast('Please fill in both Ticket ID and Justification.', 'error');
+    if (!justification.trim() || !teamId) {
+      showToast('Please provide a justification.', 'error');
       return;
     }
 
     setSubmitting(true);
-    const roleConfig = AVAILABLE_JIT_ROLES.find((r) => r.id === selectedRole);
+    try {
+      const minutes = parseInt(duration, 10) * (duration.includes('h') ? 60 : 1) || 120;
+      const targetPermission =
+        permissionsCatalog.find((p) => p._id === selectedRole || p.key === selectedRole) ||
+        permissionsCatalog[0];
 
-    setTimeout(() => {
-      const newReq = {
-        id: `req_${Date.now().toString().slice(-4)}`,
-        memberId: currentUserId,
-        memberName: currentUser?.name || 'Diana Morales',
-        memberRole: currentUser?.role || 'Lead Architect',
-        isTeamAdmin: isTeamAdmin,
-        memberInitials: currentUser?.initials || 'DM',
-        requestedRole: selectedRole,
-        requestedRoleLabel: roleConfig?.label || selectedRole,
-        justification,
-        ticketId,
-        requestedDuration: duration,
-        status: 'PENDING',
-        approvalLevel: isTeamAdmin ? 'SUPER_ADMIN' : 'TEAM_ADMIN',
-        statusLabel: isTeamAdmin ? 'Pending Super Admin Review' : 'Pending Team Admin Review',
-        approvedBy: null,
-        expiresAt: null,
-        createdAt: 'Just now',
-        risk: roleConfig?.risk || 'Medium',
+      const payload = {
+        permissionId: targetPermission?._id,
+        reason: justification.trim(),
+        durationMinutes: minutes,
       };
 
-      setRequests((prev) => [newReq, ...prev]);
-      setSubmitting(false);
+      const res = await api.post(`/api/teams/${teamId}/access-requests`, payload);
+      const created = res.data?.data || payload;
+      setRequests((prev) => [
+        {
+          id: created._id || created.id,
+          _id: created._id || created.id,
+          roleTitle: targetPermission?.key || 'Custom Permission',
+          requestedRoleLabel: targetPermission?.key || 'Custom Permission',
+          roleKey: targetPermission?.key || 'permission',
+          riskLevel: 'Medium',
+          requesterName: currentUser?.name || 'Member',
+          memberName: currentUser?.name || 'Member',
+          requesterInitials: (currentUser?.name || 'M').slice(0, 2).toUpperCase(),
+          memberInitials: (currentUser?.name || 'M').slice(0, 2).toUpperCase(),
+          requesterId: currentUserId,
+          memberId: currentUserId,
+          justification: justification.trim(),
+          ticketId: ticketId.trim() || `REQ-${(created._id || '').slice(-4).toUpperCase()}`,
+          requestedDuration: duration,
+          createdAt: 'Just now',
+          status: 'PENDING',
+          statusLabel: 'Pending Approval',
+          ...created,
+        },
+        ...prev,
+      ]);
+
       setIsModalOpen(false);
       setTicketId('');
       setJustification('');
-      showToast(
-        isTeamAdmin
-          ? 'JIT request submitted. Escalated to Super Admin for approval.'
-          : 'Access request submitted. Awaiting Team Admin approval.'
-      );
-    }, 400);
+      showToast('Elevation request submitted successfully!');
+    } catch (err) {
+      console.error('Failed to submit request:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to submit access request.', 'error');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   // Filtered Requests
@@ -357,192 +463,194 @@ export default function JitRequestView({ currentUser }) {
 
       {/* Structured Clean Table */}
       <div className="w-full bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse min-w-[850px]">
-            <thead>
-              <tr className="border-b border-border-subtle bg-surface-container-low text-[12px] font-semibold text-on-surface-variant">
-                <th className="py-3 px-4 w-48">Requester</th>
-                <th className="py-3 px-4 w-52">Elevated Privilege</th>
-                <th className="py-3 px-4">Justification &amp; Ticket</th>
-                <th className="py-3 px-4 w-32">Duration</th>
-                <th className="py-3 px-4 w-36 text-center">Status</th>
-                <th className="py-3 px-4 w-36 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border-subtle text-body-sm">
-              {filteredRequests.map((req) => {
-                const isRequester = req.memberId === currentUserId || req.requesterId === currentUserId;
-                const statusInfo = STATUS_BADGES[req.status] || STATUS_BADGES.PENDING;
-
-                return (
-                  <tr key={req.id} className="hover:bg-surface-container-low/60 transition-colors">
-                    {/* Requester */}
-                    <td className="py-3.5 px-4 w-48 align-top">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
-                            isRequester
-                              ? 'bg-primary text-on-primary ring-1 ring-primary'
-                              : 'bg-surface-container-high text-on-surface'
-                          }`}
-                        >
-                          {req.memberInitials}
-                        </div>
-                        <div className="min-w-0">
-                          <span className="font-label-bold text-[13px] text-on-surface block truncate">
-                            {req.memberName} {isRequester && '(You)'}
-                          </span>
-                          <span className="text-[11px] text-on-surface-variant block truncate">
-                            {req.memberRole}
-                          </span>
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Elevated Privilege & Risk */}
-                    <td className="py-3.5 px-4 w-52 align-top">
-                      <span className="font-medium text-[13px] text-on-surface block leading-snug">
-                        {req.requestedRoleLabel}
-                      </span>
-                      <span
-                        className={`inline-block mt-1 px-2 py-0.2 rounded text-[10px] border ${
-                          RISK_BADGES[req.risk] || RISK_BADGES.Medium
-                        }`}
-                      >
-                        {req.risk} Risk
-                      </span>
-                    </td>
-
-                    {/* Justification & Ticket */}
-                    <td className="py-3.5 px-4 align-top min-w-[240px]">
-                      <div className="flex items-center gap-1.5 mb-0.5">
-                        <span className="font-mono text-[11px] font-bold px-1.5 py-0.2 rounded bg-surface-container border border-border-subtle text-on-surface">
-                          {req.ticketId}
-                        </span>
-                        <span className="text-[11px] text-on-surface-variant">• {req.createdAt}</span>
-                      </div>
-                      <p className="text-[12px] text-on-surface-variant line-clamp-2">
-                        {req.justification}
-                      </p>
-                      {req.rejectionReason && (
-                        <p className="text-[11px] text-red-600 italic mt-1">
-                          Reason: {req.rejectionReason}
-                        </p>
-                      )}
-                    </td>
-
-                    {/* Duration / Expiry */}
-                    <td className="py-3.5 px-4 w-32 align-top">
-                      <span className="text-[12px] font-medium text-on-surface block">
-                        {req.requestedDuration}
-                      </span>
-                      {req.expiresAt && (
-                        <span className="text-[11px] text-on-surface-variant block font-mono mt-0.5">
-                          {req.expiresAt}
-                        </span>
-                      )}
-                    </td>
-
-                    {/* Status Badge */}
-                    <td className="py-3.5 px-4 w-36 text-center align-top">
-                      <span
-                        className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-medium border text-center ${statusInfo.class}`}
-                      >
-                        {req.status === 'APPROVED' && req.expiresAt
-                          ? 'Active'
-                          : statusInfo.label}
-                      </span>
-                    </td>
-
-                    {/* Action / Governance */}
-                    <td className="py-3.5 px-4 w-40 text-right align-top">
-                      {req.status === 'PENDING' ? (
-                        req.approvalLevel === 'SUPER_ADMIN' ? (
-                          <div className="flex flex-col items-end">
-                            <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 inline-flex items-center gap-1">
-                              <span className="material-symbols-outlined text-[12px]">security</span>
-                              Super Admin Review
-                            </span>
-                            <span className="text-[10px] text-on-surface-variant mt-0.5">
-                              {isRequester ? 'Awaiting Super Admin' : 'Admin escalation'}
-                            </span>
-                          </div>
-                        ) : isTeamAdmin ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleApprove(req.id)}
-                              className="px-2.5 py-1 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 text-[11px] font-bold transition-colors cursor-pointer shadow-xs"
-                            >
-                              Approve
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setRejectReason('Access not required for current sprint task.');
-                                setConfirmRejectReq(req);
-                              }}
-                              className="px-2 py-1 rounded-md border border-red-200 text-red-700 hover:bg-red-50 text-[11px] font-medium transition-colors cursor-pointer"
-                            >
-                              Reject
-                            </button>
-                          </div>
-                        ) : isRequester ? (
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => handleStartEditRequest(req)}
-                              className="px-2 py-1 rounded-md border border-border-subtle text-on-surface hover:bg-surface-container text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
-                              title="Edit pending request"
-                            >
-                              <span className="material-symbols-outlined text-[13px]">edit</span>
-                              <span>Edit</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setConfirmWithdrawReq(req)}
-                              className="px-2 py-1 rounded-md border border-border-subtle text-on-surface-variant hover:text-error hover:border-error/40 hover:bg-error-container/20 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
-                              title="Withdraw your pending request"
-                            >
-                              <span className="material-symbols-outlined text-[13px]">close</span>
-                              <span>Withdraw</span>
-                            </button>
-                          </div>
-                        ) : (
-                          <span className="text-[11px] text-amber-700 italic">
-                            Awaiting Team Admin
-                          </span>
-                        )
-                      ) : req.status === 'APPROVED' ? (
-                        isTeamAdmin ? (
-                          <button
-                            type="button"
-                            onClick={() => setConfirmRevokeReq(req)}
-                            className="px-2 py-1 rounded-md border border-red-200 text-red-600 hover:bg-red-50 text-[11px] font-medium transition-colors cursor-pointer flex items-center gap-1"
-                          >
-                            <span className="material-symbols-outlined text-[13px]">block</span>
-                            <span>Revoke</span>
-                          </button>
-                        ) : (
-                          <span className="text-[11px] text-emerald-700 font-medium">Active</span>
-                        )
-                      ) : (
-                        <span className="text-[11px] text-on-surface-variant">Closed</span>
-                      )}
-                    </td>
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
+            <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+            <span className="text-[13px] font-medium">Loading access requests...</span>
+          </div>
+        ) : (
+          <>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse min-w-212.5">
+                <thead>
+                  <tr className="border-b border-border-subtle bg-surface-container-low text-[12px] font-semibold text-on-surface-variant">
+                    <th className="py-3 px-4 w-48">Requester</th>
+                    <th className="py-3 px-4 w-52">Elevated Privilege</th>
+                    <th className="py-3 px-4">Justification &amp; Ticket</th>
+                    <th className="py-3 px-4 w-32">Duration</th>
+                    <th className="py-3 px-4 w-36 text-center">Status</th>
+                    <th className="py-3 px-4 w-36 text-right">Action</th>
                   </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                </thead>
+                <tbody className="divide-y divide-border-subtle text-body-sm">
+                  {filteredRequests.map((req) => {
+                    const isRequester = req.memberId === currentUserId || req.requesterId === currentUserId;
+                    const statusInfo = STATUS_BADGES[req.status] || STATUS_BADGES.PENDING;
 
-        {filteredRequests.length === 0 && (
-          <EmptyState
-            icon="verified"
-            title="No access requests found"
-            message='Try selecting "All Team Members" or clearing filters.'
-          />
+                    return (
+                      <tr key={req.id} className="hover:bg-surface-container-low/60 transition-colors">
+                        {/* Requester */}
+                        <td className="py-3.5 px-4 w-48 align-top">
+                          <div className="flex items-center gap-2.5">
+                            <div
+                              className={`w-7 h-7 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                isRequester
+                                  ? 'bg-primary text-on-primary ring-1 ring-primary'
+                                  : 'bg-surface-container-high text-on-surface'
+                              }`}
+                            >
+                              {req.memberInitials}
+                            </div>
+                            <div className="min-w-0">
+                              <span className="font-label-bold text-[13px] text-on-surface block truncate">
+                                {req.memberName} {isRequester && '(You)'}
+                              </span>
+                              <span className="text-[11px] text-on-surface-variant block truncate">
+                                {req.memberRole}
+                              </span>
+                            </div>
+                          </div>
+                        </td>
+
+                        {/* Elevated Privilege & Risk */}
+                        <td className="py-3.5 px-4 w-52 align-top">
+                          <span className="font-medium text-[13px] text-on-surface block leading-snug">
+                            {req.requestedRoleLabel}
+                          </span>
+                          <span
+                            className={`inline-block mt-1 px-2 py-0.2 rounded text-[10px] border ${
+                              RISK_BADGES[req.risk] || RISK_BADGES.Medium
+                            }`}
+                          >
+                            {req.risk} Risk
+                          </span>
+                        </td>
+
+                        {/* Justification & Ticket */}
+                        <td className="py-3.5 px-4 align-top min-w-60">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="font-mono text-[11px] font-bold px-1.5 py-0.2 rounded bg-surface-container border border-border-subtle text-on-surface">
+                              {req.ticketId}
+                            </span>
+                            <span className="text-[11px] text-on-surface-variant">• {req.createdAt}</span>
+                          </div>
+                          <p className="text-[12px] text-on-surface-variant line-clamp-2">
+                            {req.justification}
+                          </p>
+                          {req.rejectionReason && (
+                            <p className="text-[11px] text-red-600 italic mt-1">
+                              Reason: {req.rejectionReason}
+                            </p>
+                          )}
+                        </td>
+
+                        {/* Duration / Expiry */}
+                        <td className="py-3.5 px-4 w-32 align-top">
+                          <span className="text-[12px] font-medium text-on-surface block">
+                            {req.requestedDuration}
+                          </span>
+                          {req.expiresAt && (
+                            <span className="text-[11px] text-on-surface-variant block font-mono mt-0.5">
+                              {req.expiresAt}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* Status Badge */}
+                        <td className="py-3.5 px-4 w-36 text-center align-top">
+                          <span
+                            className={`inline-block px-2.5 py-1 rounded-full text-[11px] font-medium border text-center ${statusInfo.class}`}
+                          >
+                            {req.status === 'APPROVED' && req.expiresAt
+                              ? 'Active'
+                              : statusInfo.label}
+                          </span>
+                        </td>
+
+                        {/* Action / Governance */}
+                        <td className="py-3.5 px-4 w-40 text-right align-top">
+                          {req.status === 'PENDING' ? (
+                            req.approvalLevel === 'SUPER_ADMIN' ? (
+                              <div className="flex flex-col items-end">
+                                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 inline-flex items-center gap-1">
+                                  <span className="material-symbols-outlined text-[12px]">security</span>
+                                  Super Admin Review
+                                </span>
+                                <span className="text-[10px] text-on-surface-variant mt-0.5">
+                                  Elevation restricted
+                                </span>
+                              </div>
+                            ) : isTeamAdmin ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleApprove(req.id)}
+                                  className="px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white font-label-bold text-[11px] transition-colors cursor-pointer shadow-2xs"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmRejectReq(req)}
+                                  className="px-2 py-1 rounded-md bg-surface-container hover:bg-red-50 hover:text-red-700 text-on-surface-variant font-medium text-[11px] transition-colors cursor-pointer border border-border-subtle"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            ) : isRequester ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditRequest(req)}
+                                  className="px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-[11px] transition-colors cursor-pointer border border-border-subtle flex items-center gap-1"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">edit</span>
+                                  <span>Edit</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmWithdrawReq(req)}
+                                  className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700 font-medium text-[11px] transition-colors cursor-pointer border border-red-200"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-on-surface-variant italic">
+                                Pending review
+                              </span>
+                            )
+                          ) : req.status === 'APPROVED' ? (
+                            isTeamAdmin || isRequester ? (
+                              <button
+                                type="button"
+                                onClick={() => setConfirmRevokeReq(req)}
+                                className="px-2.5 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700 font-label-bold text-[11px] transition-colors cursor-pointer border border-red-200"
+                              >
+                                Revoke Early
+                              </button>
+                            ) : (
+                              <span className="text-[11px] text-emerald-700 font-semibold">Active</span>
+                            )
+                          ) : (
+                            <span className="text-[11px] text-on-surface-variant">Closed</span>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            {filteredRequests.length === 0 && (
+              <EmptyState
+                icon="verified"
+                title="No access requests found"
+                message='Try selecting "All Team Members" or clearing filters.'
+              />
+            )}
+          </>
         )}
       </div>
 

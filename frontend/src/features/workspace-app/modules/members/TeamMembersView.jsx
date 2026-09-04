@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import InviteTeamMemberModal from './InviteTeamMemberModal';
 import ManageMemberRoleModal from './ManageMemberRoleModal';
-import { WORKSPACE_TEAM_MEMBERS } from '@/constants';
-import { getStorage, setStorage } from '../../../../lib/storage';
+import api from '../../../../lib/api';
+import { useApp } from '@/context/useApp';
+import { setStorage } from '@/lib/storage';
 import { useToast } from '../../../../lib/useToast';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
 import Toast from '../../../../components/shared/Toast';
@@ -10,49 +11,22 @@ import SearchInput from '../../../../components/shared/SearchInput';
 
 const ROLES_FILTER_OPTIONS = [
   'All Roles',
-  'Lead Architect',
-  'Senior Staff SRE',
-  'DevOps Engineer',
+  'Team Admin',
+  'Developer',
+  'Viewer',
   'Security Auditor',
-  'Senior Backend Developer',
-  'Lead UI Engineer',
 ];
 
-const DEFAULT_INVITATIONS = [
-  {
-    id: 'inv-1',
-    name: 'Rachel Zhang',
-    email: 'rachel.z@acme.corp',
-    role: 'Senior Staff SRE',
-    department: 'Cloud Infrastructure',
-    invitedBy: 'Diana Morales',
-    sentDate: 'Yesterday, 4:15 PM',
-    expiresDate: 'In 23 hours',
-    status: 'Pending Acceptance',
-  },
-  {
-    id: 'inv-2',
-    name: 'Samuel Kim',
-    email: 'samuel.k@acme.corp',
-    role: 'Senior Backend Developer',
-    department: 'API & Gateway Services',
-    invitedBy: 'Diana Morales',
-    sentDate: 'Today, 9:30 AM',
-    expiresDate: 'In 47 hours',
-    status: 'Pending Acceptance',
-  },
-];
-
-export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
-  const currentUserId = currentUser?.id || 'usr-dm';
+export default function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
+  const { activeWorkspace } = useApp();
+  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
+  const currentUserId = currentUser?._id || currentUser?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
   const [activeMainTab, setActiveMainTab] = useState('members'); // 'members' | 'invitations'
-  const [members, setMembers] = useState(() => getStorage('workspace_team_members', WORKSPACE_TEAM_MEMBERS));
-
-  const [pendingInvitations, setPendingInvitations] = useState(() =>
-    getStorage('workspace_pending_invitations', DEFAULT_INVITATIONS)
-  );
+  const [members, setMembers] = useState([]);
+  const [pendingInvitations, setPendingInvitations] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('All Roles');
@@ -66,75 +40,128 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
   const [confirmSuspendMember, setConfirmSuspendMember] = useState(null);
   const [toast, showToast] = useToast();
 
+  const fetchMembersAndInvitations = useCallback(async () => {
+    if (!teamId) return;
+    try {
+      setLoading(true);
+      const [membersRes, invitesRes] = await Promise.allSettled([
+        api.get(`/api/teams/${teamId}/members`),
+        api.get(`/api/teams/${teamId}/invitations`),
+      ]);
+
+      if (membersRes.status === 'fulfilled') {
+        const rawMembers = membersRes.value.data?.data?.members || membersRes.value.data?.data || [];
+        const formatted = rawMembers.map((m) => {
+          const userObj = m.user || m.userId || {};
+          const name = userObj.name || m.name || 'Member';
+          const roleName = m.roles?.[0]?.name || m.role?.name || m.role || 'Member';
+          return {
+            id: m._id || m.id,
+            membershipId: m._id || m.id,
+            userId: userObj._id || userObj.id || m.userId,
+            name,
+            email: userObj.email || m.email || '',
+            role: roleName,
+            teamRole: roleName,
+            department: m.department || 'Engineering',
+            status: m.status === 'ACTIVE' ? 'Active' : m.status === 'SUSPENDED' ? 'Suspended' : m.status || 'Active',
+            joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'Active',
+            initials: name
+              .split(' ')
+              .map((n) => n[0])
+              .join('')
+              .toUpperCase()
+              .slice(0, 2),
+            avatarBgColor: 'bg-primary',
+            avatarTextColor: 'text-on-primary',
+            ...m,
+          };
+        });
+        setMembers(formatted);
+      }
+
+      if (invitesRes.status === 'fulfilled') {
+        const rawInvites = invitesRes.value.data?.data?.invitations || invitesRes.value.data?.data || [];
+        setPendingInvitations(
+          rawInvites.map((inv) => ({
+            id: inv._id || inv.id,
+            email: inv.email,
+            name: inv.email.split('@')[0],
+            role: inv.roleIds?.[0]?.name || 'Invited Member',
+            department: 'Engineering',
+            invitedBy: inv.invitedBy?.name || 'Admin',
+            sentDate: inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'Recent',
+            expiresDate: inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : '1 hour',
+            status: inv.status === 'PENDING' ? 'Pending Acceptance' : inv.status,
+          }))
+        );
+      }
+    } catch (err) {
+      console.error('Failed to load members:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [teamId]);
+
+  useEffect(() => {
+    fetchMembersAndInvitations();
+  }, [fetchMembersAndInvitations]);
+
   const handleOpenMember = (member) => {
     setSelectedMember(member);
     setIsDrawerOpen(true);
   };
 
-  const handleToggleSuspendMember = (memberId) => {
-    setMembers((prev) => {
-      const nextList = prev.map((m) => {
-        if (m.id === memberId) {
-          const newStatus = m.status === 'Suspended' ? 'Active' : 'Suspended';
-          const updated = { ...m, status: newStatus };
-          setSelectedMember(updated);
-          return updated;
-        }
-        return m;
-      });
-      setStorage('workspace_team_members', nextList);
-      return nextList;
-    });
-    showToast('Member status updated successfully.');
+  const handleToggleSuspendMember = async (memberId) => {
+    const target = members.find((m) => m.id === memberId || m.membershipId === memberId);
+    if (!target || !teamId) return;
+
+    const action = target.status === 'Suspended' ? 'reactivate' : 'suspend';
+    const mId = target.membershipId || target.id;
+    try {
+      await api.patch(`/api/teams/${teamId}/members/${mId}/${action}`);
+      const newStatus = action === 'reactivate' ? 'Active' : 'Suspended';
+      setMembers((prev) =>
+        prev.map((m) => (m.id === memberId || m.membershipId === memberId ? { ...m, status: newStatus } : m))
+      );
+      if (selectedMember?.id === memberId) {
+        setSelectedMember((prev) => ({ ...prev, status: newStatus }));
+      }
+      showToast(`Member status updated to ${newStatus}.`);
+    } catch (err) {
+      console.error('Failed to update status:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to update member status.', 'error');
+    }
   };
 
-  const handleConfirmRemoveMember = (memberId) => {
-    setMembers((prev) => {
-      const nextList = prev.filter((m) => m.id !== memberId);
-      setStorage('workspace_team_members', nextList);
-      return nextList;
-    });
-    setConfirmRemovalMember(null);
-    setIsDrawerOpen(false);
-    setSelectedMember(null);
-    showToast('Member was removed from the workspace.');
+  const handleConfirmRemoveMember = async (memberId) => {
+    const target = members.find((m) => m.id === memberId || m.membershipId === memberId);
+    if (!target || !teamId) return;
+    const mId = target.membershipId || target.id;
+
+    try {
+      await api.delete(`/api/teams/${teamId}/members/${mId}`);
+      setMembers((prev) => prev.filter((m) => m.id !== memberId && m.membershipId !== memberId));
+      setConfirmRemovalMember(null);
+      setIsDrawerOpen(false);
+      setSelectedMember(null);
+      showToast('Member was removed from the workspace.');
+    } catch (err) {
+      console.error('Failed to remove member:', err);
+      showToast(err.response?.data?.error?.message || 'Failed to remove member.', 'error');
+    }
   };
 
   const [roleEditingMember, setRoleEditingMember] = useState(null);
 
   const handleSaveMemberRole = (updatedMember) => {
-    setMembers((prev) => {
-      const nextList = prev.map((m) => (m.id === updatedMember.id ? updatedMember : m));
-      setStorage('workspace_team_members', nextList);
-      return nextList;
-    });
-
+    setMembers((prev) => prev.map((m) => (m.id === updatedMember.id ? updatedMember : m)));
     if (selectedMember?.id === updatedMember.id) {
       setSelectedMember(updatedMember);
     }
-
-    // Sync role update to platform users list
-    const stored = getStorage('platform_users_list', null);
-    if (stored) {
-      const updatedList = stored.map((u) => {
-        if (u.email?.toLowerCase() === updatedMember.email?.toLowerCase()) {
-          return {
-            ...u,
-            role: updatedMember.role,
-            isTeamAdmin: updatedMember.teamRole === 'Team Admin',
-            workspaces: (u.workspaces || []).map((w) =>
-              w.name === 'Acme Engineering' || w.name === 'Engineering Core'
-                ? { ...w, role: updatedMember.role, isTeamAdmin: updatedMember.teamRole === 'Team Admin' }
-                : w
-            ),
-          };
-        }
-        return u;
-      });
-      setStorage('platform_users_list', updatedList);
-    }
     setRoleEditingMember(null);
     showToast(`Role updated for ${updatedMember.name}.`);
+    fetchMembersAndInvitations();
   };
 
   const handleConfirmRevokeInvite = (inviteId) => {
@@ -400,7 +427,7 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
             onChange={(e) => setSearchQuery(e.target.value)}
             onClear={() => setSearchQuery('')}
             placeholder="Search by name, email, or role..."
-            className="flex-1 min-w-[200px] max-w-md"
+            className="flex-1 min-w-50 max-w-md"
           />
 
           <select
@@ -465,8 +492,13 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
         </div>
       </div>
 
-      {/* Grid View */}
-      {viewMode === 'grid' ? (
+      {/* Members Content */}
+      {loading ? (
+        <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant bg-surface-container-lowest rounded-xl border border-border-subtle">
+          <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
+          <span className="text-[13px] font-medium">Loading team members...</span>
+        </div>
+      ) : viewMode === 'grid' ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-md w-full">
           {filteredMembers.map((member) => {
             const isUser = member.id === currentUserId;
@@ -717,7 +749,7 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
             onClick={() => setIsDrawerOpen(false)}
           ></div>
 
-          <aside className="fixed top-0 right-0 w-full sm:w-[420px] h-screen bg-surface-container-lowest border-l border-border-subtle shadow-2xl z-50 flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right duration-200">
+          <aside className="fixed top-0 right-0 w-full sm:w-105 h-screen bg-surface-container-lowest border-l border-border-subtle shadow-2xl z-50 flex flex-col justify-between overflow-y-auto animate-in slide-in-from-right duration-200">
             <div>
               {/* Drawer Header */}
               <div className="p-md border-b border-border-subtle flex items-center justify-between sticky top-0 bg-surface-container-lowest/95 backdrop-blur z-10">
