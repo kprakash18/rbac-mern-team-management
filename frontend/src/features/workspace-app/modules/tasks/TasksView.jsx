@@ -1,13 +1,8 @@
 import { useState } from 'react';
-
-const WORKSPACE_MEMBERS = [
-  { id: 'usr-dm', name: 'Diana Morales', role: 'Lead Architect', initials: 'DM' },
-  { id: 'usr-cd', name: 'Charlie Davis', role: 'Senior Staff SRE', initials: 'CD' },
-  { id: 'usr-aj', name: 'Alice Johnson', role: 'DevOps Engineer', initials: 'AJ' },
-  { id: 'usr-er', name: 'Elena Rostova', role: 'Security Auditor', initials: 'ER' },
-  { id: 'usr-mv', name: 'Marcus Vance', role: 'Senior Backend Developer', initials: 'MV' },
-  { id: 'usr-sl', name: 'Sophia Lin', role: 'Lead UI Engineer', initials: 'SL' },
-];
+import { WORKSPACE_TEAM_MEMBERS } from '@/constants';
+import { getStorage, setStorage } from '../../../../lib/storage';
+import SearchInput from '../../../../components/shared/SearchInput';
+import EmptyState from '../../../../components/shared/EmptyState';
 
 const INITIAL_TASKS = [
   {
@@ -76,17 +71,24 @@ const PRIORITY_STYLES = {
 const STATUS_STYLES = {
   TODO: 'bg-slate-100 text-slate-700 border-slate-300',
   IN_PROGRESS: 'bg-blue-50 text-blue-700 border-blue-200 font-medium',
+  IN_REVIEW: 'bg-purple-50 text-purple-700 border-purple-200 font-medium',
   DONE: 'bg-emerald-50 text-emerald-700 border-emerald-200 font-medium',
+  CANCELLED: 'bg-red-50 text-red-700 border-red-200 font-medium',
 };
 
 export default function TasksView({ currentUser }) {
   const currentUserId = currentUser?.id || 'usr-dm';
-  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
-  const [tasks, setTasks] = useState(INITIAL_TASKS);
+  const [tasks, setTasks] = useState(() => getStorage('workspace_tasks_list', INITIAL_TASKS));
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState('ALL'); // 'ALL' | 'ME'
+
+  const persistTasks = (next) => {
+    setTasks(next);
+    setStorage('workspace_tasks_list', next);
+  };
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -101,9 +103,10 @@ export default function TasksView({ currentUser }) {
   });
 
   const getMember = (id) =>
-    WORKSPACE_MEMBERS.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' };
+    WORKSPACE_TEAM_MEMBERS.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' };
 
   const handleOpenCreateModal = () => {
+    if (!isTeamAdmin) return;
     setEditingTask(null);
     setFormData({
       title: '',
@@ -134,22 +137,22 @@ export default function TasksView({ currentUser }) {
     if (!formData.title.trim()) return;
 
     if (editingTask) {
-      setTasks((prev) =>
-        prev.map((t) =>
-          t.id === editingTask.id
-            ? {
-                ...t,
-                title: isTeamAdmin ? formData.title : t.title,
-                assignedTo: isTeamAdmin ? formData.assignedTo : t.assignedTo,
-                priority: isTeamAdmin ? formData.priority : t.priority,
-                dueDate: isTeamAdmin ? formData.dueDate : t.dueDate,
-                status: formData.status,
-                remarks: formData.remarks,
-              }
-            : t
-        )
+      const next = tasks.map((t) =>
+        t.id === editingTask.id
+          ? {
+              ...t,
+              title: isTeamAdmin ? formData.title : t.title,
+              assignedTo: isTeamAdmin ? formData.assignedTo : t.assignedTo,
+              priority: isTeamAdmin ? formData.priority : t.priority,
+              dueDate: isTeamAdmin ? formData.dueDate : t.dueDate,
+              status: formData.status,
+              remarks: formData.remarks,
+            }
+          : t
       );
+      persistTasks(next);
     } else {
+      if (!isTeamAdmin) return;
       const newTask = {
         id: `tsk-${Date.now().toString().slice(-4)}`,
         title: formData.title,
@@ -159,21 +162,21 @@ export default function TasksView({ currentUser }) {
         status: formData.status,
         remarks: formData.remarks,
       };
-      setTasks((prev) => [newTask, ...prev]);
+      persistTasks([newTask, ...tasks]);
     }
 
     setIsModalOpen(false);
   };
 
   const handleDeleteTask = (taskId) => {
+    if (!isTeamAdmin) return;
     if (!window.confirm('Delete this task?')) return;
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
+    persistTasks(tasks.filter((t) => t.id !== taskId));
   };
 
   const handleQuickStatusChange = (taskId, newStatus) => {
-    setTasks((prev) =>
-      prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t))
-    );
+    const next = tasks.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t));
+    persistTasks(next);
   };
 
   // Filter Tasks
@@ -202,31 +205,28 @@ export default function TasksView({ currentUser }) {
           </p>
         </div>
 
-        <button
-          type="button"
-          onClick={handleOpenCreateModal}
-          className="flex items-center gap-xs px-md py-2 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer self-start md:self-auto"
-        >
-          <span className="material-symbols-outlined text-[18px]">add_task</span>
-          <span>+ Create Task</span>
-        </button>
+        {isTeamAdmin && (
+          <button
+            type="button"
+            onClick={handleOpenCreateModal}
+            className="flex items-center gap-xs px-md py-2 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer self-start md:self-auto"
+          >
+            <span className="material-symbols-outlined text-[18px]">add_task</span>
+            <span>+ Create Task</span>
+          </button>
+        )}
       </div>
 
       {/* Simplified Filter & Search Bar */}
       <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1">
-          <div className="relative flex items-center flex-1 max-w-md">
-            <span className="material-symbols-outlined absolute left-3 text-on-surface-variant text-[18px]">
-              search
-            </span>
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full pl-9 pr-4 py-1.5 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm font-body-sm text-on-surface placeholder:text-on-surface-variant focus:bg-surface-container-lowest focus:border-primary outline-none transition-colors"
-              placeholder="Search tasks or remarks..."
-              type="text"
-            />
-          </div>
+          <SearchInput
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onClear={() => setSearchQuery('')}
+            placeholder="Search tasks or remarks..."
+            className="flex-1 max-w-md"
+          />
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
@@ -257,19 +257,26 @@ export default function TasksView({ currentUser }) {
           </div>
 
           {/* Status Tabs */}
-          <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg border border-border-subtle">
-            {['ALL', 'TODO', 'IN_PROGRESS', 'DONE'].map((s) => (
+          <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg border border-border-subtle flex-wrap">
+            {[
+              { key: 'ALL', label: 'All' },
+              { key: 'TODO', label: 'To Do' },
+              { key: 'IN_PROGRESS', label: 'In Progress' },
+              { key: 'IN_REVIEW', label: 'In Review' },
+              { key: 'DONE', label: 'Done' },
+              { key: 'CANCELLED', label: 'Cancelled' },
+            ].map(({ key, label }) => (
               <button
-                key={s}
+                key={key}
                 type="button"
-                onClick={() => setStatusFilter(s)}
+                onClick={() => setStatusFilter(key)}
                 className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
-                  statusFilter === s
+                  statusFilter === key
                     ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
                     : 'text-on-surface-variant hover:text-on-surface'
                 }`}
               >
-                {s === 'ALL' ? 'All' : s === 'TODO' ? 'To Do' : s === 'IN_PROGRESS' ? 'In Progress' : 'Done'}
+                {label}
               </button>
             ))}
           </div>
@@ -313,7 +320,9 @@ export default function TasksView({ currentUser }) {
                       >
                         <option value="TODO">To Do</option>
                         <option value="IN_PROGRESS">In Progress</option>
+                        <option value="IN_REVIEW">In Review</option>
                         <option value="DONE">Done</option>
+                        <option value="CANCELLED">Cancelled</option>
                       </select>
                     </td>
 
@@ -399,13 +408,11 @@ export default function TasksView({ currentUser }) {
         </div>
 
         {filteredTasks.length === 0 && (
-          <div className="py-12 text-center text-on-surface-variant">
-            <span className="material-symbols-outlined text-[36px] block mb-1 text-on-surface-variant/50">
-              task_alt
-            </span>
-            <span className="font-semibold text-on-surface block">No tasks match your filters</span>
-            <span className="text-[12px]">Try clearing search or switching status tabs.</span>
-          </div>
+          <EmptyState
+            icon="task_alt"
+            title="No tasks match your filters"
+            message="Try clearing search or switching status tabs."
+          />
         )}
       </div>
 
@@ -455,7 +462,7 @@ export default function TasksView({ currentUser }) {
                       editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
-                    {WORKSPACE_MEMBERS.map((m) => (
+                    {WORKSPACE_TEAM_MEMBERS.map((m) => (
                       <option key={m.id} value={m.id}>
                         {m.name}
                       </option>
@@ -506,7 +513,9 @@ export default function TasksView({ currentUser }) {
                   >
                     <option value="TODO">To Do</option>
                     <option value="IN_PROGRESS">In Progress</option>
+                    <option value="IN_REVIEW">In Review</option>
                     <option value="DONE">Done</option>
+                    <option value="CANCELLED">Cancelled</option>
                   </select>
                 </div>
               </div>

@@ -1,4 +1,4 @@
-import { MOCK_RECENT_ACTIVITIES } from '../constants/superAdmin.constants';
+import { MOCK_RECENT_ACTIVITIES } from '@/constants';
 
 const RESULT_STYLES = {
   success: 'bg-success-bg text-success-text',

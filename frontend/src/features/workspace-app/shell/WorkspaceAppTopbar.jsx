@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect } from 'react';
+import NotificationDropdown from './NotificationDropdown';
 
 export default function WorkspaceAppTopbar({
   workspace,
   currentUser,
   personas = [],
   onSwitchPersona,
-  unreadAnnouncementsCount = 0,
   onAnnouncementsClick,
+  onSelectTab,
   onLogout,
 }) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
@@ -58,20 +59,11 @@ export default function WorkspaceAppTopbar({
           </select>
         </div>
 
-        {/* Notification Bell */}
-        <button
-          type="button"
-          onClick={onAnnouncementsClick}
-          className="relative w-8 h-8 rounded-full flex items-center justify-center hover:bg-surface-container text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-          title="Bulletins & Notifications"
-        >
-          <span className="material-symbols-outlined text-[20px]">notifications</span>
-          {unreadAnnouncementsCount > 0 && (
-            <span className="absolute top-0.5 right-0.5 w-4 h-4 bg-error text-white text-[9px] font-bold rounded-full flex items-center justify-center">
-              {unreadAnnouncementsCount}
-            </span>
-          )}
-        </button>
+        {/* Notification Bell Dropdown */}
+        <NotificationDropdown
+          currentUser={currentUser}
+          onSelectTab={onSelectTab || onAnnouncementsClick}
+        />
 
         {/* Top-Right User Logo & Dropdown */}
         <div className="relative" ref={menuRef}>
@@ -112,6 +104,59 @@ export default function WorkspaceAppTopbar({
                   {userRole}
                 </span>
               </div>
+
+              {/* Account Switching Section */}
+              {personas && personas.length > 0 && (
+                <div className="py-2 px-md border-b border-border-subtle">
+                  <span className="text-[10px] font-bold text-on-surface-variant uppercase tracking-wider flex items-center gap-1 mb-1.5">
+                    <span className="material-symbols-outlined text-[14px] text-primary">switch_account</span>
+                    <span>Switch Account</span>
+                  </span>
+                  <div className="flex flex-col gap-1">
+                    {personas.map((persona) => {
+                      const isSelected = (currentUser?.id || 'usr-dm') === persona.id;
+                      return (
+                        <button
+                          key={persona.id}
+                          type="button"
+                          onClick={() => {
+                            onSwitchPersona?.(persona.id);
+                            setIsMenuOpen(false);
+                          }}
+                          className={`flex items-center justify-between p-1.5 rounded-lg text-left text-[12px] transition-colors cursor-pointer w-full ${
+                            isSelected
+                              ? 'bg-primary-container text-on-primary-container font-semibold'
+                              : 'text-on-surface hover:bg-surface-container-low'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div
+                              className={`w-6 h-6 rounded-full flex items-center justify-center font-bold text-[10px] shrink-0 ${
+                                persona.isTeamAdmin
+                                  ? 'bg-primary text-on-primary'
+                                  : 'bg-surface-container-high text-on-surface'
+                              }`}
+                            >
+                              {persona.initials}
+                            </div>
+                            <div className="truncate leading-tight">
+                              <p className="truncate font-medium">{persona.name}</p>
+                              <p className="text-[10px] text-on-surface-variant truncate">
+                                {persona.isTeamAdmin ? '👑 Team Admin' : persona.teamRoleTitle}
+                              </p>
+                            </div>
+                          </div>
+                          {isSelected && (
+                            <span className="material-symbols-outlined text-[16px] text-primary shrink-0">
+                              check
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <div className="py-1">
                 <button

@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import {
   CANONICAL_PERMISSIONS,
   INITIAL_ROLES,
-} from '../constants/roles.constants.js';
+} from '@/constants';
 import RoleCard from './roles/RoleCard.jsx';
 import RolesTableView from './roles/RolesTableView.jsx';
 import RoleMembersDrawer from './roles/RoleMembersDrawer.jsx';
 import CreateEditRoleModal from './roles/CreateEditRoleModal.jsx';
-import DeleteRoleModal from './roles/DeleteRoleModal.jsx';
+import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import ExportPolicyModal from './roles/ExportPolicyModal.jsx';
 import EditUserTtlModal from './roles/EditUserTtlModal.jsx';
 import ReassignUserModal from './roles/ReassignUserModal.jsx';
@@ -674,13 +674,62 @@ export default function RolesView() {
       />
 
       {/* 3. Delete Role Modal */}
-      <DeleteRoleModal
-        data={deleteConfirmData}
-        roles={roles}
-        onClose={() => setDeleteConfirmData(null)}
-        onChangeTarget={(target) => setDeleteConfirmData({ ...deleteConfirmData, reassignmentTarget: target })}
-        onConfirmDelete={handleConfirmDelete}
-      />
+      {deleteConfirmData && (
+        <ConfirmModal
+          isOpen={Boolean(deleteConfirmData)}
+          title="Confirm Role Deletion"
+          confirmText="Confirm & Delete Role"
+          confirmVariant="danger"
+          icon="warning"
+          onClose={() => setDeleteConfirmData(null)}
+          onConfirm={handleConfirmDelete}
+        >
+          <div className="space-y-3 text-[13px]">
+            <p className="text-body-sm text-on-surface">
+              Are you sure you want to delete and soft-archive custom role{' '}
+              <strong className="text-on-surface font-semibold">"{deleteConfirmData.role.name}"</strong>?
+            </p>
+
+            {deleteConfirmData.role.assignedUsers && deleteConfirmData.role.assignedUsers.length > 0 ? (
+              <div className="p-3 bg-warning-bg/40 border border-warning-text/30 rounded-xl space-y-2">
+                <div className="flex items-center gap-1 font-semibold text-[12px] text-warning-text">
+                  <span className="material-symbols-outlined text-[16px]">group</span>
+                  <span>Active Member Reassignment Required</span>
+                </div>
+                <p className="text-[12px] text-on-surface-variant leading-relaxed">
+                  There are <strong>{deleteConfirmData.role.assignedUsers.length} active users</strong> currently assigned to this role.
+                  Select a target baseline role to reassign these users to before proceeding:
+                </p>
+                <div>
+                  <label className="block text-[11px] font-semibold text-on-surface-variant mb-1">
+                    Reassign Active Members To:
+                  </label>
+                  <select
+                    value={deleteConfirmData.reassignmentTarget}
+                    onChange={(e) =>
+                      setDeleteConfirmData({ ...deleteConfirmData, reassignmentTarget: e.target.value })
+                    }
+                    className="w-full h-9 px-2 bg-surface-container-lowest rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none cursor-pointer"
+                  >
+                    {roles
+                      .filter((r) => r.id !== deleteConfirmData.role.id && r.status === 'active')
+                      .map((r) => (
+                        <option key={r.id} value={r.id}>
+                          {r.name} ({r.scopeBadge || 'Scoped'})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              <div className="p-2 bg-surface-container-low rounded-lg text-[12px] text-on-surface-variant flex items-center gap-2">
+                <span className="material-symbols-outlined text-outline text-[16px]">check_circle</span>
+                <span>No active users assigned to this role. It can be safely soft-archived.</span>
+              </div>
+            )}
+          </div>
+        </ConfirmModal>
+      )}
 
       {/* 4. Export Policy Modal */}
       <ExportPolicyModal
