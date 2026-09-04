@@ -2,6 +2,8 @@ import { useState } from 'react';
 import { INITIAL_AUDIT_LOGS, AUDIT_CATEGORIES } from '@/constants';
 import AuditLogsTable from './audit/AuditLogsTable.jsx';
 import AuditLogDetailsModal from './audit/AuditLogDetailsModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
 
 export default function SecurityAuditView() {
   const [logs] = useState(INITIAL_AUDIT_LOGS);
@@ -17,11 +19,7 @@ export default function SecurityAuditView() {
   const [inspectedLog, setInspectedLog] = useState(null);
 
   // Toast Notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
 
   // Filtered Logs
   const filteredLogs = logs.filter((log) => {
@@ -88,13 +86,10 @@ export default function SecurityAuditView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1300] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">security</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-[1300]">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">

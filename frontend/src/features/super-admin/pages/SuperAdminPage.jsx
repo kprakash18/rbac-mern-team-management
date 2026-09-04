@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import SuperAdminSidebar from '../components/SuperAdminSidebar';
-import SuperAdminTopbar from '../components/SuperAdminTopbar';
+import SuperAdminSidebar from '../shell/SuperAdminSidebar';
+import SuperAdminTopbar from '../shell/SuperAdminTopbar';
 import PlatformMetricsCards from '../components/PlatformMetricsCards';
 import RecentActivityFeed from '../components/RecentActivityFeed';
 import ActiveWorkspacesWidget from '../components/ActiveWorkspacesWidget';
@@ -10,6 +10,8 @@ import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
 import SecurityAuditView from '../components/SecurityAuditView';
 import WorkspaceModal from '../components/WorkspaceModal';
+import Toast from '../../../components/shared/Toast';
+import { useToast } from '../../../lib/useToast';
 import { MOCK_ACTIVE_WORKSPACES } from '@/constants';
 
 export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
@@ -17,7 +19,7 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [editingWorkspace, setEditingWorkspace] = useState(null);
-  const [toastMessage, setToastMessage] = useState('');
+  const [toast, showToast] = useToast(3500);
   const [workspaces, setWorkspaces] = useState(() => {
     try {
       const saved = localStorage.getItem('platform_workspaces_list');
@@ -25,11 +27,6 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
     } catch {}
     return MOCK_ACTIVE_WORKSPACES;
   });
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3500);
-  };
 
   const handleCreateWorkspace = (newWs) => {
     setWorkspaces((prev) => {
@@ -191,12 +188,9 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       </div>
 
       {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-120 bg-inverse-surface text-inverse-on-surface px-4 py-3 rounded-xl shadow-2xl flex items-center gap-2 border border-border-subtle animate-in slide-in-from-bottom-5 duration-200">
-          <span className="material-symbols-outlined text-[20px] text-emerald-400">check_circle</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      <div className="fixed bottom-6 right-6 z-120">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       <WorkspaceModal
         isOpen={isCreateWorkspaceModalOpen}

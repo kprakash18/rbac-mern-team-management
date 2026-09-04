@@ -12,6 +12,8 @@ import ExportPolicyModal from './roles/ExportPolicyModal.jsx';
 import EditUserTtlModal from './roles/EditUserTtlModal.jsx';
 import ReassignUserModal from './roles/ReassignUserModal.jsx';
 import ChangeWorkspaceModal from './roles/ChangeWorkspaceModal.jsx';
+import Toast from '../../../components/shared/Toast.jsx';
+import { useToast } from '../../../lib/useToast.js';
 
 export default function RolesView() {
   const [roles, setRoles] = useState(INITIAL_ROLES);
@@ -48,11 +50,7 @@ export default function RolesView() {
   const [editingUserWorkspace, setEditingUserWorkspace] = useState(null);
 
   // Toast notification
-  const [toastMessage, setToastMessage] = useState(null);
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 3500);
-  };
+  const [toast, showToast] = useToast(3500);
 
   useEffect(() => {
     const handleGlobalClick = () => setActiveMenuId(null);
@@ -466,13 +464,10 @@ export default function RolesView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification Banner */}
-      {toastMessage && (
-        <div className="fixed top-6 right-6 z-[1200] bg-inverse-surface text-inverse-on-surface px-md py-sm rounded-xl shadow-2xl flex items-center gap-sm animate-in slide-in-from-top-4 duration-200 border border-inverse-on-surface/20">
-          <span className="material-symbols-outlined text-[20px] text-primary">info</span>
-          <span className="font-label-bold text-label-sm">{toastMessage}</span>
-        </div>
-      )}
+      {/* Toast Notification */}
+      <div className="fixed top-6 right-6 z-[1200]">
+        <Toast message={toast?.msg} type={toast?.type} />
+      </div>
 
       {/* Main Roles Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-md">

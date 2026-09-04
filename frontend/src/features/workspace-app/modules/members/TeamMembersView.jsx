@@ -3,6 +3,7 @@ import InviteTeamMemberModal from './InviteTeamMemberModal';
 import ManageMemberRoleModal from './ManageMemberRoleModal';
 import { WORKSPACE_TEAM_MEMBERS } from '@/constants';
 import { getStorage, setStorage } from '../../../../lib/storage';
+import { useToast } from '../../../../lib/useToast';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
 import Toast from '../../../../components/shared/Toast';
 import SearchInput from '../../../../components/shared/SearchInput';
@@ -63,12 +64,7 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
   const [confirmRevokeInvite, setConfirmRevokeInvite] = useState(null);
   const [confirmRemovalMember, setConfirmRemovalMember] = useState(null);
   const [confirmSuspendMember, setConfirmSuspendMember] = useState(null);
-  const [toastMessage, setToastMessage] = useState('');
-
-  const showToast = (msg) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(''), 3000);
-  };
+  const [toast, showToast] = useToast();
 
   const handleOpenMember = (member) => {
     setSelectedMember(member);
@@ -238,7 +234,7 @@ export default function TeamMembersView({ currentUser, onOpenDirectMessage }) {
       </div>
 
       {/* Toast Notification */}
-      <Toast message={toastMessage} onClose={() => setToastMessage('')} />
+      <Toast message={toast?.msg} type={toast?.type} />
 
       {/* Main Tabs */}
       <div className="flex items-center gap-2 border-b border-border-subtle pb-2">
