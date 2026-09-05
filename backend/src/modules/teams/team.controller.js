@@ -47,8 +47,8 @@ export async function getTeamById(req, res, next) {
 export async function updateTeam(req, res, next) {
   try {
     const { teamId } = req.params;
-    const { name, description } = req.body;
-    const updated = await teamService.updateTeam(teamId, { name, description });
+    const { name, description, status } = req.body;
+    const updated = await teamService.updateTeam(teamId, { name, description, status });
     return res.status(200).json({ success: true, data: updated });
   } catch (error) {
     next(error);

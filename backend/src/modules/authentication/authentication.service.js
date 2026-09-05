@@ -4,10 +4,13 @@ import { signAccessToken } from "../../common/security/jwt.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { disconnectUserSockets } from "../../realtime/event-emitter.js";
 import {
+  isSuperAdmin,
+  getUserActiveRoleNames,
+} from "../authorization/authorization.service.js";
+import {
   validateLoginInput,
   validatePasswordChangeInput,
 } from "./authentication.validation.js";
-
 
 import {
   BadRequestError,
@@ -96,6 +99,9 @@ export async function login({ email, password }) {
     result: "SUCCESS",
   });
 
+  const userIsSuperAdmin = await isSuperAdmin(user._id);
+  const userRoles = await getUserActiveRoleNames(user._id);
+
   return {
     user: {
       id: user._id,
@@ -103,6 +109,9 @@ export async function login({ email, password }) {
       email: user.email,
       accountStatus: user.accountStatus,
       mustChangePassword: user.mustChangePassword,
+      isSuperAdmin: userIsSuperAdmin,
+      role: userIsSuperAdmin ? "Platform Super Admin" : (userRoles[0] || "Member"),
+      roles: userRoles,
     },
     accessToken,
     requiresPasswordChange: Boolean(user.mustChangePassword),
@@ -115,12 +124,18 @@ export async function getCurrentUser(userId) {
     throw new NotFoundError("User not found.", "USER_NOT_FOUND");
   }
 
+  const userIsSuperAdmin = await isSuperAdmin(user._id);
+  const userRoles = await getUserActiveRoleNames(user._id);
+
   return {
     id: user._id,
     name: user.name,
     email: user.email,
     accountStatus: user.accountStatus,
     mustChangePassword: user.mustChangePassword,
+    isSuperAdmin: userIsSuperAdmin,
+    role: userIsSuperAdmin ? "Platform Super Admin" : (userRoles[0] || "Member"),
+    roles: userRoles,
     lastLoginAt: user.lastLoginAt,
     createdAt: user.createdAt,
   };
