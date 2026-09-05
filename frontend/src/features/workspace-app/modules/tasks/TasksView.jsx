@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { getSocket } from '../../../../lib/socket';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
 import SearchInput from '../../../../components/shared/SearchInput';
@@ -62,7 +63,7 @@ export default function TasksView({ currentUser, workspace }) {
         const normalized = rawTasks.map((t) => ({
           ...t,
           id: t._id || t.id,
-          remarks: t.description || t.remarks || '',
+          remarks: t.remarks || t.description || '',
           assignedTo: t.assignedTo?._id || t.assignedTo?.id || t.assignedTo,
         }));
         setTasks(normalized);
@@ -89,6 +90,62 @@ export default function TasksView({ currentUser, workspace }) {
     } finally {
       setLoading(false);
     }
+  }, [teamId]);
+
+  // Normalize a raw task object coming from the socket the same way as HTTP fetch
+  const normalizeTask = useCallback((t) => ({
+    ...t,
+    id: t._id || t.id,
+    remarks: t.remarks || t.description || '',
+    assignedTo: t.assignedTo?._id || t.assignedTo?.id || t.assignedTo,
+  }), []);
+
+  // Real-time: subscribe to task:updated so both admin and assignee screens refresh instantly
+  const normalizeRef = useRef(normalizeTask);
+  useEffect(() => { normalizeRef.current = normalizeTask; }, [normalizeTask]);
+
+  useEffect(() => {
+    if (!teamId) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleTaskUpdated = ({ task }) => {
+      if (!task) return;
+      const normalized = normalizeRef.current(task);
+      setTasks((prev) => {
+        const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
+        if (exists) {
+          return prev.map((t) =>
+            (t.id === normalized.id || t._id === normalized._id) ? { ...t, ...normalized } : t
+          );
+        }
+        return prev;
+      });
+    };
+
+    const handleTaskCreated = ({ task }) => {
+      if (!task) return;
+      const normalized = normalizeRef.current(task);
+      setTasks((prev) => {
+        const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
+        return exists ? prev : [normalized, ...prev];
+      });
+    };
+
+    const handleTaskDeleted = ({ taskId }) => {
+      if (!taskId) return;
+      setTasks((prev) => prev.filter((t) => t.id !== taskId && t._id !== taskId));
+    };
+
+    socket.on('task:updated', handleTaskUpdated);
+    socket.on('task:created', handleTaskCreated);
+    socket.on('task:deleted', handleTaskDeleted);
+
+    return () => {
+      socket.off('task:updated', handleTaskUpdated);
+      socket.off('task:created', handleTaskCreated);
+      socket.off('task:deleted', handleTaskDeleted);
+    };
   }, [teamId]);
 
   useEffect(() => {
@@ -126,19 +183,34 @@ export default function TasksView({ currentUser, workspace }) {
 
   const handleSaveTask = async (e) => {
     e.preventDefault();
-    if (!formData.title.trim() || !teamId) return;
+    if (!teamId) return;
+
+    // Assignees without admin rights can only update status and remarks
+    const isAssigneeOnly = editingTask &&
+      editingTask.assignedTo === currentUserId &&
+      !isTeamAdmin;
+
+    if (!isAssigneeOnly && !formData.title.trim()) return;
 
     try {
       if (editingTask) {
         const taskId = editingTask._id || editingTask.id;
-        const payload = {
-          title: formData.title,
-          status: formData.status,
-          priority: formData.priority,
-          description: formData.remarks,
-          assignedTo: formData.assignedTo || null,
-          dueDate: formData.dueDate || null,
-        };
+
+        // Build payload based on permission level
+        const payload = isAssigneeOnly
+          ? {
+              status: formData.status,
+              remarks: formData.remarks,
+            }
+          : {
+              title: formData.title,
+              status: formData.status,
+              priority: formData.priority,
+              remarks: formData.remarks,      // stored in task.remarks
+              description: formData.remarks,  // kept in sync with task.description
+              assignedTo: formData.assignedTo || null,
+              dueDate: formData.dueDate || null,
+            };
 
         const res = await api.patch(`/api/teams/${teamId}/tasks/${taskId}`, payload);
         const updated = res.data?.data || payload;

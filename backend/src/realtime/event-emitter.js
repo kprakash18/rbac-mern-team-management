@@ -21,3 +21,12 @@ export function disconnectUserSockets(userId) {
   } catch (error) {}
 }
 
+export function emitToAll(event, payload) {
+  try {
+    const io = getIO();
+    io.emit(event, payload);
+  } catch (error) {}
+}
+
+
+

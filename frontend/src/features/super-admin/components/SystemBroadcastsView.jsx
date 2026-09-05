@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import BroadcastCard from './broadcasts/BroadcastCard.jsx';
 import CreateEditBroadcastModal from './broadcasts/CreateEditBroadcastModal.jsx';
 import BroadcastDetailsDrawer from './broadcasts/BroadcastDetailsDrawer.jsx';
 import ConfirmModal from '../../../components/shared/ConfirmModal.jsx';
 import Toast from '../../../components/shared/Toast.jsx';
 import { useToast } from '../../../lib/useToast.js';
+import api from '../../../lib/api.js';
+import { getSocket } from '../../../lib/socket.js';
 
 export default function SystemBroadcastsView() {
   const [broadcasts, setBroadcasts] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
@@ -24,15 +27,68 @@ export default function SystemBroadcastsView() {
   // Toast Notification
   const [toast, showToast] = useToast(3500);
 
+  const fetchBroadcasts = useCallback(async () => {
+    try {
+      const res = await api.get('/api/notifications/broadcasts');
+      if (res.data?.success) {
+        setBroadcasts(res.data.data || []);
+      }
+    } catch (err) {
+      console.error('Failed to fetch broadcasts:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchBroadcasts();
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNew = (bc) => {
+      setBroadcasts((prev) => {
+        const id = bc.id || bc._id;
+        const exists = prev.some((b) => (b.id || b._id) === id);
+        if (exists) return prev;
+        return [bc, ...prev];
+      });
+    };
+
+    const handleUpdated = (bc) => {
+      setBroadcasts((prev) => {
+        const id = bc.id || bc._id;
+        return prev.map((b) => ((b.id || b._id) === id ? bc : b));
+      });
+    };
+
+    const handleDeleted = ({ id, _id }) => {
+      const targetId = id || _id;
+      setBroadcasts((prev) => prev.filter((b) => (b.id || b._id) !== targetId));
+    };
+
+    socket.on('broadcast:new', handleNew);
+    socket.on('broadcast:updated', handleUpdated);
+    socket.on('broadcast:deleted', handleDeleted);
+
+    return () => {
+      socket.off('broadcast:new', handleNew);
+      socket.off('broadcast:updated', handleUpdated);
+      socket.off('broadcast:deleted', handleDeleted);
+    };
+  }, [fetchBroadcasts]);
+
   // Filtered broadcasts
   const filteredBroadcasts = broadcasts.filter((bc) => {
     const matchStatus = statusFilter === 'ALL' || bc.status === statusFilter;
     const matchType = typeFilter === 'ALL' || bc.type === typeFilter;
+    const searchLower = searchQuery.toLowerCase();
     const matchSearch =
       !searchQuery ||
-      bc.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bc.message.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bc.targetWorkspaces.some((ws) => ws.toLowerCase().includes(searchQuery.toLowerCase()));
+      bc.title?.toLowerCase().includes(searchLower) ||
+      (bc.message || bc.body || '').toLowerCase().includes(searchLower) ||
+      (Array.isArray(bc.targetWorkspaces) &&
+        bc.targetWorkspaces.some((ws) => ws.toLowerCase().includes(searchLower)));
 
     return matchStatus && matchType && matchSearch;
   });
@@ -42,13 +98,23 @@ export default function SystemBroadcastsView() {
   const scheduledCount = broadcasts.filter((b) => b.status === 'SCHEDULED').length;
   const endedCount = broadcasts.filter((b) => b.status === 'ENDED').length;
 
-  const handleCreateOrUpdateBroadcast = (newBroadcast) => {
-    if (broadcastToEdit) {
-      setBroadcasts((prev) => prev.map((b) => (b.id === newBroadcast.id ? newBroadcast : b)));
-      showToast(`Broadcast "${newBroadcast.title}" was updated.`);
-    } else {
-      setBroadcasts((prev) => [newBroadcast, ...prev]);
-      showToast(`Broadcast "${newBroadcast.title}" published.`);
+  const handleCreateOrUpdateBroadcast = async (payload) => {
+    try {
+      if (broadcastToEdit) {
+        const id = broadcastToEdit.id || broadcastToEdit._id;
+        const res = await api.patch(`/api/notifications/broadcasts/${id}`, payload);
+        const updated = res.data?.data || payload;
+        setBroadcasts((prev) => prev.map((b) => ((b.id || b._id) === id ? updated : b)));
+        showToast(`Broadcast "${updated.title}" was updated.`);
+      } else {
+        const res = await api.post('/api/notifications/broadcasts', payload);
+        const created = res.data?.data || payload;
+        setBroadcasts((prev) => [created, ...prev.filter((b) => (b.id || b._id) !== (created.id || created._id))]);
+        showToast(`Broadcast "${created.title}" published.`);
+      }
+    } catch (err) {
+      console.error('Failed to save broadcast:', err);
+      showToast(err.response?.data?.message || 'Failed to save broadcast.', 'error');
     }
     setBroadcastToEdit(null);
   };
@@ -63,19 +129,26 @@ export default function SystemBroadcastsView() {
     setIsEndEarlyMode(false);
   };
 
-  const handleConfirmEndEarlyOrDelete = (id) => {
-    if (isEndEarlyMode) {
-      setBroadcasts((prev) =>
-        prev.map((b) =>
-          b.id === id
-            ? { ...b, status: 'ENDED', timeLabel: 'Ended early by admin', stickyNotice: 'Ended early' }
-            : b
-        )
-      );
-      showToast('Broadcast was deactivated.');
-    } else {
-      setBroadcasts((prev) => prev.filter((b) => b.id !== id));
-      showToast('Broadcast record removed.');
+  const handleConfirmEndEarlyOrDelete = async (id) => {
+    try {
+      if (isEndEarlyMode) {
+        await api.patch(`/api/notifications/broadcasts/${id}`, { status: 'ENDED' });
+        setBroadcasts((prev) =>
+          prev.map((b) =>
+            (b.id || b._id) === id
+              ? { ...b, status: 'ENDED', timeLabel: 'Ended early by admin', stickyNotice: 'Ended early' }
+              : b
+          )
+        );
+        showToast('Broadcast was deactivated.');
+      } else {
+        await api.delete(`/api/notifications/broadcasts/${id}`);
+        setBroadcasts((prev) => prev.filter((b) => (b.id || b._id) !== id));
+        showToast('Broadcast record removed.');
+      }
+    } catch (err) {
+      console.error('Failed to update/delete broadcast:', err);
+      showToast(err.response?.data?.message || 'Operation failed.', 'error');
     }
     setDeletingBroadcast(null);
   };
@@ -84,7 +157,7 @@ export default function SystemBroadcastsView() {
     const rows = [
       ['Broadcast ID', 'Title', 'Type', 'Status', 'Scope', 'Targeted Users', 'Viewed', 'Acknowledged', 'Created By', 'Created At'],
       ...broadcasts.map((b) => [
-        b.id,
+        b.id || b._id,
         b.title,
         b.type,
         b.status,
@@ -107,6 +180,7 @@ export default function SystemBroadcastsView() {
     document.body.removeChild(link);
     showToast('Broadcast audit log downloaded.');
   };
+
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl max-w-5xl mx-auto">
@@ -237,7 +311,12 @@ export default function SystemBroadcastsView() {
 
       {/* Broadcasts List */}
       <div className="flex flex-col gap-md">
-        {filteredBroadcasts.length === 0 ? (
+        {loading ? (
+          <div className="bg-surface-container-lowest rounded-xl p-2xl text-center flex flex-col items-center justify-center gap-2 border border-border-subtle">
+            <span className="material-symbols-outlined animate-spin text-[32px] text-primary">progress_activity</span>
+            <span className="text-body-sm text-on-surface-variant">Loading broadcasts...</span>
+          </div>
+        ) : filteredBroadcasts.length === 0 ? (
           <div className="bg-surface-container-lowest rounded-xl p-2xl text-center border border-dashed border-border-subtle">
             <span className="material-symbols-outlined text-[42px] text-outline mb-xs">campaign</span>
             <h3 className="font-headline-md text-headline-md text-on-surface">No broadcasts found</h3>

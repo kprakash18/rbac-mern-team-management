@@ -5,6 +5,7 @@ import PlatformMetricsCards from '../components/PlatformMetricsCards';
 import RecentActivityFeed from '../components/RecentActivityFeed';
 import ActiveWorkspacesWidget from '../components/ActiveWorkspacesWidget';
 import UsersAccessView from '../components/UsersAccessView';
+import TeamsView from '../components/TeamsView';
 import RolesView from '../components/RolesView';
 import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
@@ -13,11 +14,35 @@ import WorkspaceModal from '../components/WorkspaceModal';
 import Toast from '../../../components/shared/Toast';
 import { useToast } from '../../../lib/useToast';
 import api from '@/lib/api';
+import { getSocket } from '../../../lib/socket';
+
+function formatActivityItem(l) {
+  const actorName = l.actor?.name || l.actorId?.name || 'System Admin';
+  const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'SA';
+  const timeStr = l.createdAt
+    ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    : 'Just now';
+  return {
+    id: l._id || l.id,
+    time: timeStr,
+    actor: {
+      name: actorName,
+      initials,
+      isSystem: l.actor?.isSystem || false,
+      isError: l.result === 'FAILURE' || l.result === 'FAILED',
+    },
+    action: l.action || 'system.event',
+    target: l.targetId?.name || l.targetIdentifier || l.targetType || (l.teamId?.name ? `${l.teamId.name}` : 'System Resource'),
+    result: (l.result || 'SUCCESS').toUpperCase(),
+    resultType: (l.result || 'success').toLowerCase(),
+  };
+}
 
 export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
   const [activeNav, setActiveNav] = useState('dashboard');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
+  const [createTeamTrigger, setCreateTeamTrigger] = useState(0);
   const [editingWorkspace, setEditingWorkspace] = useState(null);
   const [toast, showToast] = useToast(3500);
   const [workspaces, setWorkspaces] = useState([]);
@@ -52,6 +77,18 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       }));
       setWorkspaces(formattedWorkspaces);
 
+      // Direct jump into workspace if navigated via email teamId link
+      const params = new URLSearchParams(window.location.search);
+      const targetTeamId = params.get('teamId') || params.get('workspace');
+      if (targetTeamId && onJumpIntoWorkspace) {
+        const matched = formattedWorkspaces.find(
+          (w) => String(w.id) === String(targetTeamId) || String(w._id) === String(targetTeamId)
+        );
+        if (matched) {
+          onJumpIntoWorkspace(matched);
+        }
+      }
+
       const activeWs = formattedWorkspaces.filter((w) => w.status !== 'Archived').length;
       const archivedWs = formattedWorkspaces.filter((w) => w.status === 'Archived').length;
 
@@ -62,44 +99,21 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       let fetchedActivities = [];
       let activeJitCount = 0;
 
-      if (formattedWorkspaces.length > 0) {
-        const firstTeamId = formattedWorkspaces[0].id;
-        const [auditRes, jitRes] = await Promise.allSettled([
-          api.get(`/api/teams/${firstTeamId}/audit-logs`),
-          api.get(`/api/teams/${firstTeamId}/access-requests`),
-        ]);
+      const [auditRes, jitRes] = await Promise.allSettled([
+        api.get('/api/audit-logs?limit=30'),
+        api.get('/api/access-requests'),
+      ]);
 
-        if (auditRes.status === 'fulfilled' && auditRes.value.data?.data) {
-          const logs = Array.isArray(auditRes.value.data.data)
-            ? auditRes.value.data.data
-            : auditRes.value.data.data.logs || [];
-          fetchedActivities = logs.map((l) => {
-            const actorName = l.actor?.name || l.actorId?.name || 'System Admin';
-            const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'SA';
-            const timeStr = l.createdAt
-              ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-              : 'Just now';
-            return {
-              id: l._id || l.id,
-              time: timeStr,
-              actor: {
-                name: actorName,
-                initials,
-                isSystem: l.actor?.isSystem || false,
-                isError: l.result === 'FAILURE' || l.result === 'FAILED',
-              },
-              action: l.action || 'system.event',
-              target: l.targetId?.name || l.targetIdentifier || l.targetType || 'System Resource',
-              result: (l.result || 'SUCCESS').toUpperCase(),
-              resultType: (l.result || 'success').toLowerCase(),
-            };
-          });
-        }
+      if (auditRes.status === 'fulfilled' && auditRes.value.data?.data) {
+        const logs = Array.isArray(auditRes.value.data.data)
+          ? auditRes.value.data.data
+          : auditRes.value.data.data.logs || [];
+        fetchedActivities = logs.map(formatActivityItem);
+      }
 
-        if (jitRes.status === 'fulfilled' && jitRes.value.data?.data) {
-          const jits = Array.isArray(jitRes.value.data.data) ? jitRes.value.data.data : [];
-          activeJitCount = jits.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
-        }
+      if (jitRes.status === 'fulfilled' && jitRes.value.data?.data) {
+        const jits = Array.isArray(jitRes.value.data.data) ? jitRes.value.data.data : [];
+        activeJitCount = jits.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
       }
 
       setActivities(fetchedActivities);
@@ -118,6 +132,26 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
 
   useEffect(() => {
     fetchDashboardData();
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewActivity = (newLog) => {
+      const formatted = formatActivityItem(newLog);
+      setActivities((prev) => [formatted, ...prev.filter((a) => a.id !== formatted.id)].slice(0, 30));
+      setMetrics((prev) => ({
+        ...prev,
+        securityEvents: {
+          ...prev.securityEvents,
+          today: (prev.securityEvents?.today || 0) + 1,
+        },
+      }));
+    };
+
+    socket.on('audit:new', handleNewActivity);
+    return () => {
+      socket.off('audit:new', handleNewActivity);
+    };
   }, [fetchDashboardData]);
 
   const handleCreateWorkspace = (newWs) => {
@@ -244,13 +278,21 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
         <SuperAdminTopbar
           isSidebarOpen={isSidebarOpen}
           currentUser={currentUser}
+          onCreateTeam={() => {
+            setActiveNav('teams');
+            setCreateTeamTrigger((prev) => prev + 1);
+          }}
           onBroadcast={() => setActiveNav('system-broadcasts')}
+          onSelectNav={setActiveNav}
+          onLogout={onLogout}
         />
 
         <main className="relative pt-16 w-full flex-1 overflow-x-hidden">
           {activeNav === 'users-access' ? (
             <UsersAccessView />
-          ) : activeNav === 'roles-rbac' ? (
+          ) : activeNav === 'teams' ? (
+            <TeamsView onJumpIntoWorkspace={onJumpIntoWorkspace} createTrigger={createTeamTrigger} />
+          ) : activeNav === 'roles-rbac' || activeNav === 'roles' ? (
             <RolesView />
           ) : activeNav === 'jit-access' ? (
             <JitAccessView />

@@ -27,13 +27,13 @@ memberships.push({ userEmail: "admin@system.local", teamName: "Engineering Core"
 membershipRoles.push({
   userEmail: "admin@system.local",
   teamName: "Security & Compliance",
-  roleName: "Team Admin",
+  roleName: "Super Admin",
   assignedByEmail: "admin@system.local",
 });
 membershipRoles.push({
   userEmail: "admin@system.local",
   teamName: "Engineering Core",
-  roleName: "Team Admin",
+  roleName: "Super Admin",
   assignedByEmail: "admin@system.local",
 });
 

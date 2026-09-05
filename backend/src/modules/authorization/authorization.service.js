@@ -1,7 +1,7 @@
 import Membership from "../memberships/membership.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
 import RolePermission from "../roles/role-permission.model.js";
-
+import User from "../users/user.model.js";
 import Role from "../roles/role.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
@@ -112,28 +112,131 @@ export async function resolvePermissions(userId, teamId) {
 }
 
 /**
+ * Helper: Check if a user holds an active Super Admin role dynamically in the database
+ */
+export async function isSuperAdmin(userId) {
+  if (!userId) return false;
+
+  const superAdminRoles = await Role.find({
+    name: { $in: ["Super Admin", "Platform Super Admin"] },
+    status: "ACTIVE",
+  }).select("_id");
+
+  if (!superAdminRoles || superAdminRoles.length === 0) return false;
+  const superAdminRoleIds = superAdminRoles.map((r) => r._id);
+
+  const memberships = await Membership.find({
+    userId,
+    status: "ACTIVE",
+  }).select("_id");
+
+  if (!memberships || memberships.length === 0) return false;
+  const membershipIds = memberships.map((m) => m._id);
+
+  const hasSuperAdminRole = await MembershipRole.exists({
+    membershipId: { $in: membershipIds },
+    roleId: { $in: superAdminRoleIds },
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  });
+
+  return Boolean(hasSuperAdminRole);
+}
+
+/**
+ * Helper: Check if a user is a Team Admin in a specific team
+ */
+export async function isTeamAdmin(userId, teamId) {
+  if (!userId || !teamId) return false;
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" }).select("_id");
+  if (!membership) return false;
+
+  const adminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
+  if (!adminRole) return false;
+
+  const hasAdminRole = await MembershipRole.exists({
+    membershipId: membership._id,
+    roleId: adminRole._id,
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  });
+
+  return Boolean(hasAdminRole);
+}
+
+/**
+ * Helper: Get all active Super Admin User IDs across the system
+ */
+export async function getAllSuperAdminUserIds() {
+  const superAdminRoles = await Role.find({
+    name: { $in: ["Super Admin", "Platform Super Admin"] },
+    status: "ACTIVE",
+  }).select("_id");
+
+  if (!superAdminRoles || superAdminRoles.length === 0) return [];
+  const superAdminRoleIds = superAdminRoles.map((r) => r._id);
+
+  const memberRoles = await MembershipRole.find({
+    roleId: { $in: superAdminRoleIds },
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  }).select("membershipId");
+
+  if (!memberRoles || memberRoles.length === 0) return [];
+  const membershipIds = memberRoles.map((mr) => mr.membershipId);
+
+  const memberships = await Membership.find({
+    _id: { $in: membershipIds },
+    status: "ACTIVE",
+  }).select("userId");
+
+  const userIds = memberships.map((m) => m.userId.toString());
+  return Array.from(new Set(userIds));
+}
+
+/**
+ * Helper: Get unique active role names for a user across all active memberships
+ */
+export async function getUserActiveRoleNames(userId) {
+  if (!userId) return [];
+  const memberships = await Membership.find({ userId, status: "ACTIVE" }).select("_id");
+  if (!memberships.length) return [];
+  const membershipIds = memberships.map((m) => m._id);
+
+  const mRoles = await MembershipRole.find({
+    membershipId: { $in: membershipIds },
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  }).populate("roleId", "name status");
+
+  const names = new Set();
+  for (const mr of mRoles) {
+    if (mr.roleId?.name && mr.roleId.status === "ACTIVE") {
+      names.add(mr.roleId.name);
+    }
+  }
+  return Array.from(names);
+}
+
+/**
  * 6. Main access check: Can user perform permission in team on resource?
- *    Super Admins bypass all team-scoped checks.
+ *    Super Admins (verified dynamically via DB roles) bypass all team-scoped checks.
  */
 export async function can(userId, teamId, permissionKey, resource = null) {
-  if (!userId || !teamId || !permissionKey) return false;
+  if (!userId || !permissionKey) return false;
 
-  // Super Admin bypass — Super Admins have unrestricted access across all teams
-  const superAdminRole = await Role.findOne({ name: "Super Admin", isSystemRole: true }).select("_id");
-  if (superAdminRole) {
-    const superAdminMemberRoles = await MembershipRole.find({
-      roleId: superAdminRole._id,
-      revokedAt: null,
-    }).populate({ path: "membershipId", select: "userId status" });
-    const isSuperAdmin = superAdminMemberRoles.some(
-      (mr) => mr.membershipId && String(mr.membershipId.userId) === String(userId) && mr.membershipId.status === "ACTIVE"
-    );
-    if (isSuperAdmin) return true;
+  // Dynamic Super Admin check: Any user holding an active Super Admin role
+  // in the database has unrestricted global access without hardcoded emails.
+  const userIsSuperAdmin = await isSuperAdmin(userId);
+  if (userIsSuperAdmin) {
+    return true;
   }
+
+  if (!teamId) return false;
 
   // Step 1: Check Role permissions in the given team
   const rolePermissions = await resolveRolePermissions(userId, teamId);
-  if (rolePermissions.has(permissionKey)) {
+  if (rolePermissions.has(permissionKey) || rolePermissions.has("*")) {
     return true;
   }
 
@@ -171,6 +274,10 @@ export const authorizationService = {
   hasValidDirectGrant,
   resolvePermissions,
   can,
+  isSuperAdmin,
+  isTeamAdmin,
+  getAllSuperAdminUserIds,
+  getUserActiveRoleNames,
   getAllUserPermissions,
 };
 

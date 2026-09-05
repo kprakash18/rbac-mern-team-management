@@ -31,6 +31,12 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   });
   const [isTeamSettingsOpen, setIsTeamSettingsOpen] = useState(false);
 
+  useEffect(() => {
+    if (workspace) {
+      setCurrentWorkspace(workspace);
+    }
+  }, [workspace]);
+
   const handleSaveTeamSettings = (updated) => {
     setCurrentWorkspace(updated);
     try {
@@ -97,7 +103,24 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     fetchActiveBulletins();
 
     const socket = getSocket();
+    if (!socket) return; // Socket not yet connected (e.g. after page refresh — guard against null crash)
+
     const handleNewBulletin = (bulletin) => {
+      // If bulletin is workspace-scoped, only accept if it matches the current workspace
+      if (bulletin.scope === 'WORKSPACE_SCOPED') {
+        const targets = (bulletin.targetWorkspaces || []).filter((t) => typeof t === 'string' && !t.includes('All Workspaces'));
+        if (targets.length > 0) {
+          const wsId = currentWorkspace?._id || currentWorkspace?.id;
+          const wsName = currentWorkspace?.name;
+          const isMatch = targets.some(
+            (t) =>
+              t === String(wsId) ||
+              (wsName && t.trim().toLowerCase() === wsName.trim().toLowerCase())
+          );
+          if (!isMatch) return;
+        }
+      }
+
       const now = new Date();
       const starts = bulletin.startsAt ? new Date(bulletin.startsAt) : now;
       const expires = bulletin.expiresAt ? new Date(bulletin.expiresAt) : null;
@@ -116,12 +139,28 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       socket.off('bulletin:new', handleNewBulletin);
       socket.off('broadcast:new', handleNewBulletin);
     };
-  }, [fetchActiveBulletins]);
+  }, [fetchActiveBulletins, currentWorkspace]);
 
   const now = new Date();
   const validBulletins = activeBulletins.filter((b) => {
     const bId = b._id || b.id;
     if (dismissedBannerIds.includes(bId)) return false;
+
+    // Check workspace scope for displayed bulletins
+    if (b.scope === 'WORKSPACE_SCOPED') {
+      const targets = (b.targetWorkspaces || []).filter((t) => typeof t === 'string' && !t.includes('All Workspaces'));
+      if (targets.length > 0) {
+        const wsId = currentWorkspace?._id || currentWorkspace?.id;
+        const wsName = currentWorkspace?.name;
+        const isMatch = targets.some(
+          (t) =>
+            t === String(wsId) ||
+            (wsName && t.trim().toLowerCase() === wsName.trim().toLowerCase())
+        );
+        if (!isMatch) return false;
+      }
+    }
+
     const starts = b.startsAt ? new Date(b.startsAt) : now;
     const expires = b.expiresAt ? new Date(b.expiresAt) : null;
     return starts <= now && (!expires || expires > now);

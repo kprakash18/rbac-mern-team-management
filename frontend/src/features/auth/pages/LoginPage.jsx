@@ -52,14 +52,20 @@ export default function LoginPage({ onLoginSuccess }) {
 
       const responsePayload = response.data?.data;
       if (responsePayload) {
+        const isUserSuperAdmin = Boolean(
+          responsePayload.user.isSuperAdmin ||
+          responsePayload.user.role === 'Platform Super Admin' ||
+          responsePayload.user.roles?.includes('Super Admin') ||
+          responsePayload.user.roles?.includes('Platform Super Admin')
+        );
+
         const authenticatedUser = {
           ...responsePayload.user,
           token: responsePayload.accessToken,
-          role:
-            responsePayload.user.email === 'admin@system.local' ||
-            responsePayload.user.email === 'admin@platform.internal'
-              ? 'Platform Super Admin'
-              : responsePayload.user.role || 'Member',
+          isSuperAdmin: isUserSuperAdmin,
+          role: isUserSuperAdmin
+            ? 'Platform Super Admin'
+            : responsePayload.user.role || 'Member',
           mustChangePassword: Boolean(
             responsePayload.requiresPasswordChange ?? responsePayload.user.mustChangePassword
           ),

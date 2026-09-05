@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { getSocket } from '../../../../lib/socket';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
 import ConfirmModal from '../../../../components/shared/ConfirmModal';
@@ -146,6 +147,69 @@ export default function JitRequestView({ currentUser, workspace }) {
     fetchRequestsAndCatalog();
   }, [fetchRequestsAndCatalog]);
 
+  // Real-time socket listeners — keep both requester and admin screens in sync
+  useEffect(() => {
+    if (!teamId) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    // A new JIT request was submitted → admins see it immediately
+    const handleRequestCreated = ({ accessRequest }) => {
+      if (!accessRequest) return;
+      // Re-fetch to get fully populated request object
+      fetchRequestsAndCatalog();
+    };
+
+    // A request was approved or rejected → requester's status badge updates live
+    const handleRequestResolved = ({ requestId, status }) => {
+      if (!requestId || !status) return;
+      const id = String(requestId);
+      setRequests((prev) =>
+        prev.map((r) =>
+          String(r.id) === id || String(r._id) === id
+            ? {
+                ...r,
+                status,
+                statusLabel:
+                  status === 'APPROVED' ? 'Active'
+                  : status === 'REJECTED' ? 'Rejected'
+                  : status === 'REVOKED' ? 'Revoked Early'
+                  : status === 'CANCELLED' ? 'Cancelled'
+                  : status,
+              }
+            : r
+        )
+      );
+    };
+
+    // A grant was revoked → both admin and user see the updated status
+    const handleGrantRevoked = ({ requestId }) => {
+      const matchId = String(requestId || '');
+      if (!matchId) {
+        // Fallback: refresh list if we can't match by requestId
+        fetchRequestsAndCatalog();
+        return;
+      }
+      setRequests((prev) =>
+        prev.map((r) =>
+          String(r.id) === matchId || String(r._id) === matchId
+            ? { ...r, status: 'REVOKED', statusLabel: 'Revoked Early' }
+            : r
+        )
+      );
+    };
+
+    socket.on('access_request:created', handleRequestCreated);
+    socket.on('access_request:resolved', handleRequestResolved);
+    socket.on('access_grant:revoked', handleGrantRevoked);
+
+    return () => {
+      socket.off('access_request:created', handleRequestCreated);
+      socket.off('access_request:resolved', handleRequestResolved);
+      socket.off('access_grant:revoked', handleGrantRevoked);
+    };
+  }, [teamId, fetchRequestsAndCatalog]);
+
   // Actions for Team Admin
   const handleApprove = async (reqId) => {
     if (!teamId) return;
@@ -258,12 +322,14 @@ export default function JitRequestView({ currentUser, workspace }) {
       await api.patch(`/api/teams/${teamId}/access-requests/${editingRequest.id}`, {
         reason: editJustification.trim(),
         durationMinutes: minutes,
+        resource: editTicketId.trim(),
       });
       setRequests((prev) =>
         prev.map((r) =>
           r.id === editingRequest.id
             ? {
                 ...r,
+                ticketId: editTicketId.trim() || r.ticketId,
                 justification: editJustification.trim(),
                 requestedDuration: editDuration,
               }
@@ -445,31 +511,33 @@ export default function JitRequestView({ currentUser, workspace }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Requester Filter */}
-          <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-border-subtle">
-            <button
-              type="button"
-              onClick={() => setRequesterFilter('ALL')}
-              className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
-                requesterFilter === 'ALL'
-                  ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              All Team Members
-            </button>
-            <button
-              type="button"
-              onClick={() => setRequesterFilter('ME')}
-              className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
-                requesterFilter === 'ME'
-                  ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
-                  : 'text-on-surface-variant hover:text-on-surface'
-              }`}
-            >
-              My Requests
-            </button>
-          </div>
+          {/* Requester Filter — visible to admins only */}
+          {(isTeamAdmin || isSuperAdmin) && (
+            <div className="flex items-center bg-surface-container-low p-1 rounded-lg border border-border-subtle">
+              <button
+                type="button"
+                onClick={() => setRequesterFilter('ALL')}
+                className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
+                  requesterFilter === 'ALL'
+                    ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                All Team Members
+              </button>
+              <button
+                type="button"
+                onClick={() => setRequesterFilter('ME')}
+                className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
+                  requesterFilter === 'ME'
+                    ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs'
+                    : 'text-on-surface-variant hover:text-on-surface'
+                }`}
+              >
+                My Requests
+              </button>
+            </div>
+          )}
 
           {/* Status Tabs */}
           <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg border border-border-subtle">
@@ -514,7 +582,7 @@ export default function JitRequestView({ currentUser, workspace }) {
                     <th className="py-3 px-4">Justification &amp; Ticket</th>
                     <th className="py-3 px-4 w-32">Duration</th>
                     <th className="py-3 px-4 w-36 text-center">Status</th>
-                    <th className="py-3 px-4 w-36 text-right">Action</th>
+                    <th className="py-3 px-4 w-40 text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border-subtle text-body-sm">
@@ -616,7 +684,28 @@ export default function JitRequestView({ currentUser, workspace }) {
                         {/* Action / Governance */}
                         <td className="py-3.5 px-4 w-40 text-right align-top">
                           {req.status === 'PENDING' ? (
-                            needsSuperAdminApproval && !canApproveAll ? (
+                            isRequester ? (
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleStartEditRequest(req)}
+                                  className="px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-[11px] transition-colors cursor-pointer border border-border-subtle flex items-center gap-1"
+                                  title="Edit Request"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">edit</span>
+                                  Edit
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setConfirmWithdrawReq(req)}
+                                  className="px-2 py-1 rounded-md bg-surface-container hover:bg-red-50 hover:text-red-700 text-on-surface-variant font-medium text-[11px] transition-colors cursor-pointer border border-border-subtle flex items-center gap-1"
+                                  title="Cancel / Delete Request"
+                                >
+                                  <span className="material-symbols-outlined text-[13px]">delete</span>
+                                  Delete
+                                </button>
+                              </div>
+                            ) : needsSuperAdminApproval && !canApproveAll ? (
                               <div className="flex flex-col items-end">
                                 <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-50 text-purple-700 border border-purple-200 inline-flex items-center gap-1">
                                   <span className="material-symbols-outlined text-[12px]">security</span>
@@ -643,31 +732,13 @@ export default function JitRequestView({ currentUser, workspace }) {
                                   Reject
                                 </button>
                               </div>
-                            ) : isRequester ? (
-                              <div className="flex items-center justify-end gap-1.5">
-                                <button
-                                  type="button"
-                                  onClick={() => handleStartEditRequest(req)}
-                                  className="px-2 py-1 rounded-md bg-surface-container hover:bg-surface-container-high text-on-surface font-medium text-[11px] transition-colors cursor-pointer border border-border-subtle flex items-center gap-1"
-                                >
-                                  <span className="material-symbols-outlined text-[13px]">edit</span>
-                                  <span>Edit</span>
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => setConfirmWithdrawReq(req)}
-                                  className="px-2 py-1 rounded-md bg-red-50 hover:bg-red-100 text-red-700 font-medium text-[11px] transition-colors cursor-pointer border border-red-200"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
                             ) : (
                               <span className="text-[11px] text-on-surface-variant italic">
                                 Pending review
                               </span>
                             )
                           ) : req.status === 'APPROVED' ? (
-                            isTeamAdmin || isRequester ? (
+                            (isTeamAdmin || isSuperAdmin) ? (
                               <button
                                 type="button"
                                 onClick={() => setConfirmRevokeReq(req)}
@@ -676,7 +747,7 @@ export default function JitRequestView({ currentUser, workspace }) {
                                 Revoke Early
                               </button>
                             ) : (
-                              <span className="text-[11px] text-emerald-700 font-semibold">Active</span>
+                              <span className="text-[11px] text-emerald-600 font-medium">Active</span>
                             )
                           ) : (
                             <span className="text-[11px] text-on-surface-variant">Closed</span>
