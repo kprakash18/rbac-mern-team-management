@@ -11,7 +11,8 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
     assignments = [{ workspace: 'Research & Development', role: 'Developer' }],
     workspace = 'Research & Development',
     role = 'Developer',
-    inviteLink = 'https://app.company.com/invite/tok_8f92a4b1c3d5e7',
+    inviteLink = window.location.origin,
+    isDirectAssignment = false,
   } = inviteData;
 
   const handleCopy = () => {
@@ -27,8 +28,12 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
         {/* Header */}
         <div className="flex items-center justify-between px-lg py-md border-b border-border-subtle bg-success-bg/20">
           <div className="flex items-center gap-sm text-success-text">
-            <span className="material-symbols-outlined text-[24px]">check_circle</span>
-            <h2 className="font-headline-md text-headline-md text-on-surface">User Invited Successfully!</h2>
+            <span className="material-symbols-outlined text-[24px]">
+              {isDirectAssignment ? 'verified_user' : 'check_circle'}
+            </span>
+            <h2 className="font-headline-md text-headline-md text-on-surface">
+              {isDirectAssignment ? 'Role Assigned Successfully!' : 'User Invited Successfully!'}
+            </h2>
           </div>
           <button
             aria-label="Close modal"
@@ -42,14 +47,22 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
         {/* Content */}
         <div className="p-lg flex flex-col gap-lg">
           <p className="font-body-base text-body-base text-on-surface-variant">
-            An invitation email was dispatched to <span className="font-label-bold text-on-surface">{email}</span>.
+            {isDirectAssignment ? (
+              <>
+                A notification email was dispatched to <span className="font-label-bold text-on-surface">{email}</span>. Since this user already has an active account, they have been directly added to the team and can immediately access the workspace.
+              </>
+            ) : (
+              <>
+                An invitation email was dispatched to <span className="font-label-bold text-on-surface">{email}</span>.
+              </>
+            )}
           </p>
 
           {/* Direct Link Sharing */}
           <div className="flex flex-col gap-sm">
             <label className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-xs">
               <span className="material-symbols-outlined text-[16px]">content_copy</span>
-              Or share this link directly via Slack / Teams / Chat:
+              {isDirectAssignment ? 'Direct Workspace Link:' : 'Or share this onboarding link directly via Slack / Teams / Chat:'}
             </label>
             <div className="flex items-center gap-xs">
               <input
@@ -82,7 +95,7 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
                 <span className="font-label-bold text-body-sm text-on-surface">{fullName}</span>
               </div>
               <div className="flex flex-col">
-                <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Initial Team</span>
+                <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Team / Workspace</span>
                 <span className="font-label-bold text-body-sm text-on-surface">
                   {assignments.map((a) => a.workspace).join(', ') || workspace}
                 </span>
@@ -105,8 +118,14 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
                 </div>
               </div>
               <div className="flex flex-col">
-                <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Link Expiration</span>
-                <span className="font-body-sm text-body-sm text-on-surface">In 24 hours (Single-use token)</span>
+                <span className="font-label-sm text-[11px] uppercase tracking-wider text-on-surface-variant">Access Mode</span>
+                <span className="font-body-sm text-body-sm text-on-surface font-semibold">
+                  {isDirectAssignment ? (
+                    <span className="text-emerald-700 dark:text-emerald-400">Immediate Access (Active Account)</span>
+                  ) : (
+                    'Onboarding Link (Expires in 1 hr)'
+                  )}
+                </span>
               </div>
             </div>
           </div>
@@ -118,7 +137,7 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
             onClick={onInviteAnother}
             className="px-lg py-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest hover:bg-surface-container-low font-label-bold text-label-sm text-on-surface transition-colors cursor-pointer"
           >
-            Invite Another User
+            Add Another User
           </button>
           <button
             onClick={onClose}

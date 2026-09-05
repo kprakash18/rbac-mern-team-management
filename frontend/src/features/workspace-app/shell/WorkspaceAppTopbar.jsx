@@ -1,13 +1,17 @@
 import { useState, useRef, useEffect } from 'react';
 import NotificationDropdown from './NotificationDropdown';
+import WorkspaceSwitcherDropdown from './WorkspaceSwitcherDropdown';
+import { useApp } from '@/context/useApp';
 
 export default function WorkspaceAppTopbar({
   workspace,
   currentUser,
   onAnnouncementsClick,
+  onOpenTeamSettings,
   onSelectTab,
   onLogout,
 }) {
+  const { clearWorkspace } = useApp();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -31,11 +35,15 @@ export default function WorkspaceAppTopbar({
 
   return (
     <header className="h-14 bg-surface-container-lowest/90 backdrop-blur-sm border-b border-border-subtle z-30 flex items-center justify-between px-lg shadow-xs shrink-0 sticky top-0">
-      {/* Left: Breadcrumb */}
+      {/* Left: Breadcrumb with Workspace Switcher */}
       <div className="flex items-center gap-xs text-[12px] text-on-surface-variant">
-        <span className="font-bold text-on-surface">{workspace?.name || 'Workspace'}</span>
+        <WorkspaceSwitcherDropdown
+          currentWorkspace={workspace}
+          onOpenTeamSettings={isTeamAdmin ? onOpenTeamSettings : undefined}
+          placement="bottom-left"
+        />
         <span className="material-symbols-outlined text-[14px]">chevron_right</span>
-        <span>Employee Portal</span>
+        <span className="hidden sm:inline">Employee Portal</span>
       </div>
 
       {/* Right: Actions & User Logo */}
@@ -87,6 +95,19 @@ export default function WorkspaceAppTopbar({
               </div>
 
               <div className="py-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    clearWorkspace();
+                  }}
+                  className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left font-medium"
+                >
+                  <span className="material-symbols-outlined text-[18px] text-primary">
+                    apps
+                  </span>
+                  <span>Switch Workspace Hub</span>
+                </button>
                 <button
                   type="button"
                   onClick={() => {
