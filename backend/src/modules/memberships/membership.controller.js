@@ -3,11 +3,13 @@ import { membershipService } from "./membership.service.js";
 export async function addMember(req, res, next) {
   try {
     const { teamId } = req.params;
-    const { userId } = req.body;
+    const { userId, roleId, roleName } = req.body;
 
     const membership = await membershipService.addMemberToTeam({
       teamId,
       userId,
+      roleId,
+      roleName,
       addedBy: req.user.id,
     });
 

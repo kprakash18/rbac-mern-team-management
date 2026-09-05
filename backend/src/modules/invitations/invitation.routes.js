@@ -16,7 +16,10 @@ teamInvitationRouter.delete("/:invitationId", authenticate, requirePermission("i
 // Public router (mounted at /api/invitations)
 const publicInvitationRouter = Router();
 
+publicInvitationRouter.get("/verify/:token", invitationController.verifyInvitation);
+publicInvitationRouter.get("/:token", invitationController.verifyInvitation);
 publicInvitationRouter.post("/accept", invitationController.acceptInvitation);
+publicInvitationRouter.post("/accept/:token", invitationController.acceptInvitation);
 
 export { teamInvitationRouter, publicInvitationRouter };
 export default teamInvitationRouter;

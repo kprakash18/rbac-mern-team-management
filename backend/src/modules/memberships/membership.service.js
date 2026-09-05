@@ -7,6 +7,8 @@ import Role from "../roles/role.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
+import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
+import { env } from "../../config/env.js";
 import {
   BadRequestError,
   NotFoundError,
@@ -58,7 +60,7 @@ async function assertNotLastAdmin(teamId, membershipId) {
   }
 }
 
-export async function addMemberToTeam({ teamId, userId, addedBy }) {
+export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedBy }) {
   if (
     !mongoose.Types.ObjectId.isValid(teamId) ||
     !mongoose.Types.ObjectId.isValid(userId)
@@ -95,28 +97,56 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
       );
     }
 
-        if (existingMembership.status === "REMOVED") {
-            existingMembership.status = "ACTIVE";
-            existingMembership.joinedAt = new Date();
-            existingMembership.removedAt = null;
-            await existingMembership.save();
+    if (existingMembership.status === "REMOVED") {
+      existingMembership.status = "ACTIVE";
+      existingMembership.joinedAt = new Date();
+      existingMembership.removedAt = null;
+      await existingMembership.save();
 
-            emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
-            createTargetedNotifications({
-              recipients: [userId],
-              type: "GROUP_MEMBER_ADDED",
-              teamId,
-              resourceType: "TEAM",
-              resourceId: team._id,
-              metadata: { teamName: team.name, teamId: team._id },
-            }).catch((err) => console.error("Failed to persist notification:", err));
+      // Resolve role if provided
+      let targetRole = null;
+      if (roleId && mongoose.Types.ObjectId.isValid(roleId)) {
+        targetRole = await Role.findById(roleId);
+      } else if (roleName) {
+        targetRole = await Role.findOne({ name: roleName, status: "ACTIVE" });
+      } else {
+        targetRole = await Role.findOne({ name: "Developer", status: "ACTIVE" });
+      }
 
-            return getMembershipById({
-                teamId,
-                membershipId: existingMembership._id,
+      if (targetRole) {
+        await MembershipRole.findOneAndUpdate(
+          { membershipId: existingMembership._id, roleId: targetRole._id },
+          { assignedBy: addedBy || userId, assignedAt: new Date(), revokedAt: null },
+          { upsert: true }
+        );
+      }
+
+      emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
+      createTargetedNotifications({
+        recipients: [userId],
+        type: "GROUP_MEMBER_ADDED",
+        teamId,
+        resourceType: "TEAM",
+        resourceId: team._id,
+        metadata: { teamName: team.name, teamId: team._id, roleName: targetRole?.name || "Developer" },
+      }).catch((err) => console.error("Failed to persist notification:", err));
+
+      // Dispatch Onboarding / Role Assignment Email
+      const workspaceUrl = `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`;
+
+      sendRoleAssignedEmail({
+        to: user.email,
+        recipientName: user.name,
+        teamName: team.name,
+        roleName: targetRole?.name || "Developer",
+        workspaceUrl,
+      }).catch((err) => console.error("Onboarding email dispatch failed:", err));
+
+      return getMembershipById({
+        teamId,
+        membershipId: existingMembership._id,
       });
     }
-
   }
 
   // 4. Create brand new Membership document
@@ -127,6 +157,25 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
     joinedAt: new Date(),
   });
 
+  // Assign initial role
+  let targetRole = null;
+  if (roleId && mongoose.Types.ObjectId.isValid(roleId)) {
+    targetRole = await Role.findById(roleId);
+  } else if (roleName) {
+    targetRole = await Role.findOne({ name: roleName, status: "ACTIVE" });
+  } else {
+    targetRole = await Role.findOne({ name: "Developer", status: "ACTIVE" });
+  }
+
+  if (targetRole) {
+    await MembershipRole.create({
+      membershipId: newMembership._id,
+      roleId: targetRole._id,
+      assignedBy: addedBy || userId,
+      assignedAt: new Date(),
+    });
+  }
+
   emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
   createTargetedNotifications({
     recipients: [userId],
@@ -134,8 +183,19 @@ export async function addMemberToTeam({ teamId, userId, addedBy }) {
     teamId,
     resourceType: "TEAM",
     resourceId: team._id,
-    metadata: { teamName: team.name, teamId: team._id },
+    metadata: { teamName: team.name, teamId: team._id, roleName: targetRole?.name || "Developer" },
   }).catch((err) => console.error("Failed to persist notification:", err));
+
+  // Dispatch Onboarding / Role Assignment Email
+  const workspaceUrl = `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`;
+
+  sendRoleAssignedEmail({
+    to: user.email,
+    recipientName: user.name,
+    teamName: team.name,
+    roleName: targetRole?.name || "Developer",
+    workspaceUrl,
+  }).catch((err) => console.error("Onboarding email dispatch failed:", err));
 
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }

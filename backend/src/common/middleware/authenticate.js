@@ -1,5 +1,6 @@
 import { verifyAccessToken } from "../security/jwt.js";
 import User from "../../modules/users/user.model.js";
+import { isSuperAdmin } from "../../modules/authorization/authorization.service.js";
 import { UnauthorizedError, ForbiddenError } from "../errors/index.js";
 
 export async function authenticate(req, res, next) {
@@ -63,12 +64,16 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    // Attach minimal identity representation to req.user
+    const userIsSuperAdmin = await isSuperAdmin(user._id);
+
+    // Attach identity representation to req.user
     req.user = {
       id: user._id,
       email: user.email,
+      name: user.name,
       accountStatus: user.accountStatus,
       mustChangePassword: Boolean(user.mustChangePassword),
+      isSuperAdmin: userIsSuperAdmin,
     };
 
     next();
