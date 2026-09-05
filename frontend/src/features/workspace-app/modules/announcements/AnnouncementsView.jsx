@@ -40,7 +40,9 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
       const raw = res.data?.data || [];
       const formatted = raw.map((b) => {
         const typeConf = TYPE_CONFIG[b.type] || TYPE_CONFIG.ANNOUNCEMENT;
-        const senderName = b.senderId?.name || b.senderId?.email || 'Team Admin';
+        const isGlobal = !b.teamId || b.scope === 'GLOBAL' || (b.targetWorkspaces || []).some((t) => typeof t === 'string' && t.includes('All Workspaces'));
+        const senderRole = isGlobal ? 'Super Admin' : 'Team Admin';
+        const senderName = b.senderId?.name || b.senderId?.email || (isGlobal ? 'Platform Super Admin' : 'Team Admin');
         return {
           id: b._id || b.id,
           _id: b._id || b.id,
@@ -51,9 +53,10 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
           severity: b.severity || (b.type === 'OUTAGE' ? 'CRITICAL' : 'INFO'),
           isActive: b.status === 'ACTIVE',
           isSticky: Boolean(b.isSticky),
+          isGlobal,
           requiresAck: Boolean(b.requiresAck),
           sentAt: b.createdAt || new Date().toISOString(),
-          sentBy: `${senderName} (Team Admin)`,
+          sentBy: `${senderName} (${senderRole})`,
           isRead: false,
           isAcknowledged: false,
         };

@@ -1,3 +1,5 @@
+import WorkspaceSwitcherDropdown from './WorkspaceSwitcherDropdown';
+
 const WORKSPACE_APP_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'tasks', label: 'Tasks & Sprints', icon: 'task_alt' },
@@ -74,46 +76,52 @@ export default function WorkspaceAppSidebar({
           </button>
         </div>
 
-        {/* Workspace Switcher Pill */}
-        {isCollapsed ? (
-          <div
-            onClick={isTeamAdmin ? onOpenTeamSettings : undefined}
-            className={`w-full flex justify-center py-1 ${isTeamAdmin ? 'cursor-pointer' : ''}`}
-            title={`${workspaceName} - Prod US-East${isTeamAdmin ? ' (Click to configure team settings)' : ''}`}
-          >
-            <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0"></div>
-          </div>
-        ) : (
-          <div
-            onClick={isTeamAdmin ? onOpenTeamSettings : undefined}
-            className="p-sm rounded-lg bg-surface-container-low border border-border-subtle flex items-center justify-between cursor-pointer hover:bg-surface-container transition-colors"
-            title={isTeamAdmin ? 'Click to configure team settings' : workspaceName}
-          >
-            <div className="flex items-center gap-xs min-w-0">
-              <div className="w-2 h-2 rounded-full bg-primary shrink-0"></div>
-              <div className="truncate">
-                <p className="font-label-bold text-label-bold text-on-surface truncate">
-                  {workspaceName}
-                </p>
-                <p className="text-[11px] font-mono text-on-surface-variant truncate">
-                  {workspace?.region || 'Prod US-East'}
-                </p>
-              </div>
-            </div>
-            {isTeamAdmin ? (
-              <span
-                className="material-symbols-outlined text-on-surface-variant hover:text-primary text-[18px] transition-colors"
-                title="Configure Team Settings"
+        {/* Workspace Switcher Pill / Trigger */}
+        <WorkspaceSwitcherDropdown
+          currentWorkspace={workspace}
+          onOpenTeamSettings={isTeamAdmin ? onOpenTeamSettings : undefined}
+          placement={isCollapsed ? 'bottom-left' : 'bottom-left'}
+          trigger={({ isOpen, toggle }) =>
+            isCollapsed ? (
+              <div
+                onClick={toggle}
+                className="w-full flex justify-center py-1 cursor-pointer"
+                title={`${workspaceName} (Click to switch workspace)`}
               >
-                settings
-              </span>
+                <div className={`w-3 h-3 rounded-full bg-primary shrink-0 transition-transform ${isOpen ? 'scale-125 ring-2 ring-primary/30' : ''}`} />
+              </div>
             ) : (
-              <span className="material-symbols-outlined text-on-surface-variant text-[18px]">
-                unfold_more
-              </span>
-            )}
-          </div>
-        )}
+              <div
+                onClick={toggle}
+                className={`p-sm rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
+                  isOpen
+                    ? 'bg-surface-container border-primary/50 ring-1 ring-primary/20'
+                    : 'bg-surface-container-low border-border-subtle hover:bg-surface-container'
+                }`}
+                title="Click to switch workspace"
+              >
+                <div className="flex items-center gap-xs min-w-0">
+                  <div className="w-2 h-2 rounded-full bg-primary shrink-0"></div>
+                  <div className="truncate">
+                    <p className="font-label-bold text-label-bold text-on-surface truncate">
+                      {workspaceName}
+                    </p>
+                    <p className="text-[11px] font-mono text-on-surface-variant truncate">
+                      {workspace?.region || 'Prod US-East'}
+                    </p>
+                  </div>
+                </div>
+                <span
+                  className={`material-symbols-outlined text-on-surface-variant text-[18px] transition-transform duration-200 ${
+                    isOpen ? 'rotate-180 text-primary' : ''
+                  }`}
+                >
+                  unfold_more
+                </span>
+              </div>
+            )
+          }
+        />
 
         {/* Navigation Items */}
         <nav className={`flex flex-col ${isCollapsed ? 'items-center gap-1.5' : 'gap-1'} w-full`}>

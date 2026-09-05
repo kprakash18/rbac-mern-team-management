@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import NotificationDropdown from '../../shell/NotificationDropdown';
+import WorkspaceSwitcherDropdown from '../../shell/WorkspaceSwitcherDropdown';
+import { useApp } from '@/context/useApp';
 import api from '@/lib/api';
 
 export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
+  const { clearWorkspace } = useApp();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const userMenuRef = useRef(null);
 
@@ -99,9 +102,13 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg">
-      {/* Top search bar & actions */}
-      <div className="flex items-center justify-between pb-sm border-b border-border-subtle">
-        <div className="flex items-center gap-md flex-1 max-w-md">
+      {/* Top search bar, workspace switcher & actions */}
+      <div className="flex items-center justify-between pb-sm border-b border-border-subtle gap-md flex-wrap">
+        <div className="flex items-center gap-md flex-1 max-w-lg">
+          <WorkspaceSwitcherDropdown
+            currentWorkspace={workspace}
+            placement="bottom-left"
+          />
           <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-surface-container-lowest border border-border-subtle text-on-surface-variant w-full shadow-sm">
             <span className="material-symbols-outlined text-[18px]">search</span>
             <input
@@ -119,7 +126,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
             className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 font-label-sm text-label-sm transition-opacity shadow-sm cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">bolt</span>
-            <span>Request JIT Elevation</span>
+            <span className="hidden sm:inline">Request JIT Elevation</span>
           </button>
           <NotificationDropdown
             currentUser={currentUser}
@@ -154,10 +161,26 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
                       {teamRoleTitle}
                     </span>
                   </div>
-                  <p className="text-[12px] text-on-surface-variant truncate">{userEmail}</p>
+                  {userEmail && <p className="text-[12px] text-on-surface-variant truncate">{userEmail}</p>}
                   <span className="inline-block mt-1 px-2 py-0.5 rounded-full bg-surface-container-high text-on-surface-variant text-[10px] font-semibold">
                     {userRole}
                   </span>
+                </div>
+
+                <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      clearWorkspace();
+                    }}
+                    className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span className="material-symbols-outlined text-[18px] text-primary">
+                      apps
+                    </span>
+                    <span>Switch Workspace Hub</span>
+                  </button>
                 </div>
 
                 <div className="border-t border-border-subtle pt-1">

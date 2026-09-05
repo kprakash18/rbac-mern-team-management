@@ -27,24 +27,78 @@ export function AppProvider({ children }) {
         const response = await api.get('/api/auth/me');
         const dbUser = response.data?.data?.user;
         if (dbUser) {
+          const isUserSuperAdmin = Boolean(
+            dbUser.isSuperAdmin ||
+            dbUser.role === 'Platform Super Admin' ||
+            dbUser.roles?.includes('Super Admin') ||
+            dbUser.roles?.includes('Platform Super Admin')
+          );
+
           const syncedUser = {
             ...storedSession,
             ...dbUser,
-            role:
-              dbUser.email === 'admin@system.local' || dbUser.email === 'admin@platform.internal'
-                ? 'Platform Super Admin'
-                : dbUser.role || storedSession.role || 'Member',
+            isSuperAdmin: isUserSuperAdmin,
+            role: isUserSuperAdmin
+              ? 'Platform Super Admin'
+              : dbUser.role || storedSession.role || 'Member',
           };
           setStorage(STORAGE_KEYS.AUTH, syncedUser);
           setAuthUser(syncedUser);
         }
       } catch (error) {
         console.warn('[Auth] Session validation error:', error.message);
+        const errCode = error.response?.data?.code || error.response?.data?.error?.code;
+        if (errCode === 'ACCOUNT_SUSPENDED') {
+          const suspendedUser = {
+            ...storedSession,
+            accountStatus: 'SUSPENDED',
+            status: 'Suspended',
+          };
+          setStorage(STORAGE_KEYS.AUTH, suspendedUser);
+          setAuthUser(suspendedUser);
+        }
       }
     }
 
     validateAndSyncSession();
   }, []);
+
+  // Auto-resolve and activate workspace if teamId is provided in URL query params
+  useEffect(() => {
+    async function resolveUrlWorkspace() {
+      if (!authUser?.token) return;
+      const urlParams = new URLSearchParams(window.location.search);
+      const targetTeamId = urlParams.get('teamId') || urlParams.get('workspace');
+      if (!targetTeamId) return;
+
+      try {
+        const res = await api.get(`/api/teams/${targetTeamId}`);
+        const teamData = res.data?.data?.team || res.data?.data || res.data;
+        if (teamData) {
+          const formatted = {
+            ...teamData,
+            id: teamData._id || teamData.id,
+            name: teamData.name,
+            role: teamData.role || 'Developer',
+            isTeamAdmin: Boolean(
+              teamData.isTeamAdmin ||
+              teamData.role === 'Team Admin' ||
+              teamData.role?.toLowerCase().includes('admin')
+            ),
+            icon: teamData.icon || 'domain',
+            iconBgColor: teamData.iconBgColor || 'bg-primary',
+            iconTextColor: teamData.iconTextColor || 'text-on-primary',
+          };
+          setStorage(STORAGE_KEYS.WORKSPACE, formatted);
+          setActiveWorkspace(formatted);
+        }
+      } catch (err) {
+        console.warn('Could not auto-load team workspace from URL query:', err);
+      }
+    }
+
+    resolveUrlWorkspace();
+  }, [authUser]);
 
   /**
    * Called after a successful login API response.
@@ -75,8 +129,11 @@ export function AppProvider({ children }) {
       disconnectSocket();
       removeStorage(STORAGE_KEYS.AUTH);
       removeStorage(STORAGE_KEYS.WORKSPACE);
+      sessionStorage.clear();
       setAuthUser(null);
       setActiveWorkspace(null);
+      window.history.replaceState({}, document.title, '/');
+      window.location.href = '/';
     }
   }, [authUser]);
 
@@ -107,10 +164,12 @@ export function AppProvider({ children }) {
     setActiveWorkspace(null);
   }, []);
 
-  const isSuperAdmin =
+  const isSuperAdmin = Boolean(
+    authUser?.isSuperAdmin ||
     authUser?.role === SUPER_ADMIN_ROLE ||
-    authUser?.email === 'admin@system.local' ||
-    authUser?.email === 'admin@platform.internal';
+    authUser?.roles?.includes('Super Admin') ||
+    authUser?.roles?.includes('Platform Super Admin')
+  );
 
   return (
     <AppContext.Provider
