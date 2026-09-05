@@ -8,13 +8,15 @@ import RequestDetailsModal from './jit/RequestDetailsModal.jsx';
 import JitFilterModal from './jit/JitFilterModal.jsx';
 import Toast from '../../../components/shared/Toast.jsx';
 import { useToast } from '../../../lib/useToast.js';
+import { getSocket } from '@/lib/socket';
 import api from '@/lib/api';
 
 export default function JitAccessView() {
-  const [activeTab, setActiveTab] = useState('active');
+  const [activeTab, setActiveTab] = useState('pending');
   const [grants, setGrants] = useState([]);
   const [pendingRequests, setPendingRequests] = useState([]);
   const [history, setHistory] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Filters
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -32,69 +34,161 @@ export default function JitAccessView() {
 
   const fetchJitRequests = useCallback(async () => {
     try {
-      const teamsRes = await api.get('/api/teams');
-      const teams = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
-      if (teams.length > 0) {
-        const teamId = teams[0]._id || teams[0].id;
-        const res = await api.get(`/api/teams/${teamId}/access-requests`);
-        const requests = Array.isArray(res.data?.data) ? res.data?.data : [];
+      setLoading(true);
+      const res = await api.get('/api/access-requests?limit=100');
+      const requests = Array.isArray(res.data?.data) ? res.data?.data : [];
 
-        const pending = requests.filter((r) => r.status === 'PENDING').map((r) => ({
-          id: r._id || r.id,
-          user: {
-            name: r.userId?.name || 'Developer',
-            email: r.userId?.email || 'dev@example.com',
-            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
-          },
-          workspace: teams[0].name,
-          role: r.targetRole || 'Elevated Access',
-          justification: r.justification || r.reason || 'Operational task',
-          duration: `${r.durationMinutes || 60}m`,
-          requestedAt: r.createdAt ? new Date(r.createdAt).toLocaleTimeString() : 'Just now',
-          timeRemainingSec: (r.durationMinutes || 60) * 60,
-        }));
+      const pending = requests
+        .filter((r) => r.status === 'PENDING')
+        .map((r) => {
+          const reqUser = r.requesterId && typeof r.requesterId === 'object' ? r.requesterId : {};
+          const perm = r.permissionId && typeof r.permissionId === 'object' ? r.permissionId : {};
+          const team = r.teamId && typeof r.teamId === 'object' ? r.teamId : {};
+          const name = reqUser.name || reqUser.email || 'Team Admin';
+          const durationLabel = r.durationHours
+            ? (r.durationHours < 1 ? `${Math.round(r.durationHours * 60)}m` : `${r.durationHours}h`)
+            : `${r.durationMinutes || 120}m`;
 
-        const active = requests.filter((r) => r.status === 'APPROVED' || r.status === 'ACTIVE').map((r) => ({
-          id: r._id || r.id,
-          user: {
-            name: r.userId?.name || 'Developer',
-            email: r.userId?.email || 'dev@example.com',
-            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
-          },
-          workspace: teams[0].name,
-          role: r.targetRole || 'Elevated Access',
-          grantedBy: r.approvedBy?.name || 'System Admin',
-          grantedAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
-          timeRemainingSec: 3600,
-          totalDurationSec: 3600,
-        }));
+          return {
+            id: r._id || r.id,
+            _id: r._id || r.id,
+            user: {
+              name,
+              email: reqUser.email || '',
+              initials: name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TA',
+              bgClass: 'bg-primary-container text-on-primary',
+            },
+            workspace: team.name || 'Workspace',
+            teamId: team._id || r.teamId,
+            permission: perm.name || perm.key || 'Custom Permission',
+            permBadgeClass: 'bg-primary/10 text-primary border-primary/20',
+            targetResource: r.resource || '*',
+            reason: r.reason || 'Operational task',
+            justification: r.reason || 'Operational task',
+            requestedDuration: durationLabel,
+            submittedAt: r.createdAt
+              ? new Date(r.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : 'Just now',
+            timeRemainingSec: (r.durationHours || 2) * 3600,
+            approvalLevel: r.approvalLevel || 'SUPER_ADMIN',
+          };
+        });
 
-        const hist = requests.filter((r) => ['REJECTED', 'EXPIRED', 'REVOKED'].includes(r.status)).map((r) => ({
-          id: r._id || r.id,
-          user: {
-            name: r.userId?.name || 'Developer',
-            email: r.userId?.email || 'dev@example.com',
-            initials: (r.userId?.name || 'DV').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
-          },
-          workspace: teams[0].name,
-          role: r.targetRole || 'Elevated Access',
-          status: r.status,
-          decisionBy: r.approvedBy?.name || 'System Admin',
-          decisionAt: r.updatedAt ? new Date(r.updatedAt).toLocaleTimeString() : 'Just now',
-        }));
+      const active = requests
+        .filter((r) => r.status === 'APPROVED' || r.status === 'ACTIVE')
+        .map((r) => {
+          const reqUser = r.requesterId && typeof r.requesterId === 'object' ? r.requesterId : {};
+          const perm = r.permissionId && typeof r.permissionId === 'object' ? r.permissionId : {};
+          const team = r.teamId && typeof r.teamId === 'object' ? r.teamId : {};
+          const reviewer = r.reviewedBy && typeof r.reviewedBy === 'object' ? r.reviewedBy : {};
+          const name = reqUser.name || reqUser.email || 'Team Admin';
+          const remainingSeconds = r.expiresAt
+            ? Math.max(0, Math.floor((new Date(r.expiresAt) - new Date()) / 1000))
+            : 3600;
 
-        setPendingRequests(pending);
-        setGrants(active);
-        setHistory(hist);
-      }
+          return {
+            id: r._id || r.id,
+            _id: r._id || r.id,
+            user: {
+              name,
+              email: reqUser.email || '',
+              initials: name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TA',
+              bgClass: 'bg-primary-container text-on-primary',
+            },
+            workspace: team.name || 'Workspace',
+            teamId: team._id || r.teamId,
+            permission: perm.name || perm.key || 'Custom Permission',
+            permBadgeClass: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+            targetResource: r.resource || '*',
+            grantedBy: reviewer.name || 'Super Admin',
+            grantedAt: r.reviewedAt || r.updatedAt
+              ? new Date(r.reviewedAt || r.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : 'Just now',
+            remainingSeconds,
+            totalSeconds: (r.durationHours || 2) * 3600,
+          };
+        });
+
+      const hist = requests
+        .filter((r) => ['REJECTED', 'EXPIRED', 'REVOKED'].includes(r.status))
+        .map((r) => {
+          const reqUser = r.requesterId && typeof r.requesterId === 'object' ? r.requesterId : {};
+          const perm = r.permissionId && typeof r.permissionId === 'object' ? r.permissionId : {};
+          const team = r.teamId && typeof r.teamId === 'object' ? r.teamId : {};
+          const reviewer = r.reviewedBy && typeof r.reviewedBy === 'object' ? r.reviewedBy : {};
+          const name = reqUser.name || reqUser.email || 'Team Admin';
+
+          return {
+            id: r._id || r.id,
+            _id: r._id || r.id,
+            user: {
+              name,
+              email: reqUser.email || '',
+              initials: name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TA',
+              bgClass: 'bg-surface-container-high text-on-surface',
+            },
+            workspace: team.name || 'Workspace',
+            permission: perm.name || perm.key || 'Custom Permission',
+            permBadgeClass: 'bg-surface-container text-on-surface border-border-subtle',
+            targetResource: r.resource || '*',
+            grantedBy: reviewer.name || 'Super Admin',
+            outcome: r.status,
+            outcomeClass:
+              r.status === 'REJECTED'
+                ? 'bg-warning-bg text-warning-text border-warning-bg'
+                : r.status === 'REVOKED'
+                ? 'bg-error-bg text-error-text border-error-container'
+                : 'bg-surface-variant text-on-surface-variant border-surface-variant',
+            duration: `${r.durationHours || 2}h`,
+            endedAt: r.updatedAt
+              ? new Date(r.updatedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+              : 'Just now',
+            reason: r.rejectionReason || 'Closed',
+          };
+        });
+
+      setPendingRequests(pending);
+      setGrants(active);
+      setHistory(hist);
     } catch (err) {
       console.warn('Failed to load JIT requests:', err);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     fetchJitRequests();
   }, [fetchJitRequests]);
+
+  // Real-time socket listeners for incoming JIT elevation requests from Team Admins
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const onReqCreated = () => {
+      fetchJitRequests();
+      showToast('New JIT Access Request received from Team Admin.', 'info');
+    };
+
+    const onReqResolved = () => {
+      fetchJitRequests();
+    };
+
+    const onGrantRevoked = () => {
+      fetchJitRequests();
+    };
+
+    socket.on('access_request:created', onReqCreated);
+    socket.on('access_request:resolved', onReqResolved);
+    socket.on('access_grant:revoked', onGrantRevoked);
+
+    return () => {
+      socket.off('access_request:created', onReqCreated);
+      socket.off('access_request:resolved', onReqResolved);
+      socket.off('access_grant:revoked', onGrantRevoked);
+    };
+  }, [fetchJitRequests, showToast]);
 
   // Real-time ticking timer for active grants with automatic expiration transition
   useEffect(() => {
@@ -138,81 +232,37 @@ export default function JitAccessView() {
     return () => clearInterval(timerInterval);
   }, []);
 
-  const handleRevokeGrant = (grantId) => {
-    const targetGrant = grants.find((g) => g.id === grantId);
-    if (!targetGrant) return;
-
-    setGrants((prev) => prev.filter((g) => g.id !== grantId));
-
-    // Append to audit history
-    const revokedRecord = {
-      id: `hist-${Date.now()}`,
-      user: targetGrant.user,
-      workspace: targetGrant.workspace,
-      permission: targetGrant.permission,
-      permBadgeClass: targetGrant.permBadgeClass,
-      targetResource: targetGrant.targetResource,
-      grantedBy: 'Super Admin',
-      outcome: 'REVOKED',
-      outcomeClass: 'bg-error-bg text-error-text border-error-container',
-      duration: `${Math.round((targetGrant.totalSeconds - targetGrant.remainingSeconds) / 60)} Mins Active`,
-      endedAt: 'Just now',
-      reason: 'Prematurely revoked by Super Admin.',
-    };
-
-    setHistory((prev) => [revokedRecord, ...prev]);
-    showToast(`JIT grant for ${targetGrant.user.name} (${targetGrant.permission}) was revoked.`);
-  };
-
-  const handleApproveRequest = (request) => {
-    // Remove from pending
-    setPendingRequests((prev) => prev.filter((r) => r.id !== request.id));
-
-    // Convert requested duration to seconds
-    let totalSeconds = 3600;
-    if (request.requestedDuration?.includes('4')) totalSeconds = 14400;
-    else if (request.requestedDuration?.includes('2')) totalSeconds = 7200;
-
-    // Create new active grant
-    const newGrant = {
-      id: `grant-${Date.now()}`,
-      user: request.user,
-      workspace: request.workspace,
-      permission: request.permission,
-      permBadgeClass: request.permBadgeClass,
-      targetResource: request.targetResource,
-      grantedBy: 'Super Admin',
-      totalSeconds,
-      remainingSeconds: totalSeconds,
-    };
-
-    setGrants((prev) => [newGrant, ...prev]);
-    showToast(`Approved elevation request for ${request.user.name} (${request.permission}).`);
-  };
-
-  const handleConfirmReject = (requestId, reason) => {
-    const targetReq = pendingRequests.find((r) => r.id === requestId);
-    setPendingRequests((prev) => prev.filter((r) => r.id !== requestId));
-
-    if (targetReq) {
-      const rejectedRecord = {
-        id: `hist-${Date.now()}`,
-        user: targetReq.user,
-        workspace: targetReq.workspace,
-        permission: targetReq.permission,
-        permBadgeClass: targetReq.permBadgeClass,
-        targetResource: targetReq.targetResource,
-        grantedBy: 'Super Admin',
-        outcome: 'REJECTED',
-        outcomeClass: 'bg-warning-bg text-warning-text border-warning-bg',
-        duration: '0 Mins',
-        endedAt: 'Just now',
-        reason: `Rejected: ${reason}`,
-      };
-      setHistory((prev) => [rejectedRecord, ...prev]);
+  const handleRevokeGrant = async (grantId) => {
+    try {
+      await api.delete(`/api/access-requests/${grantId}/revoke`);
+      showToast('JIT grant revoked early.');
+      fetchJitRequests();
+    } catch (err) {
+      console.error('Failed to revoke grant:', err);
+      showToast(err.response?.data?.message || 'Failed to revoke JIT grant.', 'error');
     }
+  };
 
-    showToast(`Access request rejected: ${reason}`);
+  const handleApproveRequest = async (request) => {
+    try {
+      await api.post(`/api/access-requests/${request.id}/approve`);
+      showToast(`Approved JIT request for ${request.user.name} (${request.permission}). Notification sent to Team Admin.`);
+      fetchJitRequests();
+    } catch (err) {
+      console.error('Failed to approve request:', err);
+      showToast(err.response?.data?.message || 'Failed to approve request.', 'error');
+    }
+  };
+
+  const handleConfirmReject = async (requestId, reason) => {
+    try {
+      await api.post(`/api/access-requests/${requestId}/reject`, { reason });
+      showToast(`JIT request rejected. Notification sent to Team Admin.`);
+      fetchJitRequests();
+    } catch (err) {
+      console.error('Failed to reject request:', err);
+      showToast(err.response?.data?.message || 'Failed to reject request.', 'error');
+    }
   };
 
   const handleCreateGrant = (newGrant) => {
@@ -258,9 +308,9 @@ export default function JitAccessView() {
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-lg">
         <div className="flex flex-col gap-base">
-          <h1 className="font-display-title text-display-title text-on-surface">JIT Access Grants</h1>
+          <h1 className="font-display-title text-display-title text-on-surface">JIT Access Governance</h1>
           <p className="font-body-base text-body-base text-on-surface-variant">
-            Temporary elevated permissions with live TTL and audit logs.
+            Inspect, approve, and manage Just-In-Time elevation requests from Team Admins across all teams.
           </p>
         </div>
         <div className="flex items-center gap-sm">
@@ -294,6 +344,23 @@ export default function JitAccessView() {
       <div className="flex gap-md border-b border-surface-variant mb-md">
         <button
           type="button"
+          onClick={() => setActiveTab('pending')}
+          className={`px-md py-sm border-b-2 font-label-bold text-label-bold flex items-center gap-xs transition-colors cursor-pointer ${
+            activeTab === 'pending'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-on-surface-variant hover:text-on-surface'
+          }`}
+        >
+          <span className="material-symbols-outlined text-[18px]">pending_actions</span>
+          Pending Team Admin Requests
+          {filteredRequests.length > 0 && (
+            <span className="bg-error-container text-on-error-container px-xs rounded-full font-label-sm text-label-sm ml-xs">
+              {filteredRequests.length}
+            </span>
+          )}
+        </button>
+        <button
+          type="button"
           onClick={() => setActiveTab('active')}
           className={`px-md py-sm border-b-2 font-label-bold text-label-bold flex items-center gap-xs transition-colors cursor-pointer ${
             activeTab === 'active'
@@ -306,23 +373,6 @@ export default function JitAccessView() {
           <span className="bg-surface-container text-on-surface px-1.5 py-0.5 rounded-full text-[11px] ml-xs">
             {filteredGrants.length}
           </span>
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('pending')}
-          className={`px-md py-sm border-b-2 font-label-bold text-label-bold flex items-center gap-xs transition-colors cursor-pointer ${
-            activeTab === 'pending'
-              ? 'border-primary text-primary'
-              : 'border-transparent text-on-surface-variant hover:text-on-surface'
-          }`}
-        >
-          <span className="material-symbols-outlined text-[18px]">pending_actions</span>
-          Pending Requests
-          {filteredRequests.length > 0 && (
-            <span className="bg-error-container text-on-error-container px-xs rounded-full font-label-sm text-label-sm ml-xs">
-              {filteredRequests.length}
-            </span>
-          )}
         </button>
         <button
           type="button"
@@ -366,8 +416,11 @@ export default function JitAccessView() {
       )}
 
       {/* Tables based on active tab */}
-      {activeTab === 'active' ? (
-        <ActiveGrantsTable grants={filteredGrants} onRevokeGrant={handleRevokeGrant} />
+      {loading ? (
+        <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
+          <span className="material-symbols-outlined animate-spin text-[32px] text-primary">progress_activity</span>
+          <span className="text-body-sm">Loading JIT elevation requests...</span>
+        </div>
       ) : activeTab === 'pending' ? (
         <PendingRequestsTable
           requests={filteredRequests}
@@ -375,6 +428,8 @@ export default function JitAccessView() {
           onApproveRequest={handleApproveRequest}
           onOpenRejectModal={setRejectingRequest}
         />
+      ) : activeTab === 'active' ? (
+        <ActiveGrantsTable grants={filteredGrants} onRevokeGrant={handleRevokeGrant} />
       ) : (
         <JitHistoryTable history={filteredHistory} />
       )}

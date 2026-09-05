@@ -5,6 +5,66 @@ import AuditLogDetailsModal from './audit/AuditLogDetailsModal.jsx';
 import Toast from '../../../components/shared/Toast.jsx';
 import { useToast } from '../../../lib/useToast.js';
 import api from '@/lib/api';
+import { getSocket } from '../../../lib/socket.js';
+
+function formatAuditLog(l) {
+  const actorName = l.actor?.name || l.actorId?.name || 'System';
+  const actorEmail = l.actor?.email || l.actorId?.email || 'system@internal';
+  const initials = (actorName || 'SYS').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'SA';
+  const workspaceName = l.teamId?.name || l.workspace || (l.teamId ? 'Workspace' : 'System / Global');
+
+  // Category determination
+  let category = l.category;
+  if (!category) {
+    const act = (l.action || '').toLowerCase();
+    if (act.includes('auth') || act.includes('login') || act.includes('password') || act.includes('session')) {
+      category = 'IAM';
+    } else if (act.includes('jit') || act.includes('access') || act.includes('grant')) {
+      category = 'ACCESS_CONTROL';
+    } else if (act.includes('role') || act.includes('permission') || act.includes('member')) {
+      category = 'GOVERNANCE';
+    } else if (act.includes('broadcast') || act.includes('bulletin') || act.includes('team') || act.includes('user')) {
+      category = 'SYSTEM';
+    } else {
+      category = 'SECURITY';
+    }
+  }
+
+  // Severity determination
+  let severity = l.severity;
+  if (!severity) {
+    const isFail = l.result === 'FAILURE' || l.result === 'FAILED';
+    const act = (l.action || '').toLowerCase();
+    if (isFail || act.includes('delete') || act.includes('suspend') || act.includes('revoke') || act.includes('outage')) {
+      severity = isFail ? 'CRITICAL' : 'WARNING';
+    } else {
+      severity = 'INFO';
+    }
+  }
+
+  return {
+    id: l._id || l.id,
+    _id: l._id || l.id,
+    timestamp: l.createdAt ? new Date(l.createdAt).toLocaleString() : 'Just now',
+    isoDate: l.createdAt || new Date().toISOString(),
+    actor: {
+      name: actorName,
+      email: actorEmail,
+      initials,
+    },
+    action: l.action || 'system.event',
+    actionLabel: l.action || 'System Event',
+    category,
+    severity,
+    targetIdentifier: l.targetId?.name || l.targetIdentifier || l.targetType || 'System Resource',
+    workspace: workspaceName,
+    ipAddress: l.ipAddress || '127.0.0.1',
+    result: (l.result || 'SUCCESS').toUpperCase(),
+    userAgent: l.userAgent || 'Mozilla/5.0 Chrome/128.0.0.0',
+    correlationId: l.correlationId || l.metadata?.correlationId || `corr-${(l._id || Math.random().toString(36)).substring(0, 8)}`,
+    metadata: l.metadata || {},
+  };
+}
 
 export default function SecurityAuditView() {
   const [logs, setLogs] = useState([]);
@@ -26,35 +86,10 @@ export default function SecurityAuditView() {
   const fetchAuditLogs = useCallback(async () => {
     try {
       setLoading(true);
-      const teamsRes = await api.get('/api/teams');
-      const teams = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
-      if (teams.length > 0) {
-        const teamId = teams[0]._id || teams[0].id;
-        const res = await api.get(`/api/teams/${teamId}/audit-logs`);
-        const rawLogs = Array.isArray(res.data?.data) ? res.data?.data : res.data?.data?.logs || [];
-        const formatted = rawLogs.map((l) => ({
-          id: l._id || l.id,
-          timestamp: l.createdAt ? new Date(l.createdAt).toLocaleString() : 'Just now',
-          isoDate: l.createdAt || new Date().toISOString(),
-          actor: {
-            name: l.actor?.name || l.actorId?.name || 'System Admin',
-            email: l.actor?.email || l.actorId?.email || 'admin@system.local',
-            initials: (l.actor?.name || 'SA').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase(),
-          },
-          action: l.action || 'system.event',
-          actionLabel: l.action || 'System Event',
-          category: l.category || 'IAM',
-          severity: l.severity || (l.result === 'FAILURE' ? 'WARNING' : 'INFO'),
-          targetIdentifier: l.targetId?.name || l.targetIdentifier || l.targetType || 'System Resource',
-          workspace: teams[0].name || 'Enterprise Core',
-          ipAddress: l.ipAddress || '127.0.0.1',
-          result: (l.result || 'SUCCESS').toUpperCase(),
-          userAgent: l.userAgent || 'Mozilla/5.0 Chrome/128.0.0.0',
-          correlationId: l.correlationId || `corr-${Math.random().toString(36).substring(2, 9)}`,
-          metadata: l.metadata || {},
-        }));
-        setLogs(formatted);
-      }
+      const res = await api.get('/api/audit-logs?limit=100');
+      const rawLogs = Array.isArray(res.data?.data) ? res.data?.data : res.data?.data?.logs || [];
+      const formatted = rawLogs.map(formatAuditLog);
+      setLogs(formatted);
     } catch (err) {
       console.warn('Failed to load live audit logs:', err);
     } finally {
@@ -64,6 +99,19 @@ export default function SecurityAuditView() {
 
   useEffect(() => {
     fetchAuditLogs();
+
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleNewLog = (newLogDoc) => {
+      const formatted = formatAuditLog(newLogDoc);
+      setLogs((prev) => [formatted, ...prev.filter((item) => (item.id || item._id) !== (formatted.id || formatted._id))]);
+    };
+
+    socket.on('audit:new', handleNewLog);
+    return () => {
+      socket.off('audit:new', handleNewLog);
+    };
   }, [fetchAuditLogs]);
 
   // Filtered Logs

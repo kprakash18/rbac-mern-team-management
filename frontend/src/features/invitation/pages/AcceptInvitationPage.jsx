@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { INVITATION_STATES } from '@/constants';
+import { useApp } from '@/context/useApp';
 import NewUserCard from '../components/NewUserCard';
 import ExistingUserCard from '../components/ExistingUserCard';
 import InvalidCard from '../components/InvalidCard';
@@ -9,6 +10,7 @@ import api from '@/lib/api';
 export default function AcceptInvitationPage() {
   const [searchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { login } = useApp();
   const token = searchParams.get('token');
 
   const [viewState, setViewState] = useState(INVITATION_STATES.NEW_USER);
@@ -52,10 +54,18 @@ export default function AcceptInvitationPage() {
   const handleJoinNewUser = async (formData) => {
     try {
       setLoading(true);
-      await api.post(`/api/invitations/accept/${token}`, {
+      const res = await api.post(`/api/invitations/accept/${token}`, {
         name: formData.fullName,
         password: formData.password,
       });
+      const data = res.data?.data;
+      if (data?.token && data?.user) {
+        login({
+          ...data.user,
+          token: data.token,
+          role: data.user.role || 'Member',
+        });
+      }
       navigate('/');
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to accept invitation. Please try again.');
@@ -67,7 +77,15 @@ export default function AcceptInvitationPage() {
   const handleAcceptExisting = async () => {
     try {
       setLoading(true);
-      await api.post(`/api/invitations/accept/${token}`);
+      const res = await api.post(`/api/invitations/accept/${token}`);
+      const data = res.data?.data;
+      if (data?.token && data?.user) {
+        login({
+          ...data.user,
+          token: data.token,
+          role: data.user.role || 'Member',
+        });
+      }
       navigate('/');
     } catch (err) {
       alert(err.response?.data?.message || 'Failed to accept invitation.');

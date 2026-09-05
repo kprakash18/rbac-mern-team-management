@@ -1,4 +1,46 @@
-export default function SuperAdminTopbar({ onCreateTeam, onBroadcast, isSidebarOpen = true }) {
+import { useState, useRef, useEffect } from 'react';
+import NotificationDropdown from '../../workspace-app/shell/NotificationDropdown';
+
+export default function SuperAdminTopbar({
+  onCreateTeam,
+  onBroadcast,
+  isSidebarOpen = true,
+  currentUser,
+  onLogout,
+  onSelectNav,
+}) {
+  const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+
+  const initials =
+    currentUser?.name
+      ?.split(' ')
+      .map((n) => n[0])
+      .join('')
+      .slice(0, 2)
+      .toUpperCase() || 'SA';
+
+  // Close popover when clicking outside
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsUserMenuOpen(false);
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleSelectTab = (tab) => {
+    if (tab === 'jit-request' || tab === 'jit-access') {
+      if (onSelectNav) onSelectNav('jit-access');
+    } else if (tab === 'team-members' || tab === 'users') {
+      if (onSelectNav) onSelectNav('users-access');
+    } else if (tab === 'announcements' || tab === 'broadcasts') {
+      if (onSelectNav) onSelectNav('system-broadcasts');
+    }
+  };
+
   return (
     <header
       className={`fixed top-0 right-0 h-16 bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] z-40 flex items-center justify-between px-xl transition-all duration-300 ${
@@ -34,19 +76,54 @@ export default function SuperAdminTopbar({ onCreateTeam, onBroadcast, isSidebarO
             Broadcast
           </button>
         </div>
-        <button className="relative p-base hover:bg-surface-container rounded-full transition-colors cursor-pointer">
-          <span className="material-symbols-outlined text-on-surface-variant">
-            notifications
-          </span>
-          <span className="absolute top-1 right-1 w-2 h-2 bg-error rounded-full ring-2 ring-surface"></span>
-        </button>
-        <div className="flex items-center gap-sm cursor-pointer hover:bg-surface-container p-base rounded-lg transition-colors">
-          <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-label-bold text-label-sm">
-            SA
+
+        {/* Real-time Interactive Notification Dropdown */}
+        <NotificationDropdown
+          currentUser={currentUser}
+          onSelectTab={handleSelectTab}
+        />
+
+        {/* User Profile Menu */}
+        <div className="relative" ref={menuRef}>
+          <div
+            onClick={() => setIsUserMenuOpen((prev) => !prev)}
+            className="flex items-center gap-sm cursor-pointer hover:bg-surface-container p-base rounded-lg transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-primary-container text-on-primary flex items-center justify-center font-label-bold text-label-sm shadow-xs">
+              {initials}
+            </div>
+            <span className="material-symbols-outlined text-on-surface-variant text-[20px]">
+              expand_more
+            </span>
           </div>
-          <span className="material-symbols-outlined text-on-surface-variant">
-            expand_more
-          </span>
+
+          {isUserMenuOpen && (
+            <div className="absolute right-0 mt-2 w-56 bg-surface-container-lowest border border-border-subtle rounded-xl shadow-xl z-50 p-sm animate-in fade-in zoom-in-95 duration-150">
+              <div className="p-sm border-b border-border-subtle mb-1">
+                <span className="font-label-bold text-label-sm text-on-surface block truncate">
+                  {currentUser?.name || 'Super Admin'}
+                </span>
+                <span className="text-[11px] text-on-surface-variant block truncate">
+                  {currentUser?.email || 'admin@platform.local'}
+                </span>
+                <span className="inline-block mt-1 px-1.5 py-0.2 rounded bg-primary/10 text-primary font-bold text-[9px] uppercase tracking-wider">
+                  Super Admin
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsUserMenuOpen(false);
+                  if (onLogout) onLogout();
+                }}
+                className="w-full flex items-center gap-2 p-sm rounded-lg text-error hover:bg-error-bg font-label-bold text-label-sm transition-colors cursor-pointer text-left"
+              >
+                <span className="material-symbols-outlined text-[18px]">logout</span>
+                <span>Log Out</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>
