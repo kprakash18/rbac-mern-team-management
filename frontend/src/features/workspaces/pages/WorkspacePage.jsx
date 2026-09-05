@@ -30,9 +30,29 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
           iconTextColor: team.iconTextColor || 'text-on-primary',
         }));
         setWorkspaces(formatted);
+
+        // Direct user straight to workspace if navigated from onboarding email
+        const params = new URLSearchParams(window.location.search);
+        const targetTeamId = params.get('teamId') || params.get('workspace');
+        if (targetTeamId && onWorkspaceSelected) {
+          const matched = formatted.find(
+            (w) => String(w.id) === String(targetTeamId) || String(w._id) === String(targetTeamId)
+          );
+          if (matched) {
+            onWorkspaceSelected(matched);
+          }
+        }
       } catch (err) {
         console.warn('Failed to load remote workspaces:', err);
-        setError(err.response?.data?.error?.message || err.message || 'Failed to load workspaces');
+        const errCode = err.response?.data?.code || err.response?.data?.error?.code;
+        const msg =
+          errCode === 'ACCOUNT_SUSPENDED'
+            ? 'Your account is currently suspended. Please contact your administrator.'
+            : err.response?.data?.error?.message ||
+              err.response?.data?.message ||
+              err.message ||
+              'Failed to load workspaces';
+        setError(msg);
       } finally {
         setLoading(false);
       }

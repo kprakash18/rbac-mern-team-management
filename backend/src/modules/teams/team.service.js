@@ -134,29 +134,86 @@ export async function listTeams({
   status,
   search,
   page = 1,
-  limit = 20,
+  limit = 50,
 } = {}) {
 
   const query = {};
-  if (status) {
-    query.status = status;
-  } else {
-    query.status = { $ne: "ARCHIVED" };
+  if (status && status !== 'all' && status !== 'ALL') {
+    query.status = status.toUpperCase();
   }
   if (search && typeof search === "string" && search.trim().length > 0) {
     query.name = { $regex: search.trim(), $options: "i" };
   }
-  const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
+  const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 50 });
   const [teams, total] = await Promise.all([
     Team.find(query)
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 })
       .skip(skip)
-      .limit(limitNum),
+      .limit(limitNum)
+      .lean(),
     Team.countDocuments(query),
   ]);
+
+  // Enrich each team with active member count and team admins
+  const teamIds = teams.map((t) => t._id);
+  const activeMemberships = await Membership.find({
+    teamId: { $in: teamIds },
+    status: "ACTIVE",
+  })
+    .populate("userId", "name email")
+    .lean();
+
+  const membershipIds = activeMemberships.map((m) => m._id);
+  const memberRoles = await MembershipRole.find({
+    membershipId: { $in: membershipIds },
+    revokedAt: null,
+  })
+    .populate("roleId", "name isSystemRole")
+    .lean();
+
+  const enrichedTeams = teams.map((team) => {
+    const teamMems = activeMemberships.filter(
+      (m) => String(m.teamId) === String(team._id)
+    );
+    const membersCount = teamMems.length;
+
+    // Find admins for this team
+    const adminUserNames = [];
+    const memberList = [];
+
+    teamMems.forEach((m) => {
+      if (!m.userId) return;
+      const rolesForMem = memberRoles
+        .filter((mr) => String(mr.membershipId) === String(m._id))
+        .map((mr) => mr.roleId?.name)
+        .filter(Boolean);
+
+      const isTeamAdmin = rolesForMem.some((r) =>
+        r.toLowerCase().includes("admin")
+      );
+      if (isTeamAdmin && m.userId.name && !adminUserNames.includes(m.userId.name)) {
+        adminUserNames.push(m.userId.name);
+      }
+      memberList.push({
+        id: m.userId._id,
+        name: m.userId.name,
+        email: m.userId.email,
+        roles: rolesForMem,
+        joinedAt: m.joinedAt,
+      });
+    });
+
+    return {
+      ...team,
+      membersCount,
+      admins: adminUserNames.length > 0 ? adminUserNames : (team.createdBy?.name ? [team.createdBy.name] : []),
+      members: memberList,
+    };
+  });
+
   return {
-    teams,
+    teams: enrichedTeams,
     total,
     page: pageNum,
     limit: limitNum,
@@ -168,17 +225,17 @@ export async function getTeamById(teamId) {
     throw new BadRequestError("Invalid team ID format.");
   }
   const team = await Team.findById(teamId).populate("createdBy", "name email");
-  if (!team || team.status === "ARCHIVED") {
+  if (!team) {
     throw new NotFoundError("Team not found.");
   }
   return team;
 }
-export async function updateTeam(teamId, { name, description }) {
+export async function updateTeam(teamId, { name, description, status }) {
   if (!mongoose.Types.ObjectId.isValid(teamId)) {
     throw new BadRequestError("Invalid team ID format.");
   }
   const team = await Team.findById(teamId);
-  if (!team || team.status === "ARCHIVED") {
+  if (!team) {
     throw new NotFoundError("Team not found.");
   }
   if (name && typeof name === "string" && name.trim().length > 0) {
@@ -202,12 +259,24 @@ export async function updateTeam(teamId, { name, description }) {
   if (typeof description === "string") {
     team.description = description.trim();
   }
+  if (status && ["ACTIVE", "ARCHIVED", "INACTIVE"].includes(status)) {
+    team.status = status;
+  }
   await team.save();
+
+  logAuditEvent({
+    action: "team.updated",
+    targetType: "Team",
+    targetId: team._id,
+    teamId: team._id,
+    metadata: { name: team.name, description: team.description, status: team.status },
+  });
+
   return getTeamById(team._id);
 }
 
 
-export async function archiveTeam(teamId) {
+export async function archiveTeam(teamId, actorId = null) {
   if (!mongoose.Types.ObjectId.isValid(teamId)) {
     throw new BadRequestError("Invalid team ID format.");
   }
@@ -218,6 +287,15 @@ export async function archiveTeam(teamId) {
 
   team.status = "ARCHIVED";
   await team.save();
+
+  logAuditEvent({
+    actorId,
+    action: "team.archived",
+    targetType: "Team",
+    targetId: team._id,
+    teamId: team._id,
+    metadata: { name: team.name },
+  });
 
   return {
     success: true,

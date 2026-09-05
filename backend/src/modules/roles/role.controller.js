@@ -40,21 +40,29 @@ export async function getRoleById(req,res,next){
     }
 }
 
-export async function updateRole(req,res,next){
-    try{
-        const {roleId} = req.params;
-        const {name,description, status} = req.body;
-        const updatdRole = await roleService.updateRole(roleId, {name,description,status});
-        return res.status(200).json({success: true, data: updatdRole});
-    }catch(error){
-        next(error);
-    }
+export async function updateRole(req, res, next) {
+  try {
+    const { roleId } = req.params;
+    const { name, description, status, permissionIds } = req.body;
+    const updatedRole = await roleService.updateRole(
+      roleId,
+      { name, description, status, permissionIds },
+      req.user?.id
+    );
+    return res.status(200).json({ success: true, data: updatedRole });
+  } catch (error) {
+    next(error);
+  }
 }
 
 export async function deleteRole(req, res, next) {
   try {
     const { roleId } = req.params;
-    const result = await roleService.deleteRole(roleId);
+    const reassignToRoleId = req.body?.reassignToRoleId || req.query?.reassignToRoleId;
+    const result = await roleService.deleteRole(roleId, {
+      reassignToRoleId,
+      reassignedBy: req.user?.id,
+    });
     return res.status(200).json({ success: true, ...result });
   } catch (error) {
     next(error);

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { BROADCAST_TYPES } from '@/constants';
 
 export default function CreateEditBroadcastModal({
@@ -9,21 +9,63 @@ export default function CreateEditBroadcastModal({
 }) {
   const [activeStep, setActiveStep] = useState(1);
   const [formData, setFormData] = useState({
-    title: broadcastToEdit?.title || '',
-    message: broadcastToEdit?.message || '',
-    type: broadcastToEdit?.type || 'OUTAGE',
-    severity: broadcastToEdit?.severity || 'P0 Critical Outage',
-    scope: broadcastToEdit?.scope || 'GLOBAL',
-    targetWorkspaces: broadcastToEdit?.targetWorkspaces || ['All Workspaces (18 active)'],
-    targetRoles: broadcastToEdit?.targetRoles || ['All Roles'],
-    ackMode: broadcastToEdit?.ackMode || 'READ_RECEIPT',
-    ctaLabel: broadcastToEdit?.cta?.label || '',
-    ctaUrl: broadcastToEdit?.cta?.url || '',
+    title: '',
+    message: '',
+    type: 'OUTAGE',
+    severity: 'P0 Critical Outage',
+    scope: 'GLOBAL',
+    targetWorkspaces: ['All Workspaces (18 active)'],
+    targetRoles: ['All Roles'],
+    ackMode: 'READ_RECEIPT',
+    ctaLabel: '',
+    ctaUrl: '',
     startTiming: 'NOW',
     scheduledDate: '2026-10-30T00:00',
     endTiming: 'DISMISSED',
     expireDate: '2026-11-05T23:59',
   });
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveStep(1);
+      if (broadcastToEdit) {
+        setFormData({
+          title: broadcastToEdit.title || '',
+          message: broadcastToEdit.message || broadcastToEdit.body || '',
+          type: broadcastToEdit.type || 'OUTAGE',
+          severity: broadcastToEdit.severity || 'P0 Critical Outage',
+          scope: broadcastToEdit.scope || 'GLOBAL',
+          targetWorkspaces: broadcastToEdit.targetWorkspaces?.length ? broadcastToEdit.targetWorkspaces : ['All Workspaces (18 active)'],
+          targetRoles: broadcastToEdit.targetRoles?.length ? broadcastToEdit.targetRoles : ['All Roles'],
+          ackMode: broadcastToEdit.ackMode || 'READ_RECEIPT',
+          ctaLabel: broadcastToEdit.cta?.label || '',
+          ctaUrl: broadcastToEdit.cta?.url || '',
+          startTiming: broadcastToEdit.status === 'SCHEDULED' ? 'SCHEDULED' : 'NOW',
+          scheduledDate: broadcastToEdit.startsAt ? new Date(broadcastToEdit.startsAt).toISOString().slice(0, 16) : '2026-10-30T00:00',
+          endTiming: broadcastToEdit.expiresAt ? 'DATE' : 'DISMISSED',
+          expireDate: broadcastToEdit.expiresAt ? new Date(broadcastToEdit.expiresAt).toISOString().slice(0, 16) : '2026-11-05T23:59',
+        });
+      } else {
+        setFormData({
+          title: '',
+          message: '',
+          type: 'OUTAGE',
+          severity: 'P0 Critical Outage',
+          scope: 'GLOBAL',
+          targetWorkspaces: ['All Workspaces (18 active)'],
+          targetRoles: ['All Roles'],
+          ackMode: 'READ_RECEIPT',
+          ctaLabel: '',
+          ctaUrl: '',
+          startTiming: 'NOW',
+          scheduledDate: '2026-10-30T00:00',
+          endTiming: 'DISMISSED',
+          expireDate: '2026-11-05T23:59',
+        });
+      }
+    }
+  }, [isOpen, broadcastToEdit]);
+
 
   if (!isOpen) return null;
 
@@ -41,8 +83,14 @@ export default function CreateEditBroadcastModal({
       status: formData.startTiming === 'SCHEDULED' ? 'SCHEDULED' : 'ACTIVE',
       severity: formData.severity,
       scope: formData.scope,
-      targetWorkspaces: formData.scope === 'GLOBAL' ? ['All Workspaces (18 active)'] : formData.targetWorkspaces,
-      targetRoles: formData.targetRoles,
+      targetWorkspaces:
+        formData.scope === 'GLOBAL'
+          ? ['All Workspaces (18 active)']
+          : formData.targetWorkspaces.filter((w) => typeof w === 'string' && !w.includes('All Workspaces')),
+      targetRoles:
+        formData.scope === 'ROLE_SCOPED'
+          ? formData.targetRoles.filter((r) => typeof r === 'string' && !r.includes('All Roles'))
+          : ['All Roles'],
       ackMode: formData.ackMode,
       cta: formData.ctaLabel ? { label: formData.ctaLabel, url: formData.ctaUrl } : null,
       metrics: broadcastToEdit?.metrics || {
@@ -227,7 +275,30 @@ export default function CreateEditBroadcastModal({
                       <button
                         key={item.id}
                         type="button"
-                        onClick={() => setFormData({ ...formData, scope: item.id })}
+                        onClick={() => {
+                          let updatedWorkspaces = formData.targetWorkspaces;
+                          let updatedRoles = formData.targetRoles;
+                          if (item.id === 'WORKSPACE_SCOPED') {
+                            updatedWorkspaces = formData.targetWorkspaces.filter((w) => typeof w === 'string' && !w.includes('All Workspaces'));
+                            if (updatedWorkspaces.length === 0) {
+                              updatedWorkspaces = ['Engineering Core'];
+                            }
+                          } else if (item.id === 'ROLE_SCOPED') {
+                            updatedRoles = formData.targetRoles.filter((r) => typeof r === 'string' && !r.includes('All Roles'));
+                            if (updatedRoles.length === 0) {
+                              updatedRoles = ['Workspace Admin'];
+                            }
+                          } else {
+                            updatedWorkspaces = ['All Workspaces (18 active)'];
+                            updatedRoles = ['All Roles'];
+                          }
+                          setFormData({
+                            ...formData,
+                            scope: item.id,
+                            targetWorkspaces: updatedWorkspaces,
+                            targetRoles: updatedRoles,
+                          });
+                        }}
                         className={`p-sm rounded-lg border text-left flex flex-col gap-1 transition-all cursor-pointer ${
                           formData.scope === item.id
                             ? 'border-primary bg-primary-fixed/20 shadow-xs'
@@ -248,14 +319,23 @@ export default function CreateEditBroadcastModal({
                       Targeted Workspaces (Multi-Select)
                     </label>
                     <div className="p-sm bg-surface-container-low rounded-lg space-y-1.5 max-h-40 overflow-y-auto">
-                      {['Engineering Core', 'Operations & SRE', 'Finance Secure', 'Customer Support EU', 'Marketing Global'].map((ws) => (
+                      {[
+                        'Engineering Core',
+                        'Product & Design',
+                        'DevOps & Cloud Infra',
+                        'Security & Compliance',
+                        'Data & AI Platform',
+                        'Research & AI Lab',
+                        'Customer Operations',
+                        'Legacy Billing Gateway',
+                      ].map((ws) => (
                         <label key={ws} className="flex items-center gap-sm text-[12px] font-medium text-on-surface cursor-pointer">
                           <input
                             type="checkbox"
                             checked={formData.targetWorkspaces.includes(ws)}
                             onChange={(e) => {
                               if (e.target.checked) {
-                                setFormData({ ...formData, targetWorkspaces: [...formData.targetWorkspaces, ws] });
+                                setFormData({ ...formData, targetWorkspaces: [...formData.targetWorkspaces.filter((w) => !w.includes('All Workspaces')), ws] });
                               } else {
                                 setFormData({ ...formData, targetWorkspaces: formData.targetWorkspaces.filter((w) => w !== ws) });
                               }
