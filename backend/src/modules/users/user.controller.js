@@ -11,5 +11,20 @@ export async function searchUsers(req, res, next) {
   }
 }
 
-export const userController = { searchUsers };
+export async function updateUser(req, res, next) {
+  try {
+    const { userId } = req.params;
+    const actorId = req.user?.id || req.user?.sub;
+    const updatedUser = await userService.updateUser(userId, req.body, actorId);
+    return res.status(200).json({
+      success: true,
+      message: "User updated successfully.",
+      data: updatedUser,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+export const userController = { searchUsers, updateUser };
 export default userController;

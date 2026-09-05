@@ -97,6 +97,13 @@ export const NotificationTemplates = {
     title: "Task Due Date Updated",
     message: `Due date for '${taskTitle}' was updated to ${dueDate}.`,
   }),
+  TASK_REMARKS_UPDATED: ({ taskTitle, actorName, preview }) => ({
+    title: "Progress Note Updated",
+    message: actorName
+      ? `${actorName} updated the progress note on task '${taskTitle}'${preview ? `: "${preview}"` : "."}`
+      : `The progress note on task '${taskTitle}' was updated${preview ? `: "${preview}"` : "."}`,
+  }),
+
 
   // 4. Chat & Channel Events
   CHANNEL_ADDED: ({ channelName, actorName }) => ({

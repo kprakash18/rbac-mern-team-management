@@ -8,10 +8,14 @@ import {
   BadRequestError,
   NotFoundError,
   ConflictError,
+  ForbiddenError,
 } from "../../common/errors/index.js";
+import { isSuperAdmin } from "../authorization/authorization.service.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
+import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
+import { env } from "../../config/env.js";
 import mongoose from "mongoose";
 
 
@@ -43,6 +47,17 @@ export async function assignRoleToMember({
   if (!role) throw new NotFoundError("Role not found.");
   if (!membership) {
     throw new NotFoundError("User is not a member of this team.");
+  }
+
+  // Security Guardrail: Only existing Super Admin can assign Super Admin role
+  if (role.name === "Super Admin" || role.name === "Platform Super Admin") {
+    const isAssignerSuperAdmin = await isSuperAdmin(assignedBy);
+    if (!isAssignerSuperAdmin) {
+      throw new ForbiddenError(
+        "Only an existing Super Admin can assign the Super Admin role.",
+        "SUPER_ADMIN_REQUIRED"
+      );
+    }
   }
 
   // Check if role is already assigned and active
@@ -91,6 +106,17 @@ export async function assignRoleToMember({
     resourceId: role._id,
     metadata: { roleId: role._id, roleName: role.name, expiresAt },
   }).catch((err) => console.error("Failed to persist notification:", err));
+
+  // Dispatch Email Notification to user
+  const workspaceUrl = `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`;
+
+  sendRoleAssignedEmail({
+    to: user.email,
+    recipientName: user.name,
+    teamName: team.name,
+    roleName: role.name,
+    workspaceUrl,
+  }).catch((err) => console.error("Role assignment email dispatch failed:", err));
 
   // Audit Logging
   logAuditEvent({

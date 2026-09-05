@@ -1,4 +1,4 @@
-import { can } from "../../modules/authorization/authorization.service.js";
+import { can, isSuperAdmin } from "../../modules/authorization/authorization.service.js";
 import { ForbiddenError, BadRequestError } from "../errors/index.js";
 
 /**
@@ -13,6 +13,13 @@ export function requirePermission(permissionKey, getResourceId = null) {
         req.query?.teamId ||
         req.body?.teamId ||
         req.headers["x-team-id"];
+
+      // 1. Dynamic Super Admin check: Platform administrators have unrestricted global access
+      const userIsSuperAdmin = req.user?.isSuperAdmin ?? (await isSuperAdmin(userId));
+      if (userIsSuperAdmin) {
+        req.authContext = { teamId: teamId || null, permissionKey, resource: null };
+        return next();
+      }
 
       if (!teamId) {
         throw new BadRequestError(

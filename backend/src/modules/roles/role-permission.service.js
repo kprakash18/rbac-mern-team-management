@@ -128,6 +128,20 @@ export async function removePermissionFromRole(roleId, permissionId, removedBy) 
     throw new BadRequestError("System roles cannot be modified or deleted.");
   }
 
+  // Guardrail: Check if any active user holds this role
+  const activeAssignments = await MembershipRole.find({
+    roleId: role._id,
+    revokedAt: null,
+    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+  });
+
+  if (activeAssignments.length > 0) {
+    throw new BadRequestError(
+      `Cannot remove permission from role "${role.name}" because it is currently assigned to ${activeAssignments.length} active user(s). Please reassign or unassign active members before removing permissions.`,
+      "ROLE_HAS_ACTIVE_USERS"
+    );
+  }
+
   const result = await RolePermission.deleteOne({ roleId: role._id, permissionId });
   if (result.deletedCount > 0) {
     notifyUsersWithRole(

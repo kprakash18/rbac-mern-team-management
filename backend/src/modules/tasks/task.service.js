@@ -120,6 +120,7 @@ export async function updateTask({ teamId, taskId, updates = {}, callerUserId })
 
   const prevAssignee = existingTask.assignedTo ? String(existingTask.assignedTo) : null;
   const prevStatus = existingTask.status;
+  const prevRemarks = existingTask.remarks || "";
   const prevDueDate = existingTask.dueDate ? new Date(existingTask.dueDate).getTime() : null;
 
   // 2. Ownership & Permission check
@@ -256,6 +257,40 @@ export async function updateTask({ teamId, taskId, updates = {}, callerUserId })
     }
   }
 
+  // Notification 4: Remarks / Progress Note updated — notify both parties
+  if (remarks !== undefined && remarks !== prevRemarks) {
+    // Short preview (max 60 chars)
+    const preview = remarks.trim().length > 60
+      ? `${remarks.trim().slice(0, 60)}\u2026`
+      : remarks.trim();
+
+    // Other party logic:
+    // - Assignee updated  → notify the task creator (admin/lead)
+    // - Admin updated     → notify the assignee
+    const creatorId = updatedTask.createdBy
+      ? String(updatedTask.createdBy._id || updatedTask.createdBy)
+      : null;
+
+    const isCallerAssignee = newAssignee && newAssignee === String(callerUserId);
+    const otherParty = isCallerAssignee ? creatorId : newAssignee;
+
+    // Deduplicated recipient list: caller + other party
+    const remarksRecipients = [String(callerUserId)];
+    if (otherParty && otherParty !== String(callerUserId)) {
+      remarksRecipients.push(otherParty);
+    }
+
+    createTargetedNotifications({
+      actorId: callerUserId,
+      recipients: remarksRecipients,
+      type: "TASK_REMARKS_UPDATED",
+      teamId,
+      resourceType: "TASK",
+      resourceId: updatedTask._id,
+      metadata: { taskId: updatedTask._id, taskTitle: updatedTask.title, preview },
+    }).catch((err) => console.error("Failed to persist remarks notification:", err));
+  }
+
   logAuditEvent({
     actorId: callerUserId,
     action: status ? `task.status_${status.toLowerCase()}` : "task.updated",
@@ -264,6 +299,7 @@ export async function updateTask({ teamId, taskId, updates = {}, callerUserId })
     teamId,
     metadata: { title: updatedTask.title, status: updatedTask.status },
   });
+
 
   return updatedTask;
 }

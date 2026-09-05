@@ -177,3 +177,91 @@ export async function getActiveBulletinsController(req, res, next) {
   }
 }
 
+/**
+ * GET /api/notifications/broadcasts
+ * Super Admin: List all system broadcasts
+ */
+export async function getAllBroadcastsController(req, res, next) {
+  try {
+    const { status, type, search } = req.query;
+    const broadcasts = await notificationService.getAllBroadcasts({ status, type, search });
+
+    return res.status(200).json({
+      success: true,
+      data: broadcasts,
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * POST /api/notifications/broadcasts
+ * Super Admin: Create a new global system broadcast
+ */
+export async function createGlobalBroadcastController(req, res, next) {
+  try {
+    const senderId = req.user.id;
+    const broadcast = await notificationService.createGlobalBroadcast({
+      senderId,
+      data: req.body,
+    });
+
+    return res.status(201).json({
+      success: true,
+      data: broadcast,
+      message: "System broadcast published successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * PATCH /api/notifications/broadcasts/:broadcastId
+ * Super Admin: Update/End Early a system broadcast
+ */
+export async function updateBroadcastController(req, res, next) {
+  try {
+    const senderId = req.user.id;
+    const { broadcastId } = req.params;
+    const broadcast = await notificationService.updateBroadcast({
+      broadcastId,
+      updates: req.body,
+      senderId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: broadcast,
+      message: "System broadcast updated successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+/**
+ * DELETE /api/notifications/broadcasts/:broadcastId
+ * Super Admin: Delete a system broadcast
+ */
+export async function deleteBroadcastController(req, res, next) {
+  try {
+    const senderId = req.user.id;
+    const { broadcastId } = req.params;
+    const result = await notificationService.deleteBroadcast({
+      broadcastId,
+      senderId,
+    });
+
+    return res.status(200).json({
+      success: true,
+      data: result,
+      message: "System broadcast deleted successfully.",
+    });
+  } catch (error) {
+    next(error);
+  }
+}
+
+
