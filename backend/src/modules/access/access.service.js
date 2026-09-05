@@ -6,16 +6,18 @@ import Membership from "../memberships/membership.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
 import Role from "../roles/role.model.js";
 import User from "../users/user.model.js";
+import Team from "../teams/team.model.js";
 import Permission from "../permissions/permission.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
-import { can } from "../authorization/authorization.service.js";
+import { can, isSuperAdmin, getAllSuperAdminUserIds } from "../authorization/authorization.service.js";
 import {
   BadRequestError,
   NotFoundError,
   ForbiddenError,
   ConflictError,
 } from "../../common/errors/index.js";
+import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
 
 
 export async function createAccessRequest({
@@ -74,12 +76,13 @@ export async function createAccessRequest({
   let approvalLevel = "TEAM_ADMIN";
   const requesterMembershipForLevel = await Membership.findOne({ userId: requesterId, teamId, status: "ACTIVE" });
   if (requesterMembershipForLevel) {
-    const teamAdminRoleForLevel = await Role.findOne({ name: "Team Admin" }).select("_id");
+    const teamAdminRoleForLevel = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
     if (teamAdminRoleForLevel) {
       const isRequesterTeamAdmin = await MembershipRole.exists({
         membershipId: requesterMembershipForLevel._id,
         roleId: teamAdminRoleForLevel._id,
         revokedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
       });
       if (isRequesterTeamAdmin) approvalLevel = "SUPER_ADMIN";
     }
@@ -98,71 +101,75 @@ export async function createAccessRequest({
     approvalLevel,
   });
 
-  // Real-time Event Emission
-  emitToTeam(teamId, "access_request:created", { accessRequest });
-
   // Notify appropriate reviewers of the new JIT access request
   try {
-    const requester = await User.findById(requesterId).select("name");
+    const [requester, teamDoc] = await Promise.all([
+      User.findById(requesterId).select("name email"),
+      Team.findById(teamId).select("name"),
+    ]);
     const requesterName = requester?.name || "A team member";
+    const teamName = teamDoc?.name || "Workspace";
+    const permLabel = permission.name || permission.key;
 
-    // Check if the requester is a Team Admin — if so, route to Super Admins globally
-    const requesterMembership = await Membership.findOne({ userId: requesterId, teamId, status: "ACTIVE" });
-    const requesterIsTeamAdmin = requesterMembership
-      ? await (async () => {
-          const adminRole = await Role.findOne({ name: "Team Admin" }).select("_id");
-          if (!adminRole) return false;
-          const mr = await MembershipRole.findOne({ membershipId: requesterMembership._id, roleId: adminRole._id, revokedAt: null });
-          return Boolean(mr);
-        })()
-      : false;
+    // Check if the requester is a Team Admin
+    const isTeamAdminRequester = approvalLevel === "SUPER_ADMIN";
 
     let recipientUserIds = [];
 
-    if (requesterIsTeamAdmin) {
-      // Team Admin JIT → notify all Super Admins globally (not scoped to this team)
-      const superAdminRole = await Role.findOne({ name: "Super Admin" }).select("_id");
-      if (superAdminRole) {
-        const superAdminMemberRoles = await MembershipRole.find({ roleId: superAdminRole._id, revokedAt: null }).select("membershipId");
-        const superAdminMemberships = await Membership.find({
-          _id: { $in: superAdminMemberRoles.map((m) => m.membershipId) },
-          status: "ACTIVE",
-        }).select("userId");
-        recipientUserIds = superAdminMemberships.map((m) => m.userId);
-      }
+    if (isTeamAdminRequester) {
+      // Team Admin JIT → notify all Super Admins globally
+      recipientUserIds = await getAllSuperAdminUserIds();
     } else {
       // Regular member JIT → notify Team Admins in this team
-      const adminRole = await Role.findOne({ name: "Team Admin" }).select("_id");
+      const adminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
       if (adminRole) {
-        const adminMemberRoles = await MembershipRole.find({ roleId: adminRole._id, revokedAt: null }).select("membershipId");
+        const adminMemberRoles = await MembershipRole.find({
+          roleId: adminRole._id,
+          revokedAt: null,
+          $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+        }).select("membershipId");
         const adminMemberships = await Membership.find({
           _id: { $in: adminMemberRoles.map((m) => m.membershipId) },
           teamId,
           status: "ACTIVE",
         }).select("userId");
-        recipientUserIds = adminMemberships.map((m) => m.userId);
+        recipientUserIds = adminMemberships.map((m) => m.userId.toString());
       }
     }
 
-    for (const recipientUserId of recipientUserIds) {
-      if (String(recipientUserId) !== String(requesterId)) {
-        createNotification({
-          recipientId: recipientUserId,
-          actorId: requesterId,
-          type: "ACCESS_REQUEST",
+    const uniqueRecipients = Array.from(new Set(recipientUserIds)).filter(
+      (id) => String(id) !== String(requesterId)
+    );
+
+    // Targeted real-time emission only to designated approvers
+    for (const recipientUserId of uniqueRecipients) {
+      emitToUser(recipientUserId, "access_request:created", { accessRequest });
+
+      createNotification({
+        recipientId: recipientUserId,
+        actorId: requesterId,
+        type: "ACCESS_REQUEST",
+        teamId,
+        resourceType: "ACCESS_REQUEST",
+        resourceId: accessRequest._id,
+        metadata: {
+          requestId: accessRequest._id,
           teamId,
-          resourceType: "ACCESS_REQUEST",
-          resourceId: accessRequest._id,
-          metadata: {
-            requestId: accessRequest._id,
-            requesterName,
-            permissionKey: permission.key,
-            routedToSuperAdmin: requesterIsTeamAdmin,
-          },
-          title: "New JIT Access Request",
-          message: `${requesterName} requested temporary access for '${permission.key}'.`,
-        }).catch((err) => console.error("Failed to persist access request notification:", err));
-      }
+          teamName,
+          requesterName,
+          permissionKey: permission.key,
+          permissionName: permLabel,
+          routedToSuperAdmin: isTeamAdminRequester,
+        },
+        title: "New JIT Access Request",
+        message: isTeamAdminRequester
+          ? `${requesterName} (Team Admin) requested temporary access for '${permLabel}' in ${teamName}.`
+          : `${requesterName} requested temporary access for '${permLabel}' in ${teamName}.`,
+      })
+        .then((notifDoc) => {
+          emitToUser(recipientUserId, "notification:new", notifDoc);
+        })
+        .catch((err) => console.error("Failed to persist access request notification:", err));
     }
   } catch (err) {
     console.error("Failed to notify reviewers of access request:", err);
@@ -180,23 +187,76 @@ export async function createAccessRequest({
   return accessRequest;
 }
 
-import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+/**
+ * Fetch all access requests across all teams (used by Super Admin global view)
+ * Strictly defaults to approvalLevel: "SUPER_ADMIN" so regular member requests never leak to Super Admin
+ */
+export async function getAllAccessRequests({ query = {}, viewerId } = {}) {
+  const { status, teamId, approvalLevel, page = 1, limit = 50 } = query;
 
-export async function getAccessRequestsByTeam({ teamId, query = {} }) {
-  const { status, targetUserId, page = 1, limit = 20 } = query;
+  const filter = {};
+  if (status && status !== "ALL") filter.status = status;
+  if (teamId && teamId !== "ALL") filter.teamId = teamId;
 
-  const filter = { teamId };
-  if (status) filter.status = status;
-  if (targetUserId) filter.targetUserId = targetUserId;
+  if (approvalLevel && approvalLevel !== "ALL") {
+    filter.approvalLevel = approvalLevel;
+  } else if (!approvalLevel) {
+    filter.approvalLevel = "SUPER_ADMIN";
+  }
 
-  const { page: pageNumber, limit: pageSize, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
+  const { page: pageNumber, limit: pageSize, skip } = getPaginationParams({ page, limit, defaultLimit: 50 });
 
   const [requests, total] = await Promise.all([
     AccessRequest.find(filter)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
-      .populate("requesterId targetUserId permissionId reviewedBy", "name email key"),
+      .populate("requesterId targetUserId reviewedBy", "name email")
+      .populate("permissionId", "name key category")
+      .populate("teamId", "name description"),
+    AccessRequest.countDocuments(filter),
+  ]);
+
+  return {
+    requests,
+    total,
+    page: pageNumber,
+    limit: pageSize,
+    totalPages: getTotalPages(total, pageSize),
+  };
+}
+
+export async function getAccessRequestsByTeam({ teamId, query = {}, viewerId, viewerIsAdmin = false }) {
+  const { status, targetUserId, page = 1, limit = 50 } = query;
+
+  const filter = { teamId };
+  if (status && status !== "ALL") filter.status = status;
+
+  if (viewerIsAdmin) {
+    if (targetUserId) {
+      filter.targetUserId = targetUserId;
+    } else {
+      // Team Admins see requests needing TEAM_ADMIN approval, OR requests they themselves created
+      filter.$or = [
+        { approvalLevel: "TEAM_ADMIN" },
+        { requesterId: viewerId },
+      ];
+    }
+  } else {
+    // Non-admins only ever see their own requests
+    filter.requesterId = viewerId;
+  }
+
+  const { page: pageNumber, limit: pageSize, skip } = getPaginationParams({ page, limit, defaultLimit: 50 });
+
+  const [requests, total] = await Promise.all([
+    AccessRequest.find(filter)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pageSize)
+      .populate("requesterId targetUserId reviewedBy", "name email")
+      .populate("permissionId", "name key category")
+      .populate("teamId", "name description"),
     AccessRequest.countDocuments(filter),
   ]);
 
@@ -210,10 +270,12 @@ export async function getAccessRequestsByTeam({ teamId, query = {} }) {
 }
 
 export async function updateAccessRequest({ teamId, requestId, requesterId, updates = {} }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query);
 
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
 
   if (request.requesterId.toString() !== requesterId.toString()) {
@@ -255,16 +317,21 @@ export async function updateAccessRequest({ teamId, requestId, requesterId, upda
 }
 
 export async function deleteAccessRequest({ teamId, requestId, requesterId }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query);
 
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
 
+  const effectiveTeamId = request.teamId;
   const isOwner = request.requesterId.toString() === requesterId.toString();
+  const reviewerIsSuperAdmin = await isSuperAdmin(requesterId);
   const hasCancelPermission =
-    (await can(requesterId, teamId, "access_request.cancel")) ||
-    (await can(requesterId, teamId, "access_grant.revoke"));
+    reviewerIsSuperAdmin ||
+    (await can(requesterId, effectiveTeamId, "access_request.cancel")) ||
+    (await can(requesterId, effectiveTeamId, "access_grant.revoke"));
 
   if (!isOwner && !hasCancelPermission) {
     throw new ForbiddenError("You can only delete your own access requests or you need admin cancellation permissions");
@@ -278,15 +345,72 @@ export async function deleteAccessRequest({ teamId, requestId, requesterId }) {
     );
     request.status = "REVOKED";
     await request.save();
-    emitToTeam(teamId, "access_request:resolved", { requestId: request._id, status: "REVOKED" });
+
+    let teamName = "Workspace";
+    try {
+      const teamDoc = await Team.findById(effectiveTeamId).select("name");
+      if (teamDoc?.name) teamName = teamDoc.name;
+    } catch {}
+
+    emitToUser(request.requesterId, "access_request:resolved", {
+      requestId: request._id,
+      teamId: effectiveTeamId,
+      status: "REVOKED",
+    });
+    emitToUser(request.targetUserId || request.requesterId, "access:changed", {
+      teamId: effectiveTeamId,
+      reason: "GRANT_REVOKED",
+    });
+    emitToTeam(effectiveTeamId, "access_request:resolved", { requestId: request._id, status: "REVOKED" });
+
+    if (request.requesterId.toString() !== requesterId.toString()) {
+      createNotification({
+        recipientId: request.requesterId,
+        actorId: requesterId,
+        type: "ACCESS_REVOKED",
+        teamId: effectiveTeamId,
+        resourceType: "ACCESS_REQUEST",
+        resourceId: request._id,
+        metadata: {
+          requestId: request._id,
+          teamName,
+          details: "Your active JIT access grant has been revoked by an administrator.",
+        },
+        title: "JIT Access Revoked",
+        message: `Your active JIT access grant in ${teamName} has been revoked by an administrator.`,
+      })
+        .then((notifDoc) => emitToUser(request.requesterId, "notification:new", notifDoc))
+        .catch((err) => console.error("Failed to persist revocation notification:", err));
+    }
+
     return {
       success: true,
       message: "Active JIT grant revoked successfully",
     };
   }
 
-  await AccessRequest.findOneAndDelete({ _id: requestId, teamId });
-  emitToTeam(teamId, "access_request:deleted", { requestId, teamId });
+  await AccessRequest.findOneAndDelete({ _id: requestId });
+  emitToUser(request.requesterId, "access_request:deleted", { requestId, teamId: effectiveTeamId });
+  emitToTeam(effectiveTeamId, "access_request:deleted", { requestId, teamId: effectiveTeamId });
+
+  if (request.requesterId.toString() !== requesterId.toString()) {
+    createNotification({
+      recipientId: request.requesterId,
+      actorId: requesterId,
+      type: "ACCESS_CANCELLED",
+      teamId: effectiveTeamId,
+      resourceType: "ACCESS_REQUEST",
+      resourceId: request._id,
+      metadata: {
+        requestId: request._id,
+        status: "CANCELLED",
+      },
+      title: "JIT Access Request Cancelled",
+      message: "Your pending JIT access request was cancelled by an administrator.",
+    })
+      .then((notifDoc) => emitToUser(request.requesterId, "notification:new", notifDoc))
+      .catch((err) => console.error("Failed to persist cancellation notification:", err));
+  }
 
   return {
     success: true,
@@ -295,44 +419,44 @@ export async function deleteAccessRequest({ teamId, requestId, requesterId }) {
 }
 
 export async function approveAccessRequest({ teamId, requestId, reviewerId, durationHours }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query);
 
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
 
   if (request.status !== "PENDING") {
     throw new ConflictError("Only pending access requests can be approved");
   }
 
+  // Prevent self-approval (Administrators cannot approve their own JIT requests)
+  if (request.requesterId.toString() === reviewerId.toString()) {
+    throw new ForbiddenError(
+      "Self-approval is forbidden. You cannot approve your own JIT access request.",
+      "SELF_APPROVAL_FORBIDDEN"
+    );
+  }
+
+  const effectiveTeamId = request.teamId;
   const targetUserId = request.targetUserId || request.requesterId;
   const resourceKey = request.resource || "*";
 
   // Enforce approval hierarchy:
   // If the requester is a Team Admin, only a Super Admin may approve their JIT request.
-  const requesterMembership = await Membership.findOne({ userId: request.requesterId, teamId, status: "ACTIVE" });
+  const requesterMembership = await Membership.findOne({ userId: request.requesterId, teamId: effectiveTeamId, status: "ACTIVE" });
   if (requesterMembership) {
-    const teamAdminRole = await Role.findOne({ name: "Team Admin" }).select("_id");
+    const teamAdminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
     if (teamAdminRole) {
       const requesterIsTeamAdmin = await MembershipRole.exists({
         membershipId: requesterMembership._id,
         roleId: teamAdminRole._id,
         revokedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
       });
       if (requesterIsTeamAdmin) {
-        // Reviewer must be a Super Admin
-        const superAdminRole = await Role.findOne({ name: "Super Admin" }).select("_id");
-        const reviewerIsSuperAdmin = superAdminRole
-          ? await (async () => {
-              const reviewerMemberRoles = await MembershipRole.find({ roleId: superAdminRole._id, revokedAt: null }).select("membershipId");
-              const reviewerMemberships = await Membership.find({
-                _id: { $in: reviewerMemberRoles.map((m) => m.membershipId) },
-                userId: reviewerId,
-                status: "ACTIVE",
-              });
-              return reviewerMemberships.length > 0;
-            })()
-          : false;
+        const reviewerIsSuperAdmin = await isSuperAdmin(reviewerId);
         if (!reviewerIsSuperAdmin) {
           throw new ForbiddenError(
             "JIT access requests from Team Admins can only be approved by a Super Admin.",
@@ -344,9 +468,14 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   }
 
   let permissionId = request.permissionId;
+  let permissionDoc = null;
+  if (permissionId && mongoose.Types.ObjectId.isValid(permissionId)) {
+    permissionDoc = await Permission.findById(permissionId).select("name key");
+  }
   if (!permissionId || !mongoose.Types.ObjectId.isValid(permissionId)) {
     const defaultPerm = await Permission.findOne({});
     permissionId = defaultPerm?._id;
+    permissionDoc = defaultPerm;
   }
 
   const effectiveHours = typeof durationHours === "number" ? durationHours : (typeof request.durationHours === "number" ? request.durationHours : 2);
@@ -361,7 +490,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   // Find existing grant or create a new active one
   let grant = await AccessGrant.findOne({
     userId: targetUserId,
-    teamId: request.teamId,
+    teamId: effectiveTeamId,
     permissionId: permissionId,
     resource: resourceKey,
   });
@@ -378,7 +507,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   } else {
     grant = await AccessGrant.create({
       userId: targetUserId,
-      teamId: request.teamId,
+      teamId: effectiveTeamId,
       permissionId: permissionId,
       resource: resourceKey,
       grantedBy: reviewerId,
@@ -389,39 +518,55 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     });
   }
 
-  // Real-time Event Emissions & Persistent Notification
+  const permLabel = permissionDoc?.name || permissionDoc?.key || "resource";
+
+  // Fetch Team name for notification
+  let teamName = "Workspace";
+  try {
+    const teamDoc = await Team.findById(effectiveTeamId).select("name");
+    if (teamDoc?.name) teamName = teamDoc.name;
+  } catch {}
+
+  // Real-time Event Emissions & Persistent Notification to Requester
   try {
     emitToUser(request.requesterId, "access_request:resolved", {
       requestId: request._id,
-      teamId: request.teamId,
+      teamId: effectiveTeamId,
       status: "APPROVED",
       expiresAt: finalExpiresAt,
     });
     emitToUser(targetUserId, "access:changed", {
-      teamId: request.teamId,
+      teamId: effectiveTeamId,
       reason: "GRANT_APPROVED",
     });
-    emitToTeam(teamId, "access_request:resolved", {
+    emitToTeam(effectiveTeamId, "access_request:resolved", {
       requestId: request._id,
       status: "APPROVED",
     });
-    createTargetedNotifications({
-      recipients: [targetUserId],
+
+    // Notify requester (Team Admin or Member)
+    createNotification({
+      recipientId: request.requesterId,
       actorId: reviewerId,
-      type: "USER_ACCESS_CHANGED",
-      teamId: request.teamId,
+      type: "ACCESS_GRANTED",
+      teamId: effectiveTeamId,
       resourceType: "ACCESS_REQUEST",
       resourceId: request._id,
       metadata: {
-        permissionName: permission?.name,
+        permissionName: permLabel,
         grantId: grant._id,
         requestId: request._id,
+        teamName,
         expiresAt: finalExpiresAt,
-        details: `Your access request for '${permission?.name || "resource"}' has been approved.`,
+        details: `Your access request for '${permLabel}' in ${teamName} has been approved.`,
       },
-      title: "Access Permissions Changed",
-      message: `Your access request for '${permission?.name || "resource"}' has been approved.`,
-    }).catch((err) => console.error("Failed to persist notification:", err));
+      title: "JIT Access Approved",
+      message: `Your access request for '${permLabel}' in ${teamName} has been approved. Lease active until ${finalExpiresAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`,
+    })
+      .then((notifDoc) => {
+        emitToUser(request.requesterId, "notification:new", notifDoc);
+      })
+      .catch((err) => console.error("Failed to persist approval notification:", err));
   } catch (err) {
     console.error("Error dispatching access request approval events:", err);
   }
@@ -432,7 +577,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     action: "access_request.approved",
     targetType: "AccessRequest",
     targetId: request._id,
-    teamId,
+    teamId: effectiveTeamId,
     metadata: {
       grantId: grant._id,
       expiresAt: finalExpiresAt,
@@ -443,10 +588,12 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
 }
 
 export async function rejectAccessRequest({ teamId, requestId, reviewerId, reason }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query);
 
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
 
   if (request.requesterId.toString() === reviewerId.toString()) {
@@ -457,6 +604,8 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
     throw new ConflictError("Only pending access requests can be rejected");
   }
 
+  const effectiveTeamId = request.teamId;
+
   request.status = "REJECTED";
   request.reviewedBy = reviewerId;
   request.reviewedAt = new Date();
@@ -466,31 +615,53 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
 
   await request.save();
 
-  // Real-time Event Emissions & Persistent Notification
+  // Resolve permission name for notification
+  let rejectedPermLabel = "resource";
+  if (request.permissionId && mongoose.Types.ObjectId.isValid(request.permissionId)) {
+    const rejectedPerm = await Permission.findById(request.permissionId).select("name key");
+    if (rejectedPerm) {
+      rejectedPermLabel = rejectedPerm.name || rejectedPerm.key || "resource";
+    }
+  }
+
+  let teamName = "Workspace";
+  try {
+    const teamDoc = await Team.findById(effectiveTeamId).select("name");
+    if (teamDoc?.name) teamName = teamDoc.name;
+  } catch {}
+
+  // Real-time Event Emissions & Notification to Requester
   emitToUser(request.requesterId, "access_request:resolved", {
     requestId: request._id,
-    teamId: request.teamId,
+    teamId: effectiveTeamId,
     status: "REJECTED",
   });
-  emitToTeam(teamId, "access_request:resolved", {
+  emitToTeam(effectiveTeamId, "access_request:resolved", {
     requestId: request._id,
     status: "REJECTED",
   });
+
   createNotification({
     recipientId: request.requesterId,
     actorId: reviewerId,
-    type: "ACCESS_REQUEST",
-    teamId: request.teamId,
+    type: "ACCESS_REJECTED",
+    teamId: effectiveTeamId,
     resourceType: "ACCESS_REQUEST",
     resourceId: request._id,
     metadata: {
       requestId: request._id,
+      permissionName: rejectedPermLabel,
+      teamName,
       reason,
       status: "REJECTED",
     },
-    title: "Access Request Rejected",
-    message: `Your access request was rejected.${reason ? ` Reason: ${reason}` : ""}`,
-  }).catch((err) => console.error("Failed to persist notification:", err));
+    title: "JIT Access Request Rejected",
+    message: `Your access request for '${rejectedPermLabel}' in ${teamName} was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+  })
+    .then((notifDoc) => {
+      emitToUser(request.requesterId, "notification:new", notifDoc);
+    })
+    .catch((err) => console.error("Failed to persist rejection notification:", err));
 
   // Audit Logging
   logAuditEvent({
@@ -498,7 +669,7 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
     action: "access_request.rejected",
     targetType: "AccessRequest",
     targetId: request._id,
-    teamId,
+    teamId: effectiveTeamId,
     metadata: { reason },
   });
 
@@ -506,21 +677,25 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
 }
 
 export async function revokeByRequestId({ teamId, requestId, revokedBy }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId });
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query);
 
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
 
   if (request.status !== "APPROVED") {
     throw new ConflictError("Only approved (active) access requests can have their grant revoked");
   }
 
+  const effectiveTeamId = request.teamId;
+
   // Find the linked active grant via accessRequestId first, then fallback
   const grant = await AccessGrant.findOne({ accessRequestId: request._id, status: "ACTIVE" })
     || await AccessGrant.findOne({
         userId: request.targetUserId || request.requesterId,
-        teamId,
+        teamId: effectiveTeamId,
         permissionId: request.permissionId,
         status: "ACTIVE",
       });
@@ -537,42 +712,64 @@ export async function revokeByRequestId({ teamId, requestId, revokedBy }) {
   request.status = "REVOKED";
   await request.save();
 
-  emitToUser(grant.userId, "access_grant:revoked", { grantId: grant._id, teamId });
-  emitToTeam(teamId, "access_grant:revoked", { grantId: grant._id, requestId: request._id, userId: grant.userId });
+  let teamName = "Workspace";
+  try {
+    const teamDoc = await Team.findById(effectiveTeamId).select("name");
+    if (teamDoc?.name) teamName = teamDoc.name;
+  } catch {}
 
-  createTargetedNotifications({
-    recipients: [request.requesterId],
+  emitToUser(grant.userId, "access_grant:revoked", { grantId: grant._id, teamId: effectiveTeamId });
+  emitToUser(grant.userId, "access:changed", { teamId: effectiveTeamId, reason: "GRANT_REVOKED" });
+  emitToUser(request.requesterId, "access_request:resolved", {
+    requestId: request._id,
+    teamId: effectiveTeamId,
+    status: "REVOKED",
+  });
+  emitToTeam(effectiveTeamId, "access_request:resolved", { requestId: request._id, status: "REVOKED" });
+  emitToTeam(effectiveTeamId, "access_grant:revoked", { grantId: grant._id, requestId: request._id, userId: grant.userId });
+
+  createNotification({
+    recipientId: request.requesterId,
     actorId: revokedBy,
-    type: "USER_ACCESS_CHANGED",
-    teamId,
+    type: "ACCESS_REVOKED",
+    teamId: effectiveTeamId,
     resourceType: "ACCESS_REQUEST",
     resourceId: request._id,
     metadata: {
       requestId: request._id,
       grantId: grant._id,
+      teamName,
       details: "Your temporary JIT access grant has been revoked early by an administrator.",
     },
-    title: "Access Permissions Changed",
-    message: "Your temporary JIT access grant has been revoked early by an administrator.",
-  }).catch((err) => console.error("Failed to persist revoke notification:", err));
+    title: "JIT Access Revoked",
+    message: `Your temporary JIT access grant in ${teamName} has been revoked early by an administrator.`,
+  })
+    .then((notifDoc) => {
+      emitToUser(request.requesterId, "notification:new", notifDoc);
+    })
+    .catch((err) => console.error("Failed to persist revoke notification:", err));
 
   logAuditEvent({
     actorId: revokedBy,
     action: "access_grant.revoked",
     targetType: "AccessGrant",
     targetId: grant._id,
-    teamId,
+    teamId: effectiveTeamId,
   });
 
   return { success: true, message: "JIT lease revoked successfully" };
 }
 
 export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
-  const grant = await AccessGrant.findOne({ _id: grantId, teamId, status: "ACTIVE" });
+  const query = { _id: grantId, status: "ACTIVE" };
+  if (teamId) query.teamId = teamId;
+  const grant = await AccessGrant.findOne(query);
 
   if (!grant) {
-    throw new NotFoundError("Active access grant not found in this team");
+    throw new NotFoundError("Active access grant not found");
   }
+
+  const effectiveTeamId = grant.teamId;
 
   grant.status = "REVOKED";
   grant.revokedBy = revokedBy;
@@ -580,35 +777,46 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
 
   await grant.save();
 
+  let teamName = "Workspace";
+  try {
+    const teamDoc = await Team.findById(effectiveTeamId).select("name");
+    if (teamDoc?.name) teamName = teamDoc.name;
+  } catch {}
+
   // Real-time Event Emissions & Persistent Notification
   emitToUser(grant.userId, "access_grant:revoked", {
     grantId: grant._id,
-    teamId,
+    teamId: effectiveTeamId,
     permissionId: grant.permissionId,
   });
   emitToUser(grant.userId, "access:changed", {
-    teamId,
+    teamId: effectiveTeamId,
     reason: "GRANT_REVOKED",
   });
-  emitToTeam(teamId, "access_grant:revoked", {
+  emitToTeam(effectiveTeamId, "access_grant:revoked", {
     grantId: grant._id,
     userId: grant.userId,
   });
 
-  createTargetedNotifications({
-    recipients: [grant.userId],
+  createNotification({
+    recipientId: grant.userId,
     actorId: revokedBy,
-    type: "USER_ACCESS_CHANGED",
-    teamId,
+    type: "ACCESS_REVOKED",
+    teamId: effectiveTeamId,
     resourceType: "ACCESS_GRANT",
     resourceId: grant._id,
     metadata: {
       grantId: grant._id,
+      teamName,
       details: "Your temporary/direct access grant has been revoked.",
     },
-    title: "Access Permissions Changed",
-    message: "Your temporary/direct access grant has been revoked.",
-  }).catch((err) => console.error("Failed to persist notification:", err));
+    title: "JIT Access Revoked",
+    message: `Your temporary access grant in ${teamName} has been revoked.`,
+  })
+    .then((notifDoc) => {
+      emitToUser(grant.userId, "notification:new", notifDoc);
+    })
+    .catch((err) => console.error("Failed to persist notification:", err));
 
   // Audit Logging
   logAuditEvent({
@@ -616,7 +824,7 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
     action: "access_grant.revoked",
     targetType: "AccessGrant",
     targetId: grant._id,
-    teamId,
+    teamId: effectiveTeamId,
   });
 
   return {
@@ -626,19 +834,24 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
 }
 
 export async function getAccessRequestById({ teamId, requestId }) {
-  const request = await AccessRequest.findOne({ _id: requestId, teamId })
-    .populate("requesterId targetUserId permissionId reviewedBy", "name email key");
+  const query = { _id: requestId };
+  if (teamId) query.teamId = teamId;
+  const request = await AccessRequest.findOne(query)
+    .populate("requesterId targetUserId reviewedBy", "name email")
+    .populate("permissionId", "name key category")
+    .populate("teamId", "name description");
   if (!request) {
-    throw new NotFoundError("Access request not found in this team");
+    throw new NotFoundError("Access request not found");
   }
   return request;
 }
 
 export async function getActiveTemporaryGrant({ teamId, userId }) {
-  return AccessGrant.findOne({
-    teamId,
+  const query = {
     userId,
     status: "ACTIVE",
     expiresAt: { $gt: new Date() },
-  });
+  };
+  if (teamId) query.teamId = teamId;
+  return AccessGrant.findOne(query);
 }

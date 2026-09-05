@@ -30,8 +30,42 @@ const broadcastSchema = new mongoose.Schema(
     },
     severity: {
       type: String,
-      enum: ["CRITICAL", "WARNING", "INFO"],
       default: "INFO",
+    },
+    scope: {
+      type: String,
+      enum: ["GLOBAL", "WORKSPACE_SCOPED", "ROLE_SCOPED"],
+      default: "GLOBAL",
+    },
+    targetWorkspaces: {
+      type: [String],
+      default: [],
+    },
+    targetRoles: {
+      type: [String],
+      default: [],
+    },
+    ackMode: {
+      type: String,
+      enum: ["NONE", "READ_RECEIPT", "MANDATORY_ACK"],
+      default: "READ_RECEIPT",
+    },
+    cta: {
+      label: { type: String, default: null },
+      url: { type: String, default: null },
+    },
+    metrics: {
+      targetedUsers: { type: Number, default: 0 },
+      viewedCount: { type: Number, default: 0 },
+      acknowledgedCount: { type: Number, default: 0 },
+    },
+    workspaceBreakdown: {
+      type: Array,
+      default: [],
+    },
+    roleBreakdown: {
+      type: Array,
+      default: [],
     },
     isSticky: {
       type: Boolean,
@@ -53,7 +87,7 @@ const broadcastSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["ACTIVE", "ENDED"],
+      enum: ["ACTIVE", "SCHEDULED", "ENDED"],
       default: "ACTIVE",
       index: true,
     },

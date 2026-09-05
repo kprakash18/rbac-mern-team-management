@@ -1,11 +1,26 @@
 import {
   createInvitation,
+  verifyInvitation,
   acceptInvitation,
   getTeamInvitations,
   revokeInvitation,
 } from "./invitation.service.js";
 
 export const invitationController = {
+  verifyInvitation: async (req, res, next) => {
+    try {
+      const token = req.params.token || req.query.token;
+      const data = await verifyInvitation(token);
+
+      return res.status(200).json({
+        success: true,
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  },
+
   createInvitation: async (req, res, next) => {
     try {
       const { teamId } = req.params;
@@ -31,7 +46,8 @@ export const invitationController = {
 
   acceptInvitation: async (req, res, next) => {
     try {
-      const { token, name, password } = req.body;
+      const token = req.params.token || req.body.token || req.query.token;
+      const { name, password } = req.body;
       const data = await acceptInvitation({ token, name, password });
 
       return res.status(200).json({

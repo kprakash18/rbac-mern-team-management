@@ -6,7 +6,7 @@ import { requirePermission } from "../../common/middleware/authorize.js";
 // Note: mergeParams: true allows capturing :teamId from parent router mount
 const accessRouter = Router({ mergeParams: true });
 
-// --- 1. Request Submission & Retrieval ---
+// --- 1. Request Submission & Retrieval (Team-Scoped) ---
 accessRouter.post(
   "/",
   authenticate,
@@ -17,14 +17,12 @@ accessRouter.post(
 accessRouter.get(
   "/",
   authenticate,
-  requirePermission("access_request.read"),
   accessController.getAccessRequestsByTeamController
 );
 
 accessRouter.get(
   "/:requestId",
   authenticate,
-  requirePermission("access_request.read"),
   accessController.getAccessRequestByIdController
 );
 
@@ -74,5 +72,43 @@ accessRouter.delete(
   accessController.revokeAccessGrantController
 );
 
+// --- 6. Global Access Requests Router (for Super Admin across all teams) ---
+export const globalAccessRouter = Router();
+
+globalAccessRouter.get(
+  "/",
+  authenticate,
+  accessController.getAllAccessRequestsController
+);
+
+globalAccessRouter.get(
+  "/:requestId",
+  authenticate,
+  accessController.getAccessRequestByIdController
+);
+
+globalAccessRouter.post(
+  "/:requestId/approve",
+  authenticate,
+  accessController.approveAccessRequestController
+);
+
+globalAccessRouter.post(
+  "/:requestId/reject",
+  authenticate,
+  accessController.rejectAccessRequestController
+);
+
+globalAccessRouter.delete(
+  "/:requestId/revoke",
+  authenticate,
+  accessController.revokeByRequestIdController
+);
+
+globalAccessRouter.delete(
+  "/:requestId",
+  authenticate,
+  accessController.deleteAccessRequestController
+);
 
 export default accessRouter;

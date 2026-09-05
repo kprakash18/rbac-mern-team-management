@@ -1,30 +1,22 @@
 /**
- * Generates a modern, responsive HTML email template for team invitations.
+ * Generates a modern, responsive HTML email template for existing active users who have been assigned a new role/team.
  * 
  * @param {Object} options
- * @param {string} options.inviterName - Name of the inviter
+ * @param {string} options.recipientName - Name of the user
+ * @param {string} options.inviterName - Name of the admin who assigned the role
  * @param {string} options.teamName - Name of the team
- * @param {string} options.inviteUrl - Link with token to accept the invitation
- * @param {Date} [options.expiresAt] - Invitation expiration date
+ * @param {string} [options.roleName] - Assigned role name
+ * @param {string} options.workspaceUrl - Link to open the workspace app / login
  * @returns {string} Fully formatted HTML string
  */
-export function getInvitationEmailHtml({ inviterName, teamName, inviteUrl, expiresAt }) {
-  const expiryText = expiresAt
-    ? `This invitation expires on ${new Date(expiresAt).toLocaleDateString(undefined, {
-        month: "short",
-        day: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      })}`
-    : "This invitation link is valid for 1 hour.";
-
+export function getRoleAssignedEmailHtml({ recipientName, teamName, roleName = "Team Member", workspaceUrl }) {
   return `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Team Invitation</title>
+  <title>New Role Assigned</title>
   <style>
     body {
       margin: 0;
@@ -71,7 +63,7 @@ export function getInvitationEmailHtml({ inviterName, teamName, inviteUrl, expir
       font-size: 15px;
       line-height: 1.65;
     }
-    .invite-box {
+    .team-box {
       background-color: #f8fafc;
       border: 1px solid #e2e8f0;
       border-radius: 8px;
@@ -89,6 +81,16 @@ export function getInvitationEmailHtml({ inviterName, teamName, inviteUrl, expir
       border-radius: 6px;
       margin-top: 4px;
     }
+    .role-badge {
+      display: inline-block;
+      background-color: #f3e8ff;
+      color: #6b21a8;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 4px 12px;
+      border-radius: 6px;
+      margin-top: 6px;
+    }
     .cta-container {
       text-align: center;
       margin: 32px 0 24px 0;
@@ -98,38 +100,22 @@ export function getInvitationEmailHtml({ inviterName, teamName, inviteUrl, expir
       background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
       color: #ffffff !important;
       text-decoration: none;
-      padding: 14px 32px;
-      border-radius: 8px;
       font-weight: 600;
       font-size: 15px;
+      padding: 14px 32px;
+      border-radius: 8px;
       box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25);
     }
-    .cta-button:hover {
-      background: #1d4ed8;
-    }
-    .expiry-note {
-      text-align: center;
+    .note {
       font-size: 13px;
       color: #64748b;
-      margin: 0;
-    }
-    .divider {
-      height: 1px;
-      background-color: #e2e8f0;
-      margin: 28px 0;
-    }
-    .raw-link {
-      font-size: 12px;
-      color: #64748b;
-      word-break: break-all;
-    }
-    .raw-link a {
-      color: #2563eb;
-      text-decoration: underline;
+      margin-top: 24px;
+      border-top: 1px solid #f1f5f9;
+      padding-top: 16px;
     }
     .footer {
       background-color: #f8fafc;
-      padding: 20px 24px;
+      padding: 20px 32px;
       text-align: center;
       font-size: 12px;
       color: #94a3b8;
@@ -141,45 +127,36 @@ export function getInvitationEmailHtml({ inviterName, teamName, inviteUrl, expir
   <div class="wrapper">
     <div class="container">
       <div class="header">
-        <h1>Workspace Team Invitation</h1>
-        <p>Real-Time RBAC & Collaborative Management</p>
+        <h1>Enterprise Team Management</h1>
+        <p>Team Onboarding & Role Assignment</p>
       </div>
-
       <div class="content">
-        <p>Hello,</p>
-        <p>You have been invited to collaborate and join the team:</p>
+        <p>Hello <strong>${recipientName || "there"}</strong>,</p>
+        <p>You have been onboarded to <strong>${teamName}</strong> and assigned a workspace role.</p>
         
-        <div class="invite-box">
-          <div style="font-size: 12px; text-transform: uppercase; color: #64748b; font-weight: 600; letter-spacing: 0.5px;">Team</div>
+        <div class="team-box">
+          <div style="font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Team</div>
           <div class="team-badge">${teamName}</div>
+          <div style="margin-top: 10px; font-size: 12px; font-weight: 600; color: #64748b; text-transform: uppercase; letter-spacing: 0.5px;">Assigned Role</div>
+          <div class="role-badge">${roleName}</div>
         </div>
 
-        <p>Click the button below to accept your invitation, set up your account credentials, and access the workspace dashboard:</p>
+        <p>Since your account is already active, no password setup is required. The new team is now available in your workspace switcher.</p>
 
         <div class="cta-container">
-          <a href="${inviteUrl}" class="cta-button" target="_blank">Accept Invitation & Join Team</a>
+          <a href="${workspaceUrl}" class="cta-button" target="_blank">Open Workspace</a>
         </div>
 
-        <p class="expiry-note">⏳ ${expiryText}</p>
-
-        <div class="divider"></div>
-
-        <p class="raw-link">
-          If the button above does not work, copy and paste this link into your web browser:<br>
-          <a href="${inviteUrl}">${inviteUrl}</a>
-        </p>
-
-        <p style="font-size: 12px; color: #94a3b8; margin-top: 20px;">
-          If you were not expecting this invitation, you can safely disregard this email.
-        </p>
+        <div class="note">
+          <p>If you're already logged in, simply refresh or use the Workspace Switcher in the top bar to jump directly into <strong>${teamName}</strong>.</p>
+        </div>
       </div>
-
       <div class="footer">
-        &copy; ${new Date().getFullYear()} Team Management System. Secure, Multi-Tenant RBAC Platform.
+        &copy; ${new Date().getFullYear()} Enterprise Team Management. All rights reserved.
       </div>
     </div>
   </div>
 </body>
 </html>
-`;
+  `.trim();
 }

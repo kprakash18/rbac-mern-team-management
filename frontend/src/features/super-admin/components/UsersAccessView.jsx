@@ -18,29 +18,47 @@ export default function UsersAccessView() {
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/users', {
-        params: {
-          query: searchQuery,
-          page: currentPage,
-          limit: pageSize,
-        },
-      });
-      const backendUsers = res.data?.data || [];
+      const res = await api.get('/api/users?limit=200');
+      const backendUsers = res.data?.data || res.data?.users || [];
       if (Array.isArray(backendUsers)) {
         const mapped = backendUsers.map((u) => {
-          const statusLower = (u.accountStatus || 'ACTIVE').toLowerCase();
+          const statusLower = (u.accountStatus || u.status || 'ACTIVE').toLowerCase();
           return {
             id: u._id || u.id,
             name: u.name || u.email,
             email: u.email,
-            status: statusLower === 'active' ? 'Active' : statusLower === 'disabled' ? 'Disabled' : statusLower === 'suspended' ? 'Suspended' : 'Active',
+            status:
+              statusLower === 'active'
+                ? 'Active'
+                : statusLower === 'disabled'
+                ? 'Disabled'
+                : statusLower === 'suspended'
+                ? 'Suspended'
+                : statusLower === 'invited'
+                ? 'Invited'
+                : 'Active',
             statusType: statusLower,
             workspaces: u.workspaces || [],
-            lastLogin: u.lastLogin || 'Recently',
+            lastLogin:
+              u.lastLogin ||
+              (u.createdAt
+                ? new Date(u.createdAt).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric',
+                  })
+                : 'Recently'),
             avatar: u.avatar || '',
             initials: u.name
-              ? u.name.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
+              ? u.name
+                  .split(' ')
+                  .map((n) => n[0])
+                  .join('')
+                  .slice(0, 2)
+                  .toUpperCase()
               : 'U',
+            isSuperAdmin: Boolean(u.isSuperAdmin),
+            isTeamAdmin: Boolean(u.isTeamAdmin),
             mustChangePassword: Boolean(u.mustChangePassword),
           };
         });
@@ -51,7 +69,7 @@ export default function UsersAccessView() {
     } finally {
       setLoading(false);
     }
-  }, [searchQuery, currentPage, pageSize]);
+  }, []);
 
   useEffect(() => {
     fetchUsers();
@@ -69,16 +87,24 @@ export default function UsersAccessView() {
     setCurrentPage(1);
   };
 
-  const handleSaveManagedUser = (updatedUser) => {
-    setUsers((prev) => {
-      const nextList = prev.map((u) => (u.id === updatedUser.id ? updatedUser : u));
-      try {
-        localStorage.setItem('platform_users_list', JSON.stringify(nextList));
-      } catch (err) {
-        console.error('Failed to save to localStorage', err);
-      }
-      return nextList;
-    });
+  const handleSaveManagedUser = async (updatedUser) => {
+    try {
+      setLoading(true);
+      await api.put(`/api/users/${updatedUser.id}`, {
+        name: updatedUser.name,
+        accountStatus: (updatedUser.status || updatedUser.statusType || 'ACTIVE').toUpperCase(),
+        mustChangePassword: Boolean(updatedUser.mustChangePassword),
+        lastLogoutAt: updatedUser.lastLogoutAt,
+        workspaces: updatedUser.workspaces || [],
+      });
+      await fetchUsers();
+    } catch (err) {
+      console.error('Failed to update user on backend:', err);
+      // Fallback local update
+      setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
+    } finally {
+      setLoading(false);
+    }
 
     try {
       const currentSession = JSON.parse(localStorage.getItem('auth_session') || '{}');
@@ -94,26 +120,46 @@ export default function UsersAccessView() {
   };
 
   const handleInviteUser = async (newUserData) => {
-    let generatedInviteLink = `https://app.company.com/invite/tok_${Math.random().toString(36).substring(2, 12)}`;
+    let generatedInviteLink = `${window.location.origin}/`;
+    let isDirectAssignment = false;
 
     try {
-      // 1. Fetch active teams to resolve teamId
-      const teamsRes = await api.get('/api/teams');
-      const teamsList = teamsRes.data?.data?.teams || teamsRes.data?.data || [];
+      // 1. Fetch active teams and roles to resolve IDs
+      const [teamsRes, rolesRes] = await Promise.allSettled([
+        api.get('/api/teams'),
+        api.get('/api/roles'),
+      ]);
+
+      const teamsList = teamsRes.status === 'fulfilled' ? (teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || []) : [];
+      const rolesList = rolesRes.status === 'fulfilled' ? (rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || []) : [];
+
       const targetTeamName = newUserData.workspace || newUserData.assignments?.[0]?.workspace;
+      const targetRoleName = newUserData.role || newUserData.assignments?.[0]?.role;
+
       const matchedTeam = teamsList.find(
         (t) => t.name?.toLowerCase() === targetTeamName?.toLowerCase()
       ) || teamsList[0];
 
+      const matchedRole = rolesList.find(
+        (r) => r.name?.toLowerCase() === targetRoleName?.toLowerCase()
+      );
+
       if (matchedTeam) {
         const teamId = matchedTeam._id || matchedTeam.id;
+        const roleIds = matchedRole ? [matchedRole._id || matchedRole.id] : [];
         const res = await api.post(`/api/teams/${teamId}/invitations`, {
           email: newUserData.email.trim(),
+          roleIds,
         });
-        if (res.data?.data?.inviteLink) {
+
+        isDirectAssignment = Boolean(res.data?.data?.isDirectAssignment);
+
+        if (isDirectAssignment) {
+          generatedInviteLink = `${window.location.origin}/`;
+        } else if (res.data?.data?.inviteLink) {
           generatedInviteLink = res.data.data.inviteLink;
-        } else if (res.data?.data?.rawToken) {
-          generatedInviteLink = `${window.location.origin}/invite/${res.data.data.rawToken}`;
+        } else if (res.data?.data?.rawToken || res.data?.data?.token) {
+          generatedInviteLink = `${window.location.origin}/invite?token=${res.data.data.rawToken || res.data.data.token}`;
         }
       }
     } catch (err) {
@@ -125,12 +171,13 @@ export default function UsersAccessView() {
 
     // Open success modal
     setInviteSuccessData({
-      fullName: newUserData.fullName,
+      fullName: newUserData.fullName || newUserData.name,
       email: newUserData.email,
-      assignments: newUserData.assignments,
+      assignments: newUserData.assignments || [{ workspace: newUserData.workspace, role: newUserData.role }],
       workspace: newUserData.workspace,
       role: newUserData.role,
       inviteLink: generatedInviteLink,
+      isDirectAssignment,
     });
   };
 
@@ -198,17 +245,18 @@ export default function UsersAccessView() {
         </div>
       </div>
 
-      <div className="w-full bg-surface-container-lowest rounded-xl shadow-md overflow-hidden">
-        <table className="w-full text-left border-collapse">
-          <thead>
-            <tr className="bg-surface-container-low text-on-surface-variant font-label-bold text-label-bold">
-              <th className="py-md px-lg font-semibold border-b border-border-subtle">User</th>
-              <th className="py-md px-lg font-semibold border-b border-border-subtle">Account Status</th>
-              <th className="py-md px-lg font-semibold border-b border-border-subtle">Workspaces</th>
-              <th className="py-md px-lg font-semibold border-b border-border-subtle">Last Login</th>
-              <th className="py-md px-lg font-semibold border-b border-border-subtle text-right">Actions</th>
-            </tr>
-          </thead>
+      <div className="w-full bg-surface-container-lowest rounded-xl shadow-sm border border-border-subtle overflow-hidden">
+        <div className="w-full overflow-x-auto">
+          <table className="w-full text-left border-collapse min-w-[850px]">
+            <thead>
+              <tr className="bg-surface-container-low text-on-surface-variant font-label-bold text-label-bold">
+                <th className="py-3.5 px-4 font-semibold border-b border-border-subtle min-w-[240px]">User</th>
+                <th className="py-3.5 px-4 font-semibold border-b border-border-subtle w-36">Account Status</th>
+                <th className="py-3.5 px-4 font-semibold border-b border-border-subtle min-w-[220px]">Teams &amp; Workspaces</th>
+                <th className="py-3.5 px-4 font-semibold border-b border-border-subtle w-32">Last Login</th>
+                <th className="py-3.5 px-4 font-semibold border-b border-border-subtle text-right w-24">Actions</th>
+              </tr>
+            </thead>
           <tbody className="font-body-sm text-body-sm text-on-surface">
             {loading ? (
               <tr>
@@ -300,28 +348,27 @@ export default function UsersAccessView() {
                       {user.workspaces.map((ws, i) => (
                         <span
                           key={i}
-                          className={`px-xs py-base rounded-md font-label-sm text-label-sm shadow-sm flex items-center gap-1 ${
+                          className={`px-2 py-0.5 rounded-md font-label-sm text-label-sm shadow-2xs flex items-center gap-1.5 ${
                             ws.isTeamAdmin
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-semibold'
-                              : ws.isHigh
-                              ? 'bg-surface-container-high text-on-surface-variant'
-                              : 'bg-secondary-container text-on-secondary-container'
-                          } ${ws.isOpacity ? 'opacity-50' : ''}`}
+                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-medium'
+                              : 'bg-surface-container-high text-on-surface border border-border-subtle'
+                          }`}
                         >
                           {ws.isTeamAdmin && (
-                            <span className="material-symbols-outlined text-[13px] text-amber-600">crown</span>
+                            <span className="material-symbols-outlined text-[13px] text-amber-600" title="Team Admin">
+                              crown
+                            </span>
                           )}
-                          <span>{ws.name}</span>
-                          {ws.role && <span className="text-[10px] opacity-75 font-normal">({ws.role})</span>}
+                          <span className="font-medium">{ws.name}</span>
                         </span>
                       ))}
                     </div>
                   </td>
-                  <td className="py-lg px-lg text-on-surface-variant">{user.lastLogin}</td>
-                  <td className="py-lg px-lg text-right">
+                  <td className="py-3.5 px-4 text-on-surface-variant text-[12px] whitespace-nowrap">{user.lastLogin}</td>
+                  <td className="py-3.5 px-4 text-right whitespace-nowrap">
                     <button
                       onClick={() => setSelectedUserForManage(user)}
-                      className="px-md py-xs bg-surface-container-high text-on-surface font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-primary hover:text-on-primary transition-all opacity-0 group-hover:opacity-100 cursor-pointer"
+                      className="px-3 py-1 bg-surface-container-high text-on-surface font-label-bold text-[12px] rounded-lg shadow-2xs hover:bg-primary hover:text-on-primary transition-all cursor-pointer"
                     >
                       Manage
                     </button>
@@ -331,6 +378,7 @@ export default function UsersAccessView() {
             )}
           </tbody>
         </table>
+        </div>
         <div className="w-full flex items-center justify-between p-md bg-surface-container-low border-t border-border-subtle">
           <span className="font-body-sm text-body-sm text-on-surface-variant">
             Showing {startIndex} to {endIndex} of {totalItems} entries
