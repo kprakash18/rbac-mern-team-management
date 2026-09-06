@@ -1,3 +1,5 @@
+import { useEffect } from 'react';
+
 export default function ConfirmModal({
   isOpen,
   title,
@@ -10,6 +12,17 @@ export default function ConfirmModal({
   onConfirm,
   onClose,
 }) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   const variantStyles = {
@@ -30,14 +43,19 @@ export default function ConfirmModal({
   const style = variantStyles[confirmVariant] || variantStyles.danger;
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="confirm-modal-title"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150"
+    >
       <div className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl p-lg flex flex-col gap-md border border-border-subtle animate-in zoom-in-95 duration-150">
         <div className="flex items-start gap-md">
           <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${style.iconContainer}`}>
             <span className="material-symbols-outlined text-[24px]">{icon}</span>
           </div>
           <div className="flex flex-col gap-xs flex-1 min-w-0">
-            <h3 className="font-headline-md text-headline-md text-on-surface">
+            <h3 id="confirm-modal-title" className="font-headline-md text-headline-md text-on-surface">
               {title}
             </h3>
             {description && (

@@ -1,72 +1,61 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
 import { useApp } from '@/context/useApp';
+import { useWorkspace } from '@/context/useWorkspace';
+import { CANONICAL_PERMISSIONS } from '@/constants';
 
-export default function MyPermissionsView({ currentUser, workspace }) {
-  const { activeWorkspace } = useApp();
-  const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const [grantedKeys, setGrantedKeys] = useState([]);
-  const [allPermissions, setAllPermissions] = useState([]);
-  const [loading, setLoading] = useState(true);
+export default function MyPermissionsView() {
+  const { user } = useApp();
+  const { can, activeGrants, myRole } = useWorkspace();
+
+  const [allPermissions, setAllPermissions] = useState(CANONICAL_PERMISSIONS);
 
   useEffect(() => {
-    async function loadPermissions() {
-      if (!teamId) return;
+    async function loadCatalog() {
       try {
-        setLoading(true);
-        const [myPermsRes, allPermsRes] = await Promise.allSettled([
-          api.get(`/api/authorization/permissions?teamId=${teamId}`),
-          api.get('/api/permissions'),
-        ]);
-
-        if (myPermsRes.status === 'fulfilled') {
-          const keys = myPermsRes.value.data?.data?.permissions || [];
-          setGrantedKeys(keys);
-        }
-
-        if (allPermsRes.status === 'fulfilled') {
-          const perms = allPermsRes.value.data?.data?.permissions || allPermsRes.value.data?.data || [];
+        const res = await api.get('/api/permissions');
+        const perms = res.data?.data?.permissions || res.data?.data;
+        if (Array.isArray(perms) && perms.length > 0) {
           setAllPermissions(perms);
         }
-      } catch (err) {
-        console.error('Failed to load permissions:', err);
-      } finally {
-        setLoading(false);
+      } catch {
+        // Canonical constants fallback already initialized
       }
     }
+    loadCatalog();
+  }, []);
 
-    loadPermissions();
-  }, [teamId]);
+  const isJitGranted = (key) => {
+    const [domain] = (key || '').split('.');
+    return activeGrants.some((g) => {
+      const gKey = g.permissionKey || g.permission;
+      return (gKey === key || gKey === '*' || gKey === `${domain}.*`);
+    });
+  };
 
   const categoriesMap = {};
   allPermissions.forEach((p) => {
     const cat = p.category || 'General';
     if (!categoriesMap[cat]) categoriesMap[cat] = [];
+    const granted = can(p.key);
+    const isJit = isJitGranted(p.key);
     categoriesMap[cat].push({
       key: p.key,
-      name: p.name || p.key,
-      description: p.description || p.key,
-      granted: grantedKeys.includes(p.key) || grantedKeys.includes('*'),
+      name: p.name || p.desc || p.key,
+      description: p.description || p.desc || p.key,
+      granted,
+      isJit,
     });
   });
 
   const categories = Object.entries(categoriesMap).map(([name, perms]) => ({
     name,
-    icon: name === 'Security' ? 'security' : name === 'Admin' ? 'admin_panel_settings' : 'tune',
+    icon: name === 'Security' || name === 'AUDIT' ? 'security' : name === 'Admin' || name === 'ROLES' ? 'admin_panel_settings' : name === 'TASKS' ? 'task_alt' : 'tune',
     permissions: perms,
   }));
 
-  const grantedCount = grantedKeys.length;
-  const totalCount = allPermissions.length || grantedCount;
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
-        <span className="material-symbols-outlined animate-spin text-primary text-[32px]">progress_activity</span>
-        <span className="text-[13px] font-medium">Loading permissions...</span>
-      </div>
-    );
-  }
+  const grantedCount = allPermissions.filter((p) => can(p.key)).length;
+  const totalCount = allPermissions.length;
 
   return (
     <div className="flex flex-col gap-xl">
@@ -93,7 +82,7 @@ export default function MyPermissionsView({ currentUser, workspace }) {
         </div>
         <div>
           <span className="text-on-primary/70 text-[11px] font-semibold uppercase tracking-widest block">Your Active Role</span>
-          <span className="text-[20px] font-bold block">{currentUser?.role || currentUser?.teamRoleTitle || 'Team Member'}</span>
+          <span className="text-[20px] font-bold block">{myRole?.name || user?.role || 'Team Member'}</span>
           <span className="text-on-primary/80 text-[12px] block">Permissions dynamically evaluated for this workspace</span>
         </div>
         <div className="ml-auto text-right shrink-0">
@@ -135,6 +124,11 @@ export default function MyPermissionsView({ currentUser, workspace }) {
                       <span className={`text-[13px] font-medium ${perm.granted ? 'text-on-surface' : 'text-on-surface-variant line-through opacity-60'}`}>
                         {perm.name || perm.key}
                       </span>
+                      {perm.isJit && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-200 uppercase tracking-wider">
+                          ⚡ JIT Active
+                        </span>
+                      )}
                     </div>
                     <code className="text-[10px] font-mono text-on-surface-variant bg-surface-container px-1.5 py-0.5 rounded">
                       {perm.key}

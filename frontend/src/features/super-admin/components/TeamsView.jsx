@@ -156,7 +156,7 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   );
 
   // Fetch active platform users for member onboarding
-  const fetchActivePlatformUsers = async () => {
+  const fetchActivePlatformUsers = useCallback(async () => {
     try {
       setLoadingPlatformUsers(true);
       const res = await api.get('/api/users?status=ACTIVE&limit=100');
@@ -170,10 +170,10 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     } finally {
       setLoadingPlatformUsers(false);
     }
-  };
+  }, []);
 
   // Modal Handlers
-  const handleOpenCreateModal = () => {
+  const handleOpenCreateModal = useCallback(() => {
     setEditingTeam(null);
     setModalTab('general');
     setTeamForm({ name: '', description: '', icon: 'engineering', status: 'ACTIVE' });
@@ -185,13 +185,13 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     setCreateSelectedRoles(new Set(availableRoles.map((r) => r.name || r.id)));
     setIsCreateModalOpen(true);
     fetchActivePlatformUsers();
-  };
+  }, [availableRoles, fetchActivePlatformUsers]);
 
   useEffect(() => {
     if (createTrigger && createTrigger > 0) {
       handleOpenCreateModal();
     }
-  }, [createTrigger]);
+  }, [createTrigger, handleOpenCreateModal]);
 
   const handleOpenEditModal = (team) => {
     setEditingTeam(team);

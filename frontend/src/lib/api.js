@@ -36,15 +36,19 @@ api.interceptors.request.use((config) => {
 });
 
 // ─── Response Interceptor ─────────────────────────────────────────────────────
-// On 401: session is expired or invalid → wipe state and force re-login.
+// On 401 for authenticated endpoints: session is expired or invalid → wipe state and force re-login.
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isLoginEndpoint = error.config?.url?.includes('/api/auth/login');
+    const isVerifyEndpoint = error.config?.url?.includes('/api/invitations/verify');
+    if (error.response?.status === 401 && !isLoginEndpoint && !isVerifyEndpoint) {
       removeStorage(STORAGE_KEYS.AUTH);
       removeStorage(STORAGE_KEYS.WORKSPACE);
-      // Hard reload sends user back to LoginPage via AppContext cold-start
-      window.location.href = '/';
+      // Hard reload sends user back to LoginPage if on a protected route
+      if (window.location.pathname !== '/' && !window.location.pathname.startsWith('/invite')) {
+        window.location.href = '/';
+      }
     }
     return Promise.reject(error);
   }

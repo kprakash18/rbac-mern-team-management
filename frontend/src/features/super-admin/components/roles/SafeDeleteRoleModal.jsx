@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 
 export default function SafeDeleteRoleModal({
   isOpen,
@@ -10,8 +10,9 @@ export default function SafeDeleteRoleModal({
 }) {
   const [targetRoleId, setTargetRoleId] = useState('');
 
-  const eligibleRoles = roles.filter(
-    (r) => r.id !== role?.id && r.status === 'active' && r.type !== 'archived'
+  const eligibleRoles = useMemo(
+    () => roles.filter((r) => r.id !== role?.id && r.status === 'active' && r.type !== 'archived'),
+    [roles, role?.id]
   );
 
   useEffect(() => {
@@ -20,7 +21,7 @@ export default function SafeDeleteRoleModal({
     } else {
       setTargetRoleId('');
     }
-  }, [role, roles]);
+  }, [eligibleRoles]);
 
   if (!isOpen || !role) return null;
 

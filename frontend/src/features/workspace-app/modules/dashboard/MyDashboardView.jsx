@@ -2,54 +2,43 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import NotificationDropdown from '../../shell/NotificationDropdown';
 import UserProfileSettingsModal from '@/components/shared/UserProfileSettingsModal';
 import { useApp } from '@/context/useApp';
+import { useWorkspace } from '@/context/useWorkspace';
 import api from '@/lib/api';
 
 export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
   const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
+  const { stats, permissions, activeGrants } = useWorkspace();
+
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState([]);
   const userMenuRef = useRef(null);
 
-  const [loading, setLoading] = useState(true);
-  const [metrics, setMetrics] = useState({
-    capabilitiesCount: 0,
-    totalCapabilities: 0,
-    activeJitCount: 0,
-    activeMembersCount: 0,
-    tasksCount: 0,
-    completedTasksCount: 0,
-  });
+  const [activitiesLoading, setActivitiesLoading] = useState(true);
   const [activities, setActivities] = useState([]);
 
   const teamId = workspace?._id || workspace?.id;
 
-  const fetchDashboardMetrics = useCallback(async () => {
+  const metrics = {
+    capabilitiesCount: permissions.includes('*') ? 35 : permissions.length,
+    totalCapabilities: 35,
+    activeJitCount: stats?.activeJitGrants ?? activeGrants?.length ?? 0,
+    activeMembersCount: stats?.totalMembers ?? 0,
+    tasksCount: stats?.totalTasks ?? 0,
+    completedTasksCount: stats?.completedTasks ?? 0,
+  };
+
+  const fetchRecentActivities = useCallback(async () => {
     if (!teamId) {
-      setLoading(false);
+      setActivitiesLoading(false);
       return;
     }
 
     try {
-      setLoading(true);
-      const [membersRes, tasksRes, jitRes, auditRes, permsRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members`),
-        api.get(`/api/teams/${teamId}/tasks`),
-        api.get(`/api/teams/${teamId}/access-requests`),
-        api.get(`/api/teams/${teamId}/audit-logs`),
-        api.get('/api/authorization/permissions'),
-      ]);
-
-      const members = membersRes.status === 'fulfilled' ? (membersRes.value.data?.data?.members || membersRes.value.data?.data || []) : [];
-      const tasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.data?.data?.tasks || tasksRes.value.data?.data || []) : [];
-      const jitRequests = jitRes.status === 'fulfilled' ? (Array.isArray(jitRes.value.data?.data) ? jitRes.value.data.data : []) : [];
-      const auditLogs = auditRes.status === 'fulfilled' ? (Array.isArray(auditRes.value.data?.data) ? auditRes.value.data.data : auditRes.value.data?.data?.logs || []) : [];
-      const perms = permsRes.status === 'fulfilled' ? (permsRes.value.data?.data?.effectivePermissions || permsRes.value.data?.data || []) : [];
-
-      const activeJits = jitRequests.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
-      const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
-
-      const formattedActivities = auditLogs.slice(0, 10).map((l) => {
+      setActivitiesLoading(true);
+      const auditRes = await api.get(`/api/teams/${teamId}/audit-logs`);
+      const rawLogs = auditRes.data?.data?.logs || auditRes.data?.data || [];
+      const formattedActivities = (Array.isArray(rawLogs) ? rawLogs : []).slice(0, 10).map((l) => {
         const actorName = l.actor?.name || l.actorId?.name || 'Teammate';
         const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TM';
         const timeStr = l.createdAt ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
@@ -63,26 +52,18 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           bgClass: 'bg-primary-container text-on-primary',
         };
       });
-
-      setMetrics({
-        capabilitiesCount: Array.isArray(perms) ? perms.length : 0,
-        totalCapabilities: 35,
-        activeJitCount: activeJits,
-        activeMembersCount: Array.isArray(members) ? members.length : 0,
-        tasksCount: Array.isArray(tasks) ? tasks.length : 0,
-        completedTasksCount: completedTasks,
-      });
       setActivities(formattedActivities);
-    } catch (err) {
-      console.warn('Failed to load workspace dashboard metrics:', err);
+    } catch {
+      // If audit logs are restricted or empty, gracefully keep activities empty
+      setActivities([]);
     } finally {
-      setLoading(false);
+      setActivitiesLoading(false);
     }
   }, [teamId]);
 
   useEffect(() => {
-    fetchDashboardMetrics();
-  }, [fetchDashboardMetrics]);
+    fetchRecentActivities();
+  }, [fetchRecentActivities]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -438,7 +419,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
               </button>
             </div>
             <div className="divide-y divide-border-subtle">
-              {loading ? (
+              {activitiesLoading ? (
                 <div className="py-8 text-center text-on-surface-variant text-body-sm flex items-center justify-center gap-2">
                   <span className="material-symbols-outlined animate-spin text-primary">progress_activity</span>
                   <span>Loading recent activity...</span>

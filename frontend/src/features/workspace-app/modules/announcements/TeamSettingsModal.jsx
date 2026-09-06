@@ -11,6 +11,17 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
   const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
+
+  useEffect(() => {
     if (workspace) {
       setTeamName(workspace.name || 'Acme Engineering');
       setDescription(workspace.description || '');
@@ -43,7 +54,12 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="team-settings-modal-title"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150"
+    >
       <div className="w-full max-w-lg bg-surface-container-lowest rounded-2xl shadow-2xl p-lg flex flex-col gap-md border border-border-subtle animate-in zoom-in-95 duration-150">
         {/* Header */}
         <div className="flex items-center justify-between pb-sm border-b border-border-subtle">
@@ -52,7 +68,7 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
               <span className="material-symbols-outlined text-[20px]">tune</span>
             </div>
             <div>
-              <h3 className="font-headline-md text-[16px] font-bold text-on-surface">
+              <h3 id="team-settings-modal-title" className="font-headline-md text-[16px] font-bold text-on-surface">
                 Team Workspace Settings
               </h3>
               <p className="text-[12px] text-on-surface-variant">
