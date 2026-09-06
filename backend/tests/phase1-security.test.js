@@ -16,6 +16,10 @@ import { hashPassword, comparePassword } from "../src/common/security/password.j
 
 test.before(async () => {
   await connectDatabase(env.mongoUri);
+  await User.deleteMany({ email: /@test-phase1\.local$/ });
+  await Team.deleteMany({ name: /Test Phase1/ });
+  await Role.deleteMany({ name: /Test Phase1/ });
+  await Invitation.deleteMany({ email: /@test-phase1\.local$/ });
 });
 
 test.after(async () => {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '@/lib/api';
-import { useApp } from '@/context/AppContext';
+import { useApp } from '@/context/useApp';
 
 export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) {
   const { authUser, updateAuthUser, isSuperAdmin, logout } = useApp();
@@ -22,6 +22,17 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
   const [passwordLoading, setPasswordLoading] = useState(false);
   const [passwordSuccess, setPasswordSuccess] = useState('');
   const [passwordError, setPasswordError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   useEffect(() => {
     if (isOpen && authUser) {
@@ -138,7 +149,12 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
   };
 
   return (
-    <div className="fixed inset-0 z-100 flex items-center justify-center bg-on-primary-fixed/40 backdrop-blur-sm p-md animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="user-profile-modal-title"
+      className="fixed inset-0 z-100 flex items-center justify-center bg-on-primary-fixed/40 backdrop-blur-sm p-md animate-in fade-in duration-150"
+    >
       <div className="w-full max-w-xl bg-surface-container-lowest rounded-2xl shadow-2xl border border-border-subtle overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 duration-150">
         {/* Modal Header */}
         <div className="flex items-center justify-between px-lg py-md border-b border-border-subtle bg-surface-container-low shrink-0">
@@ -147,7 +163,7 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
               <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
             </div>
             <div>
-              <h2 className="font-headline-md text-headline-md text-on-surface">
+              <h2 id="user-profile-modal-title" className="font-headline-md text-headline-md text-on-surface">
                 Account &amp; Profile Settings
               </h2>
               <p className="text-[12px] text-on-surface-variant font-body-sm">

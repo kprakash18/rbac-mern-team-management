@@ -1,3 +1,5 @@
+import { useWorkspace } from '@/context/useWorkspace';
+
 const WORKSPACE_APP_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'tasks', label: 'Tasks & Sprints', icon: 'task_alt' },
@@ -16,14 +18,21 @@ export default function WorkspaceAppSidebar({
   isCollapsed = false,
   onToggleCollapse,
 }) {
+  const { can, activeGrants, stats } = useWorkspace();
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
-  const isAuditorOrAdmin = isTeamAdmin || currentUser?.teamRole === 'Security Auditor' || currentUser?.role === 'Security Auditor';
+  const canViewAudit = can('audit.read') || isTeamAdmin;
+  const hasActiveJit = (activeGrants && activeGrants.length > 0) || stats?.activeJitGrants > 0;
 
   const navItems = WORKSPACE_APP_NAV.filter((item) => {
     if (item.id === 'audit-log') {
-      return isAuditorOrAdmin;
+      return canViewAudit;
     }
     return true;
+  }).map((item) => {
+    if (item.id === 'jit-request') {
+      return { ...item, hasIndicator: hasActiveJit };
+    }
+    return item;
   });
 
   return (

@@ -15,6 +15,12 @@ import { hashPassword } from "../src/common/security/password.js";
 
 test.before(async () => {
   await connectDatabase(env.mongoUri);
+  await User.deleteMany({ email: /@test-phase6\.local$/ });
+  await Team.deleteMany({ name: /Test Phase6/ });
+  await Role.deleteMany({ name: /Test Phase6/ });
+  await Permission.deleteMany({ key: /test\.phase6\./ });
+  await Task.deleteMany({ title: /Test Phase6/ });
+  await AccessGrant.deleteMany({ resource: /test-phase6-/ });
 });
 
 test.after(async () => {

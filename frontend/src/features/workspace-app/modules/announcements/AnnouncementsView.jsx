@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import api from '../../../../lib/api';
 import { getSocket } from '../../../../lib/socket';
 import { useApp } from '@/context/useApp';
+import { useWorkspace } from '@/context/useWorkspace';
 
 const TYPE_CONFIG = {
   OUTAGE: { icon: 'gpp_maybe', badge: 'bg-red-50 text-red-700 border-red-200', dot: 'bg-red-500', label: 'P0 Outage' },
@@ -12,8 +13,10 @@ const TYPE_CONFIG = {
 
 export default function AnnouncementsView({ currentUser, workspace, announcements = [], onAddAnnouncement, onMarkRead, onAcknowledge }) {
   const { activeWorkspace } = useApp();
+  const { can } = useWorkspace();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+  const canCreateBroadcast = can('announcement.create') || isTeamAdmin;
 
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -186,8 +189,8 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
           </p>
         </div>
 
-        {/* Broadcast Button (Team Admin) */}
-        {isTeamAdmin ? (
+        {/* Broadcast Button (Authorized Users) */}
+        {canCreateBroadcast ? (
           <button
             type="button"
             onClick={handleOpenBroadcastModal}
@@ -472,10 +475,13 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                   </button>
                   <button
                     type="submit"
-                    className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer flex items-center gap-1"
+                    disabled={submitting}
+                    className={`px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm flex items-center gap-1 ${
+                      submitting ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer'
+                    }`}
                   >
                     <span className="material-symbols-outlined text-[16px]">send</span>
-                    <span>Send to All Users</span>
+                    <span>{submitting ? 'Sending...' : 'Send to All Users'}</span>
                   </button>
                 </div>
               </div>

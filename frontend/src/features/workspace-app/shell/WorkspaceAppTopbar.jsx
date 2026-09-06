@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import NotificationDropdown from './NotificationDropdown';
 import UserProfileSettingsModal from '@/components/shared/UserProfileSettingsModal';
-import { useApp } from '@/context/AppContext';
+import { useApp } from '@/context/useApp';
 import api from '@/lib/api';
 
 export default function WorkspaceAppTopbar({

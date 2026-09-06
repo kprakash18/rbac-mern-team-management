@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useWorkspace } from '@/context/useWorkspace';
 
-const WORKSPACE_ROLE_OPTIONS = [
+const DEFAULT_ROLE_OPTIONS = [
   'Developer',
   'Lead Architect',
   'Senior Staff SRE',
@@ -23,11 +24,28 @@ const DEPARTMENTS = [
 ];
 
 export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
+  const { roles: workspaceRoles } = useWorkspace();
+  const availableRoleNames =
+    workspaceRoles && workspaceRoles.length > 0
+      ? workspaceRoles.map((r) => r.name)
+      : DEFAULT_ROLE_OPTIONS;
+
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('Developer');
+  const [role, setRole] = useState(() => (availableRoleNames[0] || 'Developer'));
   const [department, setDepartment] = useState(DEPARTMENTS[0]);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        onClose?.();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
@@ -50,7 +68,12 @@ export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
   };
 
   return (
-    <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="invite-modal-title"
+      className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150"
+    >
       <div className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-border-subtle animate-in zoom-in-95 duration-150">
         <div className="p-lg pb-md border-b border-border-subtle bg-surface-container-low flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -118,7 +141,7 @@ export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
                 onChange={(e) => setRole(e.target.value)}
                 className="h-10 px-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest text-on-surface font-body-sm outline-none focus:border-primary cursor-pointer"
               >
-                {WORKSPACE_ROLE_OPTIONS.map((r) => (
+                {availableRoleNames.map((r) => (
                   <option key={r} value={r}>
                     {r}
                   </option>

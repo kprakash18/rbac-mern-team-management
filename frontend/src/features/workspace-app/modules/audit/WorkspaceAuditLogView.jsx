@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
+import { useWorkspace } from '@/context/useWorkspace';
 import SearchInput from '../../../../components/shared/SearchInput';
 import EmptyState from '../../../../components/shared/EmptyState';
 import Toast from '../../../../components/shared/Toast';
@@ -16,11 +17,12 @@ const CATEGORY_CONFIG = {
 };
 
 export default function WorkspaceAuditLogView({ currentUser, workspace, onNavigate }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, isSuperAdmin } = useApp();
+  const { can } = useWorkspace();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
   const isAuditor = currentUser?.role?.toLowerCase().includes('auditor');
-  const hasAccess = isTeamAdmin || isAuditor;
+  const hasAccess = isSuperAdmin || can('audit.read') || isTeamAdmin || isAuditor;
 
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
