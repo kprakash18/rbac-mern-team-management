@@ -70,7 +70,6 @@ export default function MyPermissionsView({ currentUser, workspace }) {
 
   return (
     <div className="flex flex-col gap-xl">
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">
         <div>
           <h2 className="text-[22px] font-bold text-on-surface">My Permissions</h2>
@@ -86,7 +85,6 @@ export default function MyPermissionsView({ currentUser, workspace }) {
         </div>
       </div>
 
-      {/* Role Card */}
       <div className="bg-primary rounded-2xl p-md text-on-primary flex items-center gap-md shadow-sm">
         <div className="w-12 h-12 rounded-xl bg-on-primary/20 flex items-center justify-center shrink-0">
           <span className="material-symbols-outlined text-[24px]" style={{ fontVariationSettings: '"FILL" 1' }}>shield_person</span>
@@ -102,7 +100,6 @@ export default function MyPermissionsView({ currentUser, workspace }) {
         </div>
       </div>
 
-      {/* Permission Categories */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-md">
         {categories.map((category) => {
           const catGranted = category.permissions.filter(p => p.granted).length;
@@ -111,7 +108,6 @@ export default function MyPermissionsView({ currentUser, workspace }) {
               key={category.name}
               className="bg-surface-container-lowest rounded-xl border border-border-subtle shadow-xs overflow-hidden"
             >
-              {/* Category Header */}
               <div className="p-md border-b border-border-subtle flex items-center justify-between">
                 <div className="flex items-center gap-sm">
                   <span className="material-symbols-outlined text-[18px] text-primary">{category.icon}</span>
@@ -122,7 +118,6 @@ export default function MyPermissionsView({ currentUser, workspace }) {
                 </span>
               </div>
 
-              {/* Permissions List */}
               <div className="divide-y divide-border-subtle">
                 {category.permissions.map((perm) => (
                   <div key={perm.key} className="flex items-center justify-between px-md py-sm">

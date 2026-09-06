@@ -21,7 +21,6 @@ export async function authenticate(req, res, next) {
       throw new UnauthorizedError("Invalid access token.", "INVALID_TOKEN");
     }
 
-    // Look up user from subject claim
     const userId = decoded.sub;
     const user = await User.findById(userId);
 
@@ -50,7 +49,6 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    // Enforce mandatory password change before accessing general resources
     if (user.mustChangePassword) {
       const allowedAuthEndpoints = ["/api/auth/change-password", "/api/auth/me", "/api/auth/logout"];
       const currentUrl = req.originalUrl || req.baseUrl + req.path;
@@ -66,7 +64,6 @@ export async function authenticate(req, res, next) {
 
     const userIsSuperAdmin = await isSuperAdmin(user._id);
 
-    // Attach identity representation to req.user
     req.user = {
       id: user._id,
       email: user.email,

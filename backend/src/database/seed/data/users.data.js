@@ -7,9 +7,7 @@ export const systemAdminUserData = {
   lastLoginAt: new Date("2026-02-28T09:00:00Z"),
 };
 
-// 120 diverse realistic users across multiple teams, roles, and lifecycle states
 export const demoUsersData = [
-  // --- Engineering Core & Tech Leads (ACTIVE) ---
   { name: "Alice Vance", email: "alice@example.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T14:30:00Z") },
   { name: "Bob Stone", email: "bob@example.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T16:00:00Z") },
   { name: "Charlie Day", email: "charlie@example.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T10:00:00Z") },
@@ -31,7 +29,6 @@ export const demoUsersData = [
   { name: "Tara Maclay", email: "tara.maclay@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-26T16:15:00Z") },
   { name: "Uma Thurman", email: "uma.thurman@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T12:30:00Z") },
 
-  // --- DevOps & Cloud Infrastructure (ACTIVE) ---
   { name: "Victor Stone", email: "victor.stone@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T15:10:00Z") },
   { name: "Wanda Maximoff", email: "wanda.maximoff@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T11:00:00Z") },
   { name: "Xavier Woods", email: "xavier.woods@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T09:40:00Z") },
@@ -43,7 +40,6 @@ export const demoUsersData = [
   { name: "Diana Prince", email: "diana.prince@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T09:30:00Z") },
   { name: "Elliot Alderson", email: "elliot.alderson@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T16:20:00Z") },
 
-  // --- Security & Governance (ACTIVE) ---
   { name: "Eva Rostova", email: "eva@example.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T17:00:00Z") },
   { name: "Fox Mulder", email: "fox.mulder@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T10:15:00Z") },
   { name: "Gideon Cross", email: "gideon.cross@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T11:45:00Z") },
@@ -55,7 +51,6 @@ export const demoUsersData = [
   { name: "Marcus Vance", email: "marcus.vance@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T11:30:00Z") },
   { name: "Nadia Vulvokov", email: "nadia.v@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T16:00:00Z") },
 
-  // --- Product & UX/UI Design (ACTIVE) ---
   { name: "Oscar Martinez", email: "oscar.m@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T08:45:00Z") },
   { name: "Pam Beesly", email: "pam.beesly@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T12:15:00Z") },
   { name: "Quentin Coldwater", email: "quentin.c@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T14:20:00Z") },
@@ -67,7 +62,6 @@ export const demoUsersData = [
   { name: "Walter White", email: "walter.white@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T16:50:00Z") },
   { name: "Xena Warrior", email: "xena.warrior@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T09:20:00Z") },
 
-  // --- Data, ML & AI Platform (ACTIVE) ---
   { name: "Alan Turing", email: "alan.turing@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T14:15:00Z") },
   { name: "Barbara Liskov", email: "barbara.l@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T10:40:00Z") },
   { name: "Claude Shannon", email: "claude.shannon@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T12:00:00Z") },
@@ -79,7 +73,6 @@ export const demoUsersData = [
   { name: "Ilya Sutskever", email: "ilya.s@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T17:10:00Z") },
   { name: "John McCarthy", email: "john.mc@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T15:25:00Z") },
 
-  // --- QA, Testing & Operations (ACTIVE) ---
   { name: "Kenneth Adams", email: "kenneth.a@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T08:30:00Z") },
   { name: "Leslie Knope", email: "leslie.knope@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T13:20:00Z") },
   { name: "Michael Scott", email: "michael.scott@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T11:05:00Z") },
@@ -91,7 +84,6 @@ export const demoUsersData = [
   { name: "Ted Mosby", email: "ted.mosby@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T15:35:00Z") },
   { name: "Uhtred Ragnarson", email: "uhtred.r@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-27T14:00:00Z") },
 
-  // --- Support & Client Success (ACTIVE) ---
   { name: "Vito Corleone", email: "vito.c@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T16:10:00Z") },
   { name: "Will Byers", email: "will.byers@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T10:50:00Z") },
   { name: "Xander Harris", email: "xander.h@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-26T11:20:00Z") },
@@ -108,7 +100,6 @@ export const demoUsersData = [
   { name: "Inigo Montoya", email: "inigo.m@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T16:05:00Z") },
   { name: "Jake Peralta", email: "jake.peralta@company.com", accountStatus: "ACTIVE", mustChangePassword: false, lastLoginAt: new Date("2026-02-28T10:30:00Z") },
 
-  // --- Pending Invitations (INVITED) ---
   { name: "Grace Hopper", email: "grace@example.com", accountStatus: "INVITED", mustChangePassword: true, lastLoginAt: null },
   { name: "Katniss Everdeen", email: "katniss.e@company.com", accountStatus: "INVITED", mustChangePassword: true, lastLoginAt: null },
   { name: "Luke Skywalker", email: "luke.s@company.com", accountStatus: "INVITED", mustChangePassword: true, lastLoginAt: null },
@@ -125,7 +116,6 @@ export const demoUsersData = [
   { name: "Wolverine Logan", email: "wolverine.l@company.com", accountStatus: "INVITED", mustChangePassword: true, lastLoginAt: null },
   { name: "Yoda Master", email: "yoda.m@company.com", accountStatus: "INVITED", mustChangePassword: true, lastLoginAt: null },
 
-  // --- Suspended Users (SUSPENDED) ---
   { name: "Gaston LeGume", email: "gaston.l@company.com", accountStatus: "SUSPENDED", mustChangePassword: false, lastLoginAt: new Date("2026-02-10T11:00:00Z") },
   { name: "Hans Gruber", email: "hans.g@company.com", accountStatus: "SUSPENDED", mustChangePassword: false, lastLoginAt: new Date("2026-02-12T14:30:00Z") },
   { name: "Ivan Drago", email: "ivan.d@company.com", accountStatus: "SUSPENDED", mustChangePassword: false, lastLoginAt: new Date("2026-02-15T09:20:00Z") },
@@ -137,7 +127,6 @@ export const demoUsersData = [
   { name: "Palpatine Sheev", email: "palpatine.s@company.com", accountStatus: "SUSPENDED", mustChangePassword: false, lastLoginAt: new Date("2026-02-01T12:00:00Z") },
   { name: "Red Skull", email: "red.skull@company.com", accountStatus: "SUSPENDED", mustChangePassword: false, lastLoginAt: new Date("2026-02-14T17:40:00Z") },
 
-  // --- Disabled / Offboarded Users (DISABLED) ---
   { name: "Saruman White", email: "saruman.w@company.com", accountStatus: "DISABLED", mustChangePassword: false, lastLoginAt: new Date("2026-01-10T09:00:00Z") },
   { name: "Thanos Titan", email: "thanos.t@company.com", accountStatus: "DISABLED", mustChangePassword: false, lastLoginAt: new Date("2026-01-15T14:20:00Z") },
   { name: "Ultron Prime", email: "ultron.p@company.com", accountStatus: "DISABLED", mustChangePassword: false, lastLoginAt: new Date("2026-01-20T11:45:00Z") },

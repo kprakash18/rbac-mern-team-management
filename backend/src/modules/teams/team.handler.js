@@ -38,7 +38,6 @@ export function registerTeamRoomHandlers(io, socket) {
     }
   });
 
-  // Resource-Level Room: task:join (supports both regular members and JIT grant holders)
   socket.on("task:join", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
@@ -90,4 +89,3 @@ export function registerTeamRoomHandlers(io, socket) {
     respond({ ok: true, room: roomName });
   });
 }
-

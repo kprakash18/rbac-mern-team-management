@@ -48,7 +48,6 @@ export default function DirectMessageSidebar({
     setInputText('');
   };
 
-  // Minimized Floating Bar
   if (isMinimized) {
     return (
       <div className="fixed bottom-4 right-6 z-50 animate-in slide-in-from-bottom-4 duration-200">
@@ -86,10 +85,8 @@ export default function DirectMessageSidebar({
     );
   }
 
-  // Expanded Persistent Right Sidebar
   return (
     <aside className="fixed top-0 right-0 w-full sm:w-95 h-screen bg-surface-container-lowest border-l border-border-subtle shadow-2xl z-50 flex flex-col justify-between overflow-hidden animate-in slide-in-from-right duration-200">
-      {/* Header */}
       <div className="p-3.5 border-b border-border-subtle bg-surface-container-lowest flex items-center justify-between shrink-0">
         <div className="flex items-center gap-3 min-w-0 flex-1">
           <div className="relative shrink-0">
@@ -112,7 +109,6 @@ export default function DirectMessageSidebar({
           </div>
         </div>
 
-        {/* Controls: Minimize & Close */}
         <div className="flex items-center gap-1 shrink-0 ml-2">
           <button
             type="button"
@@ -133,7 +129,6 @@ export default function DirectMessageSidebar({
         </div>
       </div>
 
-      {/* Messages Stream */}
       <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-surface-container-low/30">
         <div className="text-center my-1">
           <span className="text-[10px] font-semibold text-on-surface-variant uppercase tracking-wider bg-surface-container-high/60 px-2.5 py-0.5 rounded-full">
@@ -167,7 +162,6 @@ export default function DirectMessageSidebar({
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Message Input Bar */}
       <form onSubmit={handleSendMessage} className="p-3 border-t border-border-subtle bg-surface-container-lowest shrink-0">
         <div className="flex items-center gap-2 bg-surface-container-low border border-border-subtle rounded-xl px-3 py-1.5 focus-within:border-primary focus-within:bg-surface-container-lowest transition-colors">
           <input

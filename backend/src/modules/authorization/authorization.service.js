@@ -7,9 +7,6 @@ import RolePermission from "../roles/role-permission.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
 
-/**
- * 1. Find active team membership for a user
- */
 export async function getMembership(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
     return null;
@@ -17,9 +14,6 @@ export async function getMembership(userId, teamId) {
   return Membership.findOne({ userId, teamId, status: "ACTIVE" });
 }
 
-/**
- * 2. Get active role IDs for a membership (Dual-Model aware)
- */
 export async function getActiveRoleIds(membershipId) {
   if (!membershipId || !mongoose.Types.ObjectId.isValid(membershipId)) return [];
   const membership = await Membership.findById(membershipId).select("roleIds status");
@@ -46,9 +40,6 @@ export async function getActiveRoleIds(membershipId) {
   return activeRoles.map((r) => r._id);
 }
 
-/**
- * 3. Resolve all permission keys granted through the user's active team roles (Document-Native with Fallback)
- */
 export async function resolveRolePermissions(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
     return new Set();
@@ -58,7 +49,6 @@ export async function resolveRolePermissions(userId, teamId) {
 
   let roleIds = Array.isArray(membership.roleIds) && membership.roleIds.length > 0 ? membership.roleIds : null;
 
-  // Fallback: If roleIds array is empty or not backfilled, query MembershipRole junction
   if (!roleIds || roleIds.length === 0) {
     const membershipRoles = await MembershipRole.find({
       membershipId: membership._id,
@@ -88,7 +78,6 @@ export async function resolveRolePermissions(userId, teamId) {
     }
   }
 
-  // Fallback: Query RolePermission for any roles whose embedded permissions are empty
   if (rolesNeedingFallback.length > 0) {
     const rolePermissions = await RolePermission.find({
       roleId: { $in: rolesNeedingFallback },
@@ -104,9 +93,6 @@ export async function resolveRolePermissions(userId, teamId) {
   return permissionKeys;
 }
 
-/**
- * 4. Check if a valid, unexpired direct access grant exists (Document-Native with Fallback)
- */
 export async function hasValidDirectGrant({ userId, teamId, permissionKey, resource = null }) {
   if (!userId || !teamId || !permissionKey) return false;
   if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) return false;
@@ -146,15 +132,11 @@ export async function hasValidDirectGrant({ userId, teamId, permissionKey, resou
   return false;
 }
 
-/**
- * 5. Effective permissions array (Roles + Direct Grants)
- */
 export async function resolvePermissions(userId, teamId) {
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
     return [];
   }
 
-  // Super Admin platform override: Super Admins hold all permissions globally
   if (await isSuperAdmin(userId)) {
     const allPerms = await Permission.find({}).select("key");
     const allKeys = new Set(allPerms.map((p) => p.key));
@@ -188,9 +170,6 @@ export async function resolvePermissions(userId, teamId) {
   return Array.from(permissions);
 }
 
-/**
- * Helper: Check if a user holds an active Super Admin platform flag
- */
 export async function isSuperAdmin(userId) {
   if (!userId) return false;
   const idStr =
@@ -216,7 +195,6 @@ export async function isSuperAdmin(userId) {
     return false;
   }
 
-  // Legacy data fallback: if isSuperAdmin is undefined/null, check if user holds a platform Super Admin system role
   const superAdminRole = await Role.findOne({
     name: { $in: ["Super Admin", "Platform Super Admin"] },
     isSystemRole: true,
@@ -242,9 +220,6 @@ export async function isSuperAdmin(userId) {
   return false;
 }
 
-/**
- * Helper: Check if a user is a Team Admin in a specific team
- */
 export async function isTeamAdmin(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
     return false;
@@ -272,9 +247,6 @@ export async function isTeamAdmin(userId, teamId) {
   return Boolean(hasAdminRole);
 }
 
-/**
- * Helper: Get all active Super Admin User IDs across the system
- */
 export async function getAllSuperAdminUserIds() {
   const superAdmins = await User.find({
     isSuperAdmin: true,
@@ -283,7 +255,6 @@ export async function getAllSuperAdminUserIds() {
 
   const userIds = new Set(superAdmins.map((u) => u._id.toString()));
 
-  // Fallback for unmigrated databases
   const superAdminRoles = await Role.find({
     name: { $in: ["Super Admin", "Platform Super Admin"] },
     isSystemRole: true,
@@ -311,9 +282,6 @@ export async function getAllSuperAdminUserIds() {
   return Array.from(userIds);
 }
 
-/**
- * Helper: Get unique active role names for a user across all active memberships
- */
 export async function getUserActiveRoleNames(userId) {
   if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return [];
   const memberships = await Membership.find({ userId, status: "ACTIVE" });
@@ -339,18 +307,6 @@ export async function getUserActiveRoleNames(userId) {
   return Array.from(new Set(roles.map((r) => r.name).filter(Boolean)));
 }
 
-/**
- * 6. High-Performance Layered Authorization Engine: can()
- * 
- * Supports both structured signature can({ actor, teamId, action, resourceId, resourceType })
- * and positional backwards-compatible signature can(actorOrUserId, teamId, action, resourceId, resourceType)
- * 
- * Invariants:
- * - Layer 1: Super Admin bypasses RBAC checks (if account is active)
- * - Layer 2: Gated strictly on active Membership (JIT grants cannot bypass membership requirement)
- * - Layer 3: Document-Native Role permissions check
- * - Layer 4: JIT / Direct AccessGrant check
- */
 export async function can(param1, param2, param3, param4 = null, param5 = null) {
   let actor;
   let teamId;
@@ -409,14 +365,12 @@ export async function can(param1, param2, param3, param4 = null, param5 = null) 
     isSuperAdminFlag = await isSuperAdmin(actorId);
   }
 
-  // Layer 1: Super Admin Bypass
   if (isSuperAdminFlag) {
     return true;
   }
 
   if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) return false;
 
-  // Layer 2: Membership Gating (Dual-Gated Fail-Closed Invariant)
   const membership = await Membership.findOne({
     userId: actorId,
     teamId,
@@ -429,13 +383,11 @@ export async function can(param1, param2, param3, param4 = null, param5 = null) 
 
   const normalizedAction = action.toLowerCase().trim();
 
-  // Layer 3: Role Resolution (Document-Native with Fallback)
   const rolePermissions = await resolveRolePermissions(actorId, teamId);
   if (rolePermissions.has(normalizedAction) || rolePermissions.has("*")) {
     return true;
   }
 
-  // Layer 4: JIT / Direct AccessGrant Resolution
   return hasValidDirectGrant({
     userId: actorId,
     teamId,
@@ -444,7 +396,6 @@ export async function can(param1, param2, param3, param4 = null, param5 = null) 
   });
 }
 
-// get all permissions for a user across all teams
 export async function getAllUserPermissions(userId) {
   if (!userId) return [];
   const memberships = await Membership.find({

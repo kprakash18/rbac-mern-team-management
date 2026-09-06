@@ -106,15 +106,13 @@ export default function RolesView() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('grid'); // 'grid' | 'table'
+  const [viewMode, setViewMode] = useState('grid');
 
-  // Card menus & modals state
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
   const [exportFormat, setExportFormat] = useState('opa');
 
-  // Role Form state
   const [roleForm, setRoleForm] = useState({
     id: null,
     name: '',
@@ -124,11 +122,9 @@ export default function RolesView() {
     searchPermQuery: '',
   });
 
-  // Drawer state
   const [drawerRole, setDrawerRole] = useState(null);
-  const [drawerTab, setDrawerTab] = useState('permissions'); // 'permissions' | 'members'
+  const [drawerTab, setDrawerTab] = useState('permissions');
 
-  // Nested user action modals
   const [editTtlData, setEditTtlData] = useState(null);
   const [reassignUserData, setReassignUserData] = useState(null);
   const [editWorkspaceData, setEditWorkspaceData] = useState(null);
@@ -137,7 +133,6 @@ export default function RolesView() {
 
   const [toast, showToast] = useToast(3500);
 
-  // Fetch Roles and Permissions from backend API
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -168,14 +163,12 @@ export default function RolesView() {
     fetchData();
   }, [fetchData]);
 
-  // Close menus on outside click
   useEffect(() => {
     const handleOutsideClick = () => setActiveMenuId(null);
     window.addEventListener('click', handleOutsideClick);
     return () => window.removeEventListener('click', handleOutsideClick);
   }, []);
 
-  // Filtered Roles
   const filteredRoles = useMemo(() => {
     return roles.filter((role) => {
       const q = searchQuery.toLowerCase().trim();
@@ -197,7 +190,6 @@ export default function RolesView() {
     });
   }, [roles, searchQuery, activeFilter]);
 
-  // Metric stats
   const metrics = useMemo(() => {
     const total = roles.length;
     const system = roles.filter((r) => r.type === 'system').length;
@@ -206,7 +198,6 @@ export default function RolesView() {
     return { total, system, custom, activeUsers, totalPerms: CANONICAL_PERMISSIONS.length };
   }, [roles]);
 
-  // Open Create / Edit Modal
   const handleOpenCreateModal = (roleToEdit = null) => {
     if (roleToEdit) {
       setRoleForm({
@@ -230,7 +221,6 @@ export default function RolesView() {
     setIsCreateModalOpen(true);
   };
 
-  // Template Change
   const handleTemplateChange = (templateKey) => {
     const permList = ROLE_TEMPLATES[templateKey] || [];
     setRoleForm((prev) => ({
@@ -240,7 +230,6 @@ export default function RolesView() {
     }));
   };
 
-  // Toggle Category
   const handleToggleCategory = (categoryKey, selectAll) => {
     const categoryPerms = permissionsByCategory[categoryKey] || [];
     setRoleForm((prev) => {
@@ -256,7 +245,6 @@ export default function RolesView() {
     });
   };
 
-  // Toggle Single Permission
   const handleToggleSinglePermission = (permKey) => {
     setRoleForm((prev) => {
       const nextSet = new Set(prev.selectedPermissions);
@@ -269,7 +257,6 @@ export default function RolesView() {
     });
   };
 
-  // Save Role (Create or Update)
   const handleSaveRole = async (e) => {
     e.preventDefault();
     if (!roleForm.name.trim()) {
@@ -278,13 +265,11 @@ export default function RolesView() {
     }
 
     const selectedKeys = Array.from(roleForm.selectedPermissions);
-    // Resolve permission IDs if dbPermissions loaded
     const permIdMap = new Map(dbPermissions.map((p) => [p.key, p._id || p.id]));
     const permissionIds = selectedKeys.map((k) => permIdMap.get(k)).filter(Boolean);
 
     try {
       if (roleForm.id) {
-        // Update existing role with permissionIds
         const res = await api.patch(`/api/roles/${roleForm.id}`, {
           name: roleForm.name,
           description: roleForm.description,
@@ -305,7 +290,6 @@ export default function RolesView() {
         showToast(`Role "${roleForm.name}" updated successfully.`);
         setIsCreateModalOpen(false);
       } else {
-        // Create new role
         let createdRoleData = null;
         try {
           const res = await api.post('/api/roles', {
@@ -342,7 +326,6 @@ export default function RolesView() {
     }
   };
 
-  // Clone Role
   const handleCloneRole = (roleToClone) => {
     setRoleForm({
       id: null,
@@ -356,7 +339,6 @@ export default function RolesView() {
     showToast(`Template initialized from "${roleToClone.name}".`);
   };
 
-  // Toggle Active/Disabled Status
   const handleToggleStatus = async (roleId) => {
     const targetRole = roles.find((r) => r.id === roleId);
     if (!targetRole || targetRole.type === 'system') return;
@@ -377,7 +359,6 @@ export default function RolesView() {
     showToast(`Role "${targetRole.name}" is now ${nextStatus.toUpperCase()}.`);
   };
 
-  // Archive / Unarchive Role
   const handleArchiveToggle = async (roleId) => {
     const targetRole = roles.find((r) => r.id === roleId);
     if (!targetRole || targetRole.type === 'system') return;
@@ -400,7 +381,6 @@ export default function RolesView() {
     showToast(`Role "${targetRole.name}" has been ${nextStatus === 'archived' ? 'archived' : 'restored'}.`);
   };
 
-  // Delete Role (checks for active members)
   const handleDeleteRole = async (roleToDelete) => {
     if (!roleToDelete || roleToDelete.type === 'system') return;
 
@@ -427,7 +407,6 @@ export default function RolesView() {
     showToast(`Role "${roleToDelete.name}" has been deleted.`);
   };
 
-  // Safe Delete with Active Member Reassignment
   const handleConfirmSafeDelete = async (roleToDelete, targetRoleId) => {
     try {
       setSafeDeleteLoading(true);
@@ -442,7 +421,6 @@ export default function RolesView() {
         console.warn('API safe delete failed, updating local state:', err);
       }
 
-      // Reassign members to targetRole and remove roleToDelete
       setRoles((prev) => {
         return prev
           .filter((r) => r.id !== roleToDelete.id)
@@ -474,7 +452,6 @@ export default function RolesView() {
     }
   };
 
-  // Drawer Handlers
   const handleOpenDrawer = (role, tab = 'permissions') => {
     setDrawerRole(role);
     setDrawerTab(tab);
@@ -554,7 +531,6 @@ export default function RolesView() {
     showToast(`Assigned ${formData.name} to ${drawerRole.name}.`);
   };
 
-  // Policy Export Download Handler
   const handleDownloadPolicy = () => {
     let fileContent = '';
     let fileName = `rbac-policy-bundle-${Date.now()}`;
@@ -625,7 +601,6 @@ export default function RolesView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* View Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <div className="flex items-center gap-xs text-body-sm text-on-surface-variant mb-1">
@@ -664,7 +639,6 @@ export default function RolesView() {
         </div>
       </div>
 
-      {/* Metrics Banner */}
       <div className="grid grid-cols-2 md:grid-cols-5 gap-md">
         <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col">
           <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">Total Roles</span>
@@ -693,10 +667,8 @@ export default function RolesView() {
         </div>
       </div>
 
-      {/* Toolbar: Search, Filters, View Modes */}
       <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-md bg-surface-container-low p-sm rounded-xl border border-border-subtle">
         <div className="flex items-center gap-sm flex-1">
-          {/* Search */}
           <div className="relative flex-1 max-w-md">
             <span className="material-symbols-outlined absolute left-3 top-2.5 text-outline text-[18px]">
               search
@@ -719,7 +691,6 @@ export default function RolesView() {
             )}
           </div>
 
-          {/* Filter Pills */}
           <div className="hidden sm:flex items-center gap-1 bg-surface-container-lowest p-1 rounded-lg border border-border-subtle">
             {['All', 'System', 'Custom', 'Active', 'Disabled', 'Archived'].map((filter) => (
               <button
@@ -739,7 +710,6 @@ export default function RolesView() {
         </div>
 
         <div className="flex items-center gap-xs justify-end">
-          {/* View Mode Toggle */}
           <div className="flex items-center bg-surface-container-lowest p-1 rounded-lg border border-border-subtle shadow-2xs">
             <button
               type="button"
@@ -765,7 +735,6 @@ export default function RolesView() {
         </div>
       </div>
 
-      {/* Main Content Area */}
       {loading ? (
         <div className="flex flex-col items-center justify-center py-20 gap-md">
           <div className="w-10 h-10 border-3 border-primary border-t-transparent rounded-full animate-spin"></div>
@@ -828,7 +797,6 @@ export default function RolesView() {
         />
       )}
 
-      {/* Modals & Drawers */}
       <CreateEditRoleModal
         isOpen={isCreateModalOpen}
         form={roleForm}
@@ -888,7 +856,6 @@ export default function RolesView() {
         onDownload={handleDownloadPolicy}
       />
 
-      {/* Edit User TTL Modal */}
       {editTtlData && (
         <EditUserTtlModal
           data={editTtlData}
@@ -901,7 +868,6 @@ export default function RolesView() {
         />
       )}
 
-      {/* Reassign User Modal */}
       {reassignUserData && (
         <ReassignUserModal
           data={reassignUserData}
@@ -917,7 +883,6 @@ export default function RolesView() {
         />
       )}
 
-      {/* Change Workspace Modal */}
       {editWorkspaceData && (
         <ChangeWorkspaceModal
           data={editWorkspaceData}
@@ -930,7 +895,6 @@ export default function RolesView() {
         />
       )}
 
-      {/* Safe Delete Role Modal with Member Reassignment */}
       <SafeDeleteRoleModal
         isOpen={Boolean(safeDeleteRole)}
         role={safeDeleteRole}
@@ -940,7 +904,6 @@ export default function RolesView() {
         loading={safeDeleteLoading}
       />
 
-      {/* Toast Notification */}
       <div className="fixed bottom-6 right-6 z-120">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>

@@ -7,7 +7,7 @@ export default function ActiveWorkspacesWidget({
   onEditWorkspaceClick,
   onJumpInWorkspace,
 }) {
-  const [filterTab, setFilterTab] = useState('active'); // 'active' | 'archived' | 'all'
+  const [filterTab, setFilterTab] = useState('active');
 
   const activeCount = workspaces.filter((w) => w.status !== 'Archived').length;
   const archivedCount = workspaces.filter((w) => w.status === 'Archived').length;
@@ -20,7 +20,6 @@ export default function ActiveWorkspacesWidget({
 
   return (
     <div className="flex-1 lg:w-[35%] flex flex-col gap-md">
-      {/* Header & Create Action */}
       <div className="flex justify-between items-center">
         <div className="flex items-center gap-2">
           <h2 className="font-headline-md text-on-surface font-semibold">Workspaces</h2>
@@ -42,7 +41,6 @@ export default function ActiveWorkspacesWidget({
         </div>
       </div>
 
-      {/* Filter Tabs */}
       <div className="flex items-center gap-1 p-1 bg-surface-container rounded-lg self-start text-[12px] font-label-bold">
         <button
           type="button"
@@ -79,7 +77,6 @@ export default function ActiveWorkspacesWidget({
         </button>
       </div>
 
-      {/* Workspaces List */}
       <div className="bg-card-bg shadow-sm rounded-xl overflow-hidden w-full flex flex-col border border-border-subtle/50">
         {loading ? (
           <div className="p-xl text-center flex flex-col items-center justify-center gap-2 text-on-surface-variant">
@@ -104,7 +101,6 @@ export default function ActiveWorkspacesWidget({
                   idx < filteredWorkspaces.length - 1 ? 'border-b border-border-subtle/50' : ''
                 } group`}
               >
-                {/* Left: Icon & Info */}
                 <div className="flex items-center gap-md min-w-0 flex-1">
                   <div className="w-10 h-10 rounded-lg bg-surface-container flex items-center justify-center group-hover:bg-surface-container-high transition-colors shrink-0">
                     <span className="material-symbols-outlined text-on-surface-variant">
@@ -132,9 +128,7 @@ export default function ActiveWorkspacesWidget({
                   </div>
                 </div>
 
-                {/* Right: Actions */}
                 <div className="flex items-center gap-1.5 shrink-0">
-                  {/* Settings / Edit button */}
                   {onEditWorkspaceClick && (
                     <button
                       type="button"
@@ -146,7 +140,6 @@ export default function ActiveWorkspacesWidget({
                     </button>
                   )}
 
-                  {/* Jump In action */}
                   {!isArchived ? (
                     <button
                       type="button"

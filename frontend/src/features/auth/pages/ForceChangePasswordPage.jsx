@@ -15,7 +15,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
 
-  // Password strength calculation
   const calculateStrength = (pwd) => {
     if (!pwd) return { label: 'Weak', width: '0%', color: '#ef4444' };
     let score = 0;
@@ -122,7 +121,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 'rgba(0, 0, 0, 0.1) 0px 4px 6px -1px, rgba(0, 0, 0, 0.1) 0px 2px 4px -2px',
             }}
           >
-            {/* Header section */}
             <div className="flex flex-col items-center mb-stack-lg">
               <div
                 className="w-12 h-12 bg-surface-container-low rounded-lg flex items-center justify-center mb-stack-md"
@@ -155,7 +153,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
               </p>
             </div>
 
-            {/* Error Message */}
             {errorMessage && (
               <div className="mb-stack-md p-stack-sm rounded-md bg-error-container text-error text-label-sm font-label-sm flex items-center gap-2">
                 <span className="material-symbols-outlined text-[18px]">error</span>
@@ -163,9 +160,7 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
               </div>
             )}
 
-            {/* Form Section */}
             <form className="flex flex-col gap-stack-lg" onSubmit={handleSubmit}>
-              {/* Current / Temporary Password */}
               <div className="flex flex-col gap-stack-sm">
                 <label
                   className="font-label-md text-label-md text-on-surface"
@@ -202,7 +197,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </div>
               </div>
 
-              {/* New Password */}
               <div className="flex flex-col gap-stack-sm">
                 <label
                   className="font-label-md text-label-md text-on-surface"
@@ -239,7 +233,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </div>
               </div>
 
-              {/* Password strength */}
               <div className="flex flex-col gap-unit">
                 <div className="flex justify-between items-center">
                   <span className="text-label-sm font-label-sm text-on-surface-variant">
@@ -263,7 +256,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </div>
               </div>
 
-              {/* Confirm Password */}
               <div className="flex flex-col gap-stack-sm">
                 <label
                   className="font-label-md text-label-md text-on-surface"
@@ -300,7 +292,6 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
                 </div>
               </div>
 
-              {/* Action */}
               <button
                 className="w-full h-12 mt-stack-sm bg-surface-container-highest text-outline font-label-md text-label-md rounded-md transition-colors hover:bg-surface-container-highest cursor-pointer flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                 style={{ backgroundColor: 'rgb(0, 0, 0)', color: 'rgb(255, 255, 255)' }}

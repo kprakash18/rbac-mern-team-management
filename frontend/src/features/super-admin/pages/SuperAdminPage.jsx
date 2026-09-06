@@ -77,7 +77,6 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       }));
       setWorkspaces(formattedWorkspaces);
 
-      // Direct jump into workspace if navigated via email teamId link
       const params = new URLSearchParams(window.location.search);
       const targetTeamId = params.get('teamId') || params.get('workspace');
       if (targetTeamId && onJumpIntoWorkspace) {
@@ -165,7 +164,6 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       return nextList;
     });
 
-    // Also register in user accessible workspaces list
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
       storedUserWs.unshift({
@@ -193,7 +191,6 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       return nextList;
     });
 
-    // Sync in user accessible custom workspaces list
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
       const nextUserWs = storedUserWs.map((ws) => (ws.id === updatedWs.id ? { ...ws, ...updatedWs } : ws));
@@ -322,7 +319,6 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
         </main>
       </div>
 
-      {/* Toast Notification */}
       <div className="fixed bottom-6 right-6 z-120">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>

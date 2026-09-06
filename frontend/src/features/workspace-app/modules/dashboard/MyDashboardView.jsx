@@ -94,7 +94,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch workspaces when user profile dropdown opens
   useEffect(() => {
     if (!isUserMenuOpen) return;
     let isMounted = true;
@@ -134,7 +133,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg">
-      {/* Top search bar & actions */}
       <div className="flex items-center justify-between pb-sm border-b border-border-subtle gap-md flex-wrap">
         <div className="flex items-center gap-md flex-1 max-w-lg">
           <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-surface-container-lowest border border-border-subtle text-on-surface-variant w-full shadow-sm">
@@ -161,7 +159,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
             onSelectTab={onNavigate}
           />
 
-          {/* Top-Right User Avatar & Dropdown */}
           <div className="relative" ref={userMenuRef}>
             <button
               type="button"
@@ -202,7 +199,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
                   </span>
                 </div>
 
-                {/* Switch Workspace Section inside Profile Dropdown */}
                 {workspaces.length > 0 && (
                   <div className="py-1 border-b border-border-subtle">
                     <div className="px-md py-1 flex items-center justify-between">
@@ -303,14 +299,12 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
         </div>
       </div>
 
-      {/* User Profile & Password Change Settings Modal */}
       <UserProfileSettingsModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}
         onLogout={() => onNavigate?.('logout')}
       />
 
-      {/* Welcome Card */}
       <div className="w-full rounded-xl bg-surface-container-lowest border border-border-subtle p-lg shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <div className="flex items-center gap-sm flex-wrap">
@@ -333,9 +327,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
         </div>
       </div>
 
-      {/* 4 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-        {/* Card 1: Active Capabilities */}
         <div
           onClick={() => onNavigate?.('my-permissions')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
@@ -357,7 +349,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
 
-        {/* Card 2: Active JIT Leases */}
         <div
           onClick={() => onNavigate?.('jit-request')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-warning-text/40 transition-colors"
@@ -376,7 +367,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
 
-        {/* Card 3: Team Members */}
         <div
           onClick={() => onNavigate?.('team-members')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
@@ -396,7 +386,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
 
-        {/* Card 4: Tasks */}
         <div
           onClick={() => onNavigate?.('tasks')}
           className="p-md rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col justify-between cursor-pointer hover:border-primary/40 transition-colors"
@@ -419,9 +408,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
         </div>
       </div>
 
-      {/* 2-Column Grid: Real Activity & Workflows */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-lg items-start">
-        {/* Recent Activity */}
         <div className="lg:col-span-7 flex flex-col gap-md">
           <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm">
             <div className="flex items-center justify-between mb-md">
@@ -475,7 +462,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
 
-        {/* Quick Workflows */}
         <div className="lg:col-span-5 flex flex-col gap-md">
           <div className="bg-surface-container-lowest rounded-xl border border-border-subtle p-lg shadow-sm">
             <div className="mb-md">

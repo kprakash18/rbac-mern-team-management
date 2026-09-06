@@ -11,19 +11,16 @@ export default function SystemBroadcastsView() {
   const [broadcasts, setBroadcasts] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [typeFilter, setTypeFilter] = useState('ALL');
 
-  // Modals & Drawers
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [broadcastToEdit, setBroadcastToEdit] = useState(null);
   const [inspectingBroadcast, setInspectingBroadcast] = useState(null);
   const [deletingBroadcast, setDeletingBroadcast] = useState(null);
   const [isEndEarlyMode, setIsEndEarlyMode] = useState(false);
 
-  // Toast Notification
   const [toast, showToast] = useToast(3500);
 
   const fetchBroadcasts = useCallback(async () => {
@@ -77,7 +74,6 @@ export default function SystemBroadcastsView() {
     };
   }, [fetchBroadcasts]);
 
-  // Filtered broadcasts
   const filteredBroadcasts = broadcasts.filter((bc) => {
     const matchStatus = statusFilter === 'ALL' || bc.status === statusFilter;
     const matchType = typeFilter === 'ALL' || bc.type === typeFilter;
@@ -92,7 +88,6 @@ export default function SystemBroadcastsView() {
     return matchStatus && matchType && matchSearch;
   });
 
-  // Summary counts
   const activeCount = broadcasts.filter((b) => b.status === 'ACTIVE').length;
   const scheduledCount = broadcasts.filter((b) => b.status === 'SCHEDULED').length;
   const endedCount = broadcasts.filter((b) => b.status === 'ENDED').length;
@@ -180,15 +175,12 @@ export default function SystemBroadcastsView() {
     showToast('Broadcast audit log downloaded.');
   };
 
-
   return (
     <div className="flex flex-col w-full p-xl gap-xl max-w-5xl mx-auto">
-      {/* Toast Notification */}
       <div className="fixed top-6 right-6 z-1300">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">
         <div className="flex flex-col gap-xs">
           <h1 className="font-display-title text-display-title text-on-surface">System Broadcasts</h1>
@@ -219,7 +211,6 @@ export default function SystemBroadcastsView() {
         </div>
       </div>
 
-      {/* Simple Summary Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-md">
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
@@ -252,9 +243,7 @@ export default function SystemBroadcastsView() {
         </div>
       </div>
 
-      {/* Single-Line Controls Toolbar */}
       <div className="bg-surface-container-lowest rounded-xl p-sm shadow-xs border border-surface-variant flex flex-col sm:flex-row items-center justify-between gap-sm">
-        {/* Search */}
         <div className="relative w-full sm:w-80">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">
             search
@@ -268,9 +257,7 @@ export default function SystemBroadcastsView() {
           />
         </div>
 
-        {/* Filters */}
         <div className="flex items-center gap-xs w-full sm:w-auto justify-end flex-wrap">
-          {/* Status Pills */}
           <div className="flex items-center bg-surface-container-low p-1 rounded-lg gap-0.5">
             {[
               { id: 'ALL', label: `All (${broadcasts.length})` },
@@ -293,7 +280,6 @@ export default function SystemBroadcastsView() {
             ))}
           </div>
 
-          {/* Type Filter */}
           <select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
@@ -308,7 +294,6 @@ export default function SystemBroadcastsView() {
         </div>
       </div>
 
-      {/* Broadcasts List */}
       <div className="flex flex-col gap-md">
         {loading ? (
           <div className="bg-surface-container-lowest rounded-xl p-2xl text-center flex flex-col items-center justify-center gap-2 border border-border-subtle">
@@ -351,7 +336,6 @@ export default function SystemBroadcastsView() {
         )}
       </div>
 
-      {/* Create / Edit Broadcast Modal */}
       <CreateEditBroadcastModal
         isOpen={isCreateModalOpen}
         broadcastToEdit={broadcastToEdit}
@@ -362,7 +346,6 @@ export default function SystemBroadcastsView() {
         onSubmit={handleCreateOrUpdateBroadcast}
       />
 
-      {/* Broadcast Details & Analytics Drawer */}
       <BroadcastDetailsDrawer
         isOpen={Boolean(inspectingBroadcast)}
         broadcast={inspectingBroadcast}
@@ -371,7 +354,6 @@ export default function SystemBroadcastsView() {
         onExtend={() => showToast('Broadcast end time extended by 24 hours.')}
       />
 
-      {/* Delete / End Early Modal */}
       <ConfirmModal
         isOpen={Boolean(deletingBroadcast)}
         title={isEndEarlyMode ? 'End Broadcast Early?' : 'Delete Broadcast?'}

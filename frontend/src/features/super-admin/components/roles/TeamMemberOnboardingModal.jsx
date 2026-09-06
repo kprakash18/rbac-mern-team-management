@@ -14,11 +14,10 @@ export default function TeamMemberOnboardingModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedUserIds, setSelectedUserIds] = useState(new Set());
   const [selectedRole, setSelectedRole] = useState('Developer');
-  const [userRoleOverrides, setUserRoleOverrides] = useState({}); // { [userId]: roleName }
+  const [userRoleOverrides, setUserRoleOverrides] = useState({});
   const [submitting, setSubmitting] = useState(false);
-  const [filterTab, setFilterTab] = useState('available'); // 'all' | 'available' | 'assigned'
+  const [filterTab, setFilterTab] = useState('available');
 
-  // Fetch active users from backend API
   useEffect(() => {
     let isMounted = true;
     if (isOpen) {
@@ -28,7 +27,6 @@ export default function TeamMemberOnboardingModal({
         .then((res) => {
           if (!isMounted) return;
           const userList = res.data?.data || res.data?.users || [];
-          // Filter to strictly ACTIVE users only
           const activeOnly = userList.filter((u) => (u.accountStatus || u.status || 'ACTIVE').toUpperCase() === 'ACTIVE');
           setActiveUsers(activeOnly);
         })
@@ -49,7 +47,6 @@ export default function TeamMemberOnboardingModal({
     };
   }, [isOpen, showToast]);
 
-  // Set of IDs and Emails of users already in this team
   const assignedTeamMemberMap = useMemo(() => {
     const map = new Map();
     if (!team || !Array.isArray(team.members)) return map;
@@ -61,7 +58,6 @@ export default function TeamMemberOnboardingModal({
     return map;
   }, [team]);
 
-  // Categorize active users into Assigned vs Available
   const categorizedUsers = useMemo(() => {
     return activeUsers.map((u) => {
       const uId = String(u._id || u.id);
@@ -78,7 +74,6 @@ export default function TeamMemberOnboardingModal({
     });
   }, [activeUsers, assignedTeamMemberMap]);
 
-  // Filtered users by search query and tab
   const filteredUsers = useMemo(() => {
     return categorizedUsers.filter((u) => {
       const q = searchQuery.toLowerCase().trim();
@@ -98,7 +93,6 @@ export default function TeamMemberOnboardingModal({
   const availableCount = useMemo(() => categorizedUsers.filter((u) => !u.isAlreadyAssigned).length, [categorizedUsers]);
   const assignedCount = useMemo(() => categorizedUsers.filter((u) => u.isAlreadyAssigned).length, [categorizedUsers]);
 
-  // Toggle selection for a candidate user
   const handleToggleUser = (userId) => {
     setSelectedUserIds((prev) => {
       const next = new Set(prev);
@@ -111,7 +105,6 @@ export default function TeamMemberOnboardingModal({
     });
   };
 
-  // Select all available candidate users
   const handleSelectAllAvailable = () => {
     const availableUsers = categorizedUsers.filter((u) => !u.isAlreadyAssigned);
     if (selectedUserIds.size === availableUsers.length && availableUsers.length > 0) {
@@ -121,7 +114,6 @@ export default function TeamMemberOnboardingModal({
     }
   };
 
-  // Set individual role override for a selected user
   const handleSetUserRole = (userId, roleName) => {
     setUserRoleOverrides((prev) => ({
       ...prev,
@@ -129,7 +121,6 @@ export default function TeamMemberOnboardingModal({
     }));
   };
 
-  // Submit Onboarding
   const handleSubmitOnboarding = async (e) => {
     e.preventDefault();
     if (selectedUserIds.size === 0) {
@@ -164,7 +155,6 @@ export default function TeamMemberOnboardingModal({
         });
       }
 
-      // Merge with existing team members
       const existingMembers = Array.isArray(team.members) ? team.members : [];
       const updatedMembers = [...existingMembers, ...newMembersToAdd];
 
@@ -185,15 +175,12 @@ export default function TeamMemberOnboardingModal({
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md animate-in fade-in duration-150" id="modal-onboard-members">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
-      {/* Modal Dialog */}
       <div
         className="relative bg-card-bg rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden border border-border-subtle z-[1150] animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
         <div className="p-lg bg-surface-container-low border-b border-border-subtle flex items-center justify-between shrink-0">
           <div className="flex items-center gap-md">
             <div className="w-11 h-11 rounded-xl bg-primary text-on-primary font-label-bold flex items-center justify-center shadow-xs shrink-0">
@@ -223,9 +210,7 @@ export default function TeamMemberOnboardingModal({
           </button>
         </div>
 
-        {/* Filter Tabs & Search Toolbar */}
         <div className="p-md bg-surface-container-lowest border-b border-border-subtle flex flex-col sm:flex-row items-center justify-between gap-md shrink-0">
-          {/* Tabs */}
           <div className="inline-flex rounded-lg bg-surface-container p-1 border border-border-subtle w-full sm:w-auto">
             <button
               type="button"
@@ -264,7 +249,6 @@ export default function TeamMemberOnboardingModal({
             </button>
           </div>
 
-          {/* Search */}
           <div className="relative flex-1 max-w-xs w-full">
             <span className="material-symbols-outlined absolute left-3 top-2.5 text-outline text-[18px]">search</span>
             <input
@@ -277,7 +261,6 @@ export default function TeamMemberOnboardingModal({
           </div>
         </div>
 
-        {/* Global Default Role Selector */}
         {filterTab !== 'assigned' && availableCount > 0 && (
           <div className="px-lg py-sm bg-surface-container-low/50 border-b border-border-subtle flex items-center justify-between gap-md text-[12px] shrink-0">
             <div className="flex items-center gap-2">
@@ -305,7 +288,6 @@ export default function TeamMemberOnboardingModal({
           </div>
         )}
 
-        {/* Users List */}
         <div className="p-lg overflow-y-auto flex-1 space-y-sm bg-surface">
           {loadingUsers ? (
             <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
@@ -346,9 +328,7 @@ export default function TeamMemberOnboardingModal({
                         : 'bg-card-bg hover:bg-surface-container border-border-subtle cursor-pointer'
                     }`}
                   >
-                    {/* User Info & Checkbox */}
                     <div className="flex items-center gap-md min-w-0">
-                      {/* Checkbox / Status Icon */}
                       {user.isAlreadyAssigned ? (
                         <div className="w-5 h-5 rounded bg-surface-container-high text-on-surface flex items-center justify-center shrink-0">
                           <span className="material-symbols-outlined text-[16px] text-primary">check</span>
@@ -363,12 +343,10 @@ export default function TeamMemberOnboardingModal({
                         />
                       )}
 
-                      {/* Avatar */}
                       <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary font-bold flex items-center justify-center text-[12px] shrink-0">
                         {initials}
                       </div>
 
-                      {/* Name & Email */}
                       <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-2">
                           <span className="font-label-bold text-on-surface text-[13px] truncate font-bold">{user.name}</span>
@@ -380,7 +358,6 @@ export default function TeamMemberOnboardingModal({
                       </div>
                     </div>
 
-                    {/* Role Status or Role Selector */}
                     <div className="flex items-center gap-2 shrink-0">
                       {user.isAlreadyAssigned ? (
                         <div className="flex items-center gap-1.5">
@@ -424,7 +401,6 @@ export default function TeamMemberOnboardingModal({
           )}
         </div>
 
-        {/* Modal Footer */}
         <div className="p-md bg-surface-container-low border-t border-border-subtle flex items-center justify-between shrink-0">
           <div className="text-[12px] text-on-surface-variant">
             {selectedUserIds.size > 0 ? (

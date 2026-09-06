@@ -18,7 +18,6 @@ export default function WorkspaceAppTopbar({
   const [workspaces, setWorkspaces] = useState([]);
   const menuRef = useRef(null);
 
-  // Close menu on outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -29,7 +28,6 @@ export default function WorkspaceAppTopbar({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch workspaces when profile dropdown opens
   useEffect(() => {
     if (!isMenuOpen) return;
     let isMounted = true;
@@ -75,7 +73,6 @@ export default function WorkspaceAppTopbar({
   return (
     <>
       <header className="h-16 border-b border-border-subtle bg-surface-container-low/80 backdrop-blur-md px-lg flex items-center justify-between sticky top-0 z-30 shrink-0">
-        {/* Left: Workspace Info (Static) */}
         <div className="flex items-center gap-sm">
           <div className="w-8 h-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center font-bold text-sm">
             <span className="material-symbols-outlined text-[20px]">corporate_fare</span>
@@ -90,15 +87,12 @@ export default function WorkspaceAppTopbar({
           </div>
         </div>
 
-        {/* Right: Notifications & Profile */}
         <div className="flex items-center gap-sm">
-          {/* Notification Bell Dropdown */}
           <NotificationDropdown
             currentUser={currentUser}
             onSelectTab={onSelectTab || onAnnouncementsClick}
           />
 
-          {/* Top-Right User Logo & Dropdown */}
           <div className="relative" ref={menuRef}>
             <button
               type="button"
@@ -145,7 +139,6 @@ export default function WorkspaceAppTopbar({
                   </span>
                 </div>
 
-                {/* Switch Workspace Section inside Profile Dropdown */}
                 {workspaces.length > 0 && (
                   <div className="py-1 border-b border-border-subtle">
                     <div className="px-md py-1 flex items-center justify-between">
@@ -261,7 +254,6 @@ export default function WorkspaceAppTopbar({
         </div>
       </header>
 
-      {/* User Profile & Password Change Settings Modal */}
       <UserProfileSettingsModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}

@@ -21,7 +21,6 @@ export default function TaskRow({
 
   return (
     <tr className="hover:bg-surface-container-low/60 transition-colors">
-      {/* Status Selector */}
       <td className="py-3.5 px-4 w-32 align-top">
         <select
           value={task.status}
@@ -39,7 +38,6 @@ export default function TaskRow({
         </select>
       </td>
 
-      {/* Task Title & Remarks */}
       <td className="py-3.5 px-4 min-w-65 align-top">
         <div className="flex flex-col">
           <span className="font-label-bold text-[13px] text-on-surface leading-tight">
@@ -53,14 +51,12 @@ export default function TaskRow({
         </div>
       </td>
 
-      {/* Priority */}
       <td className="py-3.5 px-4 w-28 text-center align-top">
         <Badge variant={priorityVariant} size="sm" className="w-20">
           {task.priority}
         </Badge>
       </td>
 
-      {/* Deadline */}
       <td className="py-3.5 px-4 w-36 whitespace-nowrap align-top">
         <div className="flex items-center gap-1.5 text-[12px] text-on-surface-variant font-mono mt-0.5">
           <span className="material-symbols-outlined text-[15px]">calendar_today</span>
@@ -76,7 +72,6 @@ export default function TaskRow({
         </div>
       </td>
 
-      {/* Assignee */}
       <td className="py-3.5 px-4 w-48 align-top">
         <div className="flex items-center gap-2 mt-0.5">
           <Avatar
@@ -91,7 +86,6 @@ export default function TaskRow({
         </div>
       </td>
 
-      {/* Actions */}
       <td className="py-3.5 px-4 w-20 text-right align-top">
         <div className="flex items-center justify-end gap-1 mt-0.5">
           {canEdit && (

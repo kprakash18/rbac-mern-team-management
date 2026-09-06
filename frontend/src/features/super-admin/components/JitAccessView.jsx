@@ -17,18 +17,15 @@ export default function JitAccessView() {
   const [history, setHistory] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Filters
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [filterWorkspace, setFilterWorkspace] = useState('ALL');
   const [filterPermission, setFilterPermission] = useState('ALL');
 
-  // Modals
   const [isNewGrantOpen, setIsNewGrantOpen] = useState(false);
   const [rejectingRequest, setRejectingRequest] = useState(null);
   const [rejectReason, setRejectReason] = useState('Insufficient business justification or outside operational window.');
   const [selectedRequestDetails, setSelectedRequestDetails] = useState(null);
 
-  // Toast notification
   const [toast, showToast] = useToast(3500);
 
   const fetchJitRequests = useCallback(async () => {
@@ -160,7 +157,6 @@ export default function JitAccessView() {
     fetchJitRequests();
   }, [fetchJitRequests]);
 
-  // Real-time socket listeners for incoming JIT elevation requests from Team Admins
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -189,7 +185,6 @@ export default function JitAccessView() {
     };
   }, [fetchJitRequests, showToast]);
 
-  // Real-time ticking timer for active grants with automatic expiration transition
   useEffect(() => {
     const timerInterval = setInterval(() => {
       setGrants((prevGrants) => {
@@ -276,7 +271,6 @@ export default function JitAccessView() {
     showToast('Filters reset to show all items.');
   };
 
-  // Filtered views
   const filteredGrants = grants.filter((g) => {
     const matchWs = filterWorkspace === 'ALL' || g.workspace === filterWorkspace;
     const matchPerm = filterPermission === 'ALL' || g.permission === filterPermission;
@@ -299,12 +293,10 @@ export default function JitAccessView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification */}
       <div className="fixed top-6 right-6 z-1200">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-md mb-lg">
         <div className="flex flex-col gap-base">
           <h1 className="font-display-title text-display-title text-on-surface">JIT Access Governance</h1>
@@ -339,7 +331,6 @@ export default function JitAccessView() {
         </div>
       </div>
 
-      {/* Navigation Tabs */}
       <div className="flex gap-md border-b border-surface-variant mb-md">
         <button
           type="button"
@@ -390,7 +381,6 @@ export default function JitAccessView() {
         </button>
       </div>
 
-      {/* Filter Active Badge Bar */}
       {hasActiveFilter && (
         <div className="flex items-center gap-xs px-sm py-1 bg-surface-container-low rounded-lg text-[12px] text-on-surface-variant">
           <span>Active Filters:</span>
@@ -414,7 +404,6 @@ export default function JitAccessView() {
         </div>
       )}
 
-      {/* Tables based on active tab */}
       {loading ? (
         <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
           <span className="material-symbols-outlined animate-spin text-[32px] text-primary">progress_activity</span>
@@ -433,7 +422,6 @@ export default function JitAccessView() {
         <JitHistoryTable history={filteredHistory} />
       )}
 
-      {/* Review Request Details Modal */}
       <RequestDetailsModal
         request={selectedRequestDetails}
         onClose={() => setSelectedRequestDetails(null)}
@@ -441,14 +429,12 @@ export default function JitAccessView() {
         onOpenReject={setRejectingRequest}
       />
 
-      {/* Direct New Grant Modal */}
       <NewGrantModal
         isOpen={isNewGrantOpen}
         onClose={() => setIsNewGrantOpen(false)}
         onSubmit={handleCreateGrant}
       />
 
-      {/* Reject Request Modal */}
       {rejectingRequest && (
         <ConfirmModal
           isOpen={Boolean(rejectingRequest)}
@@ -491,7 +477,6 @@ export default function JitAccessView() {
         </ConfirmModal>
       )}
 
-      {/* Filter Modal */}
       <JitFilterModal
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}

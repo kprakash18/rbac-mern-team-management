@@ -6,7 +6,6 @@ export default function SuspendedAccountPage({ user, onLogout }) {
 
   return (
     <div className="bg-surface font-body-md text-on-surface min-h-screen flex flex-col justify-between">
-      {/* Header */}
       <header className="w-full bg-surface-container-lowest/80 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-outline-variant/20">
         <div className="h-16 max-w-7xl mx-auto px-container-margin flex items-center justify-between">
           <div className="flex items-center gap-stack-md">
@@ -22,15 +21,12 @@ export default function SuspendedAccountPage({ user, onLogout }) {
         </div>
       </header>
 
-      {/* Center Card */}
       <main className="flex-1 flex items-center justify-center p-md">
         <div className="w-full max-w-md bg-surface-container-lowest rounded-2xl shadow-xl border border-error/20 p-8 text-center flex flex-col items-center gap-6 animate-in fade-in zoom-in-95 duration-200">
-          {/* Icon */}
           <div className="w-16 h-16 rounded-full bg-error-container text-error flex items-center justify-center shadow-inner">
             <span className="material-symbols-outlined text-[36px]">block</span>
           </div>
 
-          {/* Title & Description */}
           <div className="flex flex-col gap-2">
             <h1 className="font-headline-md text-headline-md font-bold text-on-surface">
               Account Suspended
@@ -50,7 +46,6 @@ export default function SuspendedAccountPage({ user, onLogout }) {
             </p>
           </div>
 
-          {/* Actions */}
           <div className="w-full flex flex-col gap-3 pt-2">
             <button
               type="button"
@@ -64,7 +59,6 @@ export default function SuspendedAccountPage({ user, onLogout }) {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="w-full bg-surface-container-low py-4 border-t border-outline-variant/20 text-center text-on-surface-variant text-label-sm">
         <span>© 2024 Enterprise SaaS. All rights reserved.</span>
       </footer>

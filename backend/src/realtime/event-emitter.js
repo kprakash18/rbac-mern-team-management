@@ -27,6 +27,3 @@ export function emitToAll(event, payload) {
     io.emit(event, payload);
   } catch (error) {}
 }
-
-
-

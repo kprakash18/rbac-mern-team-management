@@ -1,13 +1,10 @@
 import { AppError } from "../errors/error.js";
 
-
 export function errorHandler(err, req, res, next) {
-  // If headers already sent, delegate to Express default handler
   if (res.headersSent) {
     return next(err);
   }
 
-  // Handle known operational AppError instances
   if (err instanceof AppError) {
     return res.status(err.statusCode).json({
       success: false,
@@ -17,7 +14,6 @@ export function errorHandler(err, req, res, next) {
     });
   }
 
-  // Log unexpected programmer errors
   console.error("Unhandled Error:", err);
 
   return res.status(500).json({

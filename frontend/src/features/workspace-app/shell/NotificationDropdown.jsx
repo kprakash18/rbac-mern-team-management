@@ -3,7 +3,6 @@ import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 
 const NOTIF_CONFIG = {
-  // Canonical Types
   USER_ROLE_CHANGED: {
     icon: 'badge',
     bg: 'bg-purple-100 text-purple-800 border-purple-200',
@@ -25,7 +24,6 @@ const NOTIF_CONFIG = {
     label: 'Team Member',
   },
 
-  // Role & Permissions
   ROLE_ASSIGNED: {
     icon: 'badge',
     bg: 'bg-purple-100 text-purple-800 border-purple-200',
@@ -42,7 +40,6 @@ const NOTIF_CONFIG = {
     label: 'Permissions',
   },
 
-  // Team & Channel
   TEAM_MEMBERSHIP: {
     icon: 'group',
     bg: 'bg-sky-100 text-sky-800 border-sky-200',
@@ -69,7 +66,6 @@ const NOTIF_CONFIG = {
     label: 'Invite Accepted',
   },
 
-  // Tasks
   TASK_ASSIGNED: {
     icon: 'assignment_ind',
     bg: 'bg-teal-100 text-teal-800 border-teal-200',
@@ -96,7 +92,6 @@ const NOTIF_CONFIG = {
     label: 'Task Due Date',
   },
 
-  // JIT & Access Grants
   ACCESS_GRANTED: {
     icon: 'key',
     bg: 'bg-amber-100 text-amber-800 border-amber-200',
@@ -113,7 +108,6 @@ const NOTIF_CONFIG = {
     label: 'Access Revoked',
   },
 
-  // System
   SYSTEM: {
     icon: 'campaign',
     bg: 'bg-surface-container-high text-on-surface-variant border-border-subtle',
@@ -138,7 +132,7 @@ function resolveTargetTab(notif) {
 export default function NotificationDropdown({ currentUser, onSelectTab }) {
   const userId = currentUser?._id || currentUser?.id || 'usr-current';
   const [isOpen, setIsOpen] = useState(false);
-  const [filterTab, setFilterTab] = useState('all'); // 'all' | 'unread'
+  const [filterTab, setFilterTab] = useState('all');
   const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef(null);
@@ -225,7 +219,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     }
   }, [isOpen, fetchNotifications]);
 
-  // Real-time notification socket listener
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -252,7 +245,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     };
   }, [fetchNotifications, fetchUnreadCount]);
 
-  // Handle outside click
   useEffect(() => {
     function handleClickOutside(event) {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
@@ -335,7 +327,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Trigger Bell Button */}
       <button
         type="button"
         onClick={() => setIsOpen((prev) => !prev)}
@@ -355,10 +346,8 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
         )}
       </button>
 
-      {/* Popover Dropdown */}
       {isOpen && (
         <div className="absolute right-0 mt-2 w-80 sm:w-96 rounded-2xl bg-surface-container-lowest border border-border-subtle shadow-2xl z-50 animate-in fade-in zoom-in-95 duration-150 flex flex-col overflow-hidden max-h-[80vh]">
-          {/* Header */}
           <div className="p-md pb-2 border-b border-border-subtle bg-surface-container-low flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
@@ -383,7 +372,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
               )}
             </div>
 
-            {/* Filter Pills */}
             <div className="flex items-center gap-1">
               <button
                 type="button"
@@ -410,7 +398,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
             </div>
           </div>
 
-          {/* List of Notifications */}
           <div className="flex-1 overflow-y-auto divide-y divide-border-subtle/60">
             {isLoading && notifications.length === 0 ? (
               <div className="p-xl text-center flex flex-col items-center gap-2">
@@ -441,7 +428,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
                       isUnread ? 'bg-primary/5 font-medium' : 'bg-surface-container-lowest'
                     }`}
                   >
-                    {/* Icon */}
                     <div
                       className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 border ${config.bg}`}
                     >
@@ -450,7 +436,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
                       </span>
                     </div>
 
-                    {/* Content */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <span className="font-label-bold text-label-sm text-on-surface truncate">
@@ -479,7 +464,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
                       </div>
                     </div>
 
-                    {/* Right actions: unread dot & delete */}
                     <div className="flex flex-col items-center gap-1.5 shrink-0 pt-0.5">
                       {isUnread && (
                         <span
@@ -502,7 +486,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
             )}
           </div>
 
-          {/* Dropdown Footer */}
           <div className="p-2 border-t border-border-subtle bg-surface-container-low flex items-center justify-between text-[11px]">
             <button
               type="button"

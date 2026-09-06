@@ -15,10 +15,8 @@ export default function WorkspaceSwitcherDropdown({
   const [search, setSearch] = useState('');
   const dropdownRef = useRef(null);
 
-  // Current active workspace ID
   const currentId = currentWorkspace?._id || currentWorkspace?.id;
 
-  // Fetch workspaces when dropdown opens
   useEffect(() => {
     if (!isOpen) return;
 
@@ -56,7 +54,6 @@ export default function WorkspaceSwitcherDropdown({
     };
   }, [isOpen, isSuperAdmin]);
 
-  // Click outside to close
   useEffect(() => {
     function handleClickOutside(e) {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
@@ -95,7 +92,6 @@ export default function WorkspaceSwitcherDropdown({
 
   return (
     <div className="relative inline-block" ref={dropdownRef}>
-      {/* Custom or Default Trigger */}
       {trigger ? (
         trigger({ isOpen, toggle: () => setIsOpen((prev) => !prev) })
       ) : (
@@ -121,12 +117,10 @@ export default function WorkspaceSwitcherDropdown({
         </button>
       )}
 
-      {/* Switcher Dropdown Modal / Popover */}
       {isOpen && (
         <div
           className={`absolute ${placementClasses} w-80 bg-surface-container-lowest rounded-2xl shadow-2xl border border-border-subtle py-2 z-60 animate-in fade-in zoom-in-95 duration-150 flex flex-col`}
         >
-          {/* Header */}
           <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
             <div>
               <p className="font-label-bold text-[12px] uppercase tracking-wider text-on-surface-variant">
@@ -147,7 +141,6 @@ export default function WorkspaceSwitcherDropdown({
             </button>
           </div>
 
-          {/* Search Input (if multiple workspaces) */}
           {workspaces.length > 3 && (
             <div className="p-2 border-b border-border-subtle">
               <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-surface-container-low border border-border-subtle text-[12px]">
@@ -173,7 +166,6 @@ export default function WorkspaceSwitcherDropdown({
             </div>
           )}
 
-          {/* Workspace List */}
           <div className="max-h-64 overflow-y-auto p-1.5 space-y-1 divide-y divide-border-subtle/40">
             {loading ? (
               <div className="py-6 flex flex-col items-center justify-center gap-2 text-on-surface-variant text-[12px]">
@@ -253,7 +245,6 @@ export default function WorkspaceSwitcherDropdown({
             )}
           </div>
 
-          {/* Footer Actions */}
           <div className="p-1.5 border-t border-border-subtle flex flex-col gap-0.5 bg-surface-container-low/40 rounded-b-2xl">
             {onOpenTeamSettings && (
               <button

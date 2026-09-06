@@ -22,7 +22,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const [activeBulletins, setActiveBulletins] = useState([]);
   const [dismissedBannerIds, setDismissedBannerIds] = useState([]);
 
-  // Active Workspace State & Team Settings Modal (PATCH /api/teams/:teamId)
   const [currentWorkspace, setCurrentWorkspace] = useState(() => {
     try {
       const saved = localStorage.getItem('active_workspace');
@@ -54,7 +53,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     setIsTeamSettingsOpen(false);
   };
 
-  // Persistent Direct Messaging State
   const [directMessageTarget, setDirectMessageTarget] = useState(null);
   const [isDirectMessageOpen, setIsDirectMessageOpen] = useState(false);
   const [isDirectMessageMinimized, setIsDirectMessageMinimized] = useState(false);
@@ -110,10 +108,9 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     fetchActiveBulletins();
 
     const socket = getSocket();
-    if (!socket) return; // Socket not yet connected (e.g. after page refresh — guard against null crash)
+    if (!socket) return;
 
     const handleNewBulletin = (bulletin) => {
-      // If bulletin is workspace-scoped, only accept if it matches the current workspace
       if (bulletin.scope === 'WORKSPACE_SCOPED') {
         const targets = (bulletin.targetWorkspaces || []).filter((t) => typeof t === 'string' && !t.includes('All Workspaces'));
         if (targets.length > 0) {
@@ -153,7 +150,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     const bId = b._id || b.id;
     if (dismissedBannerIds.includes(bId)) return false;
 
-    // Check workspace scope for displayed bulletins
     if (b.scope === 'WORKSPACE_SCOPED') {
       const targets = (b.targetWorkspaces || []).filter((t) => typeof t === 'string' && !t.includes('All Workspaces'));
       if (targets.length > 0) {
@@ -265,7 +261,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
 
   return (
     <div className="bg-surface font-body-base text-on-surface antialiased flex min-h-screen w-full overflow-x-hidden">
-      {/* Sidebar with Toggle */}
       <WorkspaceAppSidebar
         currentUser={user}
         activeView={activeView}
@@ -275,7 +270,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
       />
 
-      {/* Main Content Area */}
       <div className="flex-1 min-w-0 flex flex-col overflow-x-hidden">
         {activeView !== 'dashboard' && (
           <WorkspaceAppTopbar
@@ -289,7 +283,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
           />
         )}
 
-        {/* Pinned System-Level Broadcast / Bulletin Banner (Seen by All Users) */}
         {displayedBulletin && (
           <div className="w-full bg-primary text-on-primary px-margin-mobile lg:px-margin-desktop py-2.5 flex items-center justify-between text-[13px] shadow-sm z-20">
             <div className="flex items-center gap-2.5 min-w-0">
@@ -334,7 +327,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         </main>
       </div>
 
-      {/* Persistent Direct Messaging Sidebar / Dock */}
       <DirectMessageSidebar
         targetMember={directMessageTarget}
         currentUser={user}
@@ -344,7 +336,6 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         onToggleMinimize={() => setIsDirectMessageMinimized((prev) => !prev)}
       />
 
-      {/* Team Settings Modal (PATCH /api/teams/:id) */}
       <TeamSettingsModal
         isOpen={isTeamSettingsOpen}
         workspace={currentWorkspace}

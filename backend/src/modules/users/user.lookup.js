@@ -1,12 +1,6 @@
 import Membership from "../memberships/membership.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
 
-/**
- * Enriches a list of raw User documents with their team workspaces and primary roles.
- *
- * @param {Array<Object>} users - Array of raw user objects/documents
- * @returns {Promise<Array<Object>>} Enriched user objects with `workspaces` array
- */
 export async function enrichUsersWithWorkspaces(users = []) {
   if (!Array.isArray(users) || users.length === 0) {
     return [];
@@ -14,7 +8,6 @@ export async function enrichUsersWithWorkspaces(users = []) {
 
   const userIds = users.map((u) => u._id || u.id);
 
-  // 1. Fetch active team memberships for all users
   const memberships = await Membership.find({
     userId: { $in: userIds },
     status: { $ne: "REMOVED" },
@@ -24,7 +17,6 @@ export async function enrichUsersWithWorkspaces(users = []) {
 
   const membershipIds = memberships.map((m) => m._id);
 
-  // 2. Fetch active roles assigned to these memberships
   const memberRoles = await MembershipRole.find({
     membershipId: { $in: membershipIds },
     revokedAt: null,
@@ -32,7 +24,6 @@ export async function enrichUsersWithWorkspaces(users = []) {
     .populate("roleId", "name")
     .lean();
 
-  // 3. Map workspaces & roles back to each user
   return users.map((u) => {
     const userMemberships = memberships.filter(
       (m) => String(m.userId) === String(u._id || u.id)

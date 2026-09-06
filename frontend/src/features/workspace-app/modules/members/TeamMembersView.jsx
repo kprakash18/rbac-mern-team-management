@@ -203,7 +203,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <h1 className="font-display-title text-[24px] font-semibold text-on-surface tracking-tight">
@@ -227,7 +226,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
 
       <Toast message={toast?.msg} type={toast?.type} />
 
-      {/* Tabs */}
       <div className="flex items-center gap-2 border-b border-border-subtle pb-2">
         <button
           type="button"
@@ -330,7 +328,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         </div>
       ) : (
         <>
-          {/* Controls */}
           <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
             <div className="flex items-center gap-2 flex-1 flex-wrap">
               <SearchInput
@@ -386,7 +383,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
             </div>
           </div>
 
-          {/* Members List */}
           {loading ? (
             <div className="py-16 text-center text-on-surface-variant bg-surface-container-lowest rounded-xl border border-border-subtle">
               <span className="material-symbols-outlined animate-spin text-primary text-[32px] block mb-2">progress_activity</span>
@@ -533,7 +529,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         </>
       )}
 
-      {/* Member Details Drawer */}
       {isDrawerOpen && selectedMember && (
         <>
           <div className="fixed inset-0 bg-on-surface/20 backdrop-blur-[1px] z-40" onClick={() => setIsDrawerOpen(false)} />
@@ -629,7 +624,6 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         </>
       )}
 
-      {/* Confirmation Modals */}
       <ConfirmModal
         isOpen={Boolean(confirmRevokeInvite)}
         title="Revoke Invitation?"

@@ -1,5 +1,4 @@
 export const tasksData = [
-  // --- Engineering Core Tasks ---
   {
     key: "eng-task-1",
     title: "Implement Realtime Socket.IO Auth Handshake",
@@ -45,7 +44,6 @@ export const tasksData = [
     dueDate: new Date("2026-03-02T00:00:00Z"),
   },
 
-  // --- Product & Design Tasks ---
   {
     key: "prod-task-1",
     title: "Interactive RBAC Matrix & Role Assignment UI",
@@ -80,7 +78,6 @@ export const tasksData = [
     dueDate: new Date("2026-02-25T00:00:00Z"),
   },
 
-  // --- DevOps & Cloud Infra Tasks ---
   {
     key: "devops-task-1",
     title: "Upgrade Kubernetes Clusters to v1.30",
@@ -115,7 +112,6 @@ export const tasksData = [
     dueDate: new Date("2026-03-12T00:00:00Z"),
   },
 
-  // --- Security & Compliance Tasks ---
   {
     key: "sec-task-1",
     title: "Quarterly SOC2 Type II Access Review",
@@ -139,7 +135,6 @@ export const tasksData = [
     dueDate: new Date("2026-02-24T00:00:00Z"),
   },
 
-  // --- Data & AI Platform Tasks ---
   {
     key: "data-task-1",
     title: "Vector Search Index Pipeline for Audit Logs",
@@ -163,7 +158,6 @@ export const tasksData = [
     dueDate: new Date("2026-03-20T00:00:00Z"),
   },
 
-  // --- Customer Operations Tasks ---
   {
     key: "ops-task-1",
     title: "Enterprise SSO SAML 2.0 Integration Runbook",

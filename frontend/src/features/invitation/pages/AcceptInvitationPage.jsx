@@ -104,7 +104,6 @@ export default function AcceptInvitationPage() {
 
   return (
     <div className="bg-surface font-body-md text-on-surface min-h-screen flex flex-col">
-      {/* Top Header */}
       <header className="w-full bg-surface-container-lowest/80 backdrop-blur-md shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-outline-variant/20">
         <div className="h-16 max-w-7xl mx-auto px-container-margin flex items-center justify-between">
           <div className="flex items-center gap-stack-md">
@@ -127,7 +126,6 @@ export default function AcceptInvitationPage() {
         </div>
       </header>
 
-      {/* Main Center Stage */}
       <main className="flex-1 w-full flex flex-col justify-center items-center py-section-gap px-container-margin">
         {loading ? (
           <div className="p-xl text-center flex flex-col items-center justify-center gap-2 text-on-surface-variant">
@@ -150,7 +148,6 @@ export default function AcceptInvitationPage() {
         )}
       </main>
 
-      {/* Footer */}
       <footer className="w-full bg-surface-container-low py-stack-lg border-t border-outline-variant/20">
         <div className="max-w-7xl mx-auto px-container-margin flex flex-col md:flex-row justify-between items-center gap-stack-md text-on-surface-variant font-label-sm text-label-sm">
           <span>© 2024 Enterprise SaaS. All rights reserved.</span>

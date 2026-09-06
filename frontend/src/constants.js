@@ -1,45 +1,25 @@
-// ============================================================================
-// APPLICATION UNIFIED CONSTANTS
-// Single consolidated source of truth for canonical permissions, UI enums,
-// navigation schemas, and system role mappings.
-// Real API data is used across all views and components.
-// ============================================================================
-
-// ============================================================================
-// SECTION: INVITATION CONSTANTS
-// ============================================================================
-
 export const INVITATION_STATES = {
   NEW_USER: 'NEW_USER',
   EXISTING_USER: 'EXISTING_USER',
   INVALID_TOKEN: 'INVALID_TOKEN',
 };
 
-// ============================================================================
-// SECTION: ROLES & CANONICAL PERMISSIONS CATALOG
-// ============================================================================
-
-// Canonical Permissions Catalog across 9 system categories
 export const CANONICAL_PERMISSIONS = [
-  // 1. Users
   { key: 'user.read', category: 'USERS', desc: 'View user profiles, identity records, and security status.' },
   { key: 'user.create', category: 'USERS', desc: 'Invite or create new user identities in the workspace.' },
   { key: 'user.update', category: 'USERS', desc: 'Update user profiles, emails, and account attributes.' },
   { key: 'user.delete', category: 'USERS', desc: 'Deactivate, soft-delete, or suspend user identities.' },
 
-  // 2. Teams & Workspaces
   { key: 'team.read', category: 'TEAMS', desc: 'View workspace and team details, telemetry, and node status.' },
   { key: 'team.create', category: 'TEAMS', desc: 'Provision new workspace namespaces and project squads.' },
   { key: 'team.update', category: 'TEAMS', desc: 'Update team settings, workspace configurations, and limits.' },
   { key: 'team.delete', category: 'TEAMS', desc: 'Archive or permanently decommission workspace namespaces.' },
 
-  // 3. Memberships
   { key: 'membership.read', category: 'MEMBERSHIPS', desc: 'List active and pending memberships in workspaces.' },
   { key: 'membership.create', category: 'MEMBERSHIPS', desc: 'Add members to workspaces and teams.' },
   { key: 'membership.update', category: 'MEMBERSHIPS', desc: 'Modify membership tiers, status, and metadata.' },
   { key: 'membership.remove', category: 'MEMBERSHIPS', desc: 'Remove members from workspaces and teams.' },
 
-  // 4. Roles & RBAC
   { key: 'role.read', category: 'ROLES', desc: 'Inspect role definitions, assigned members, and scopes.' },
   { key: 'role.create', category: 'ROLES', desc: 'Create bespoke custom RBAC roles.' },
   { key: 'role.update', category: 'ROLES', desc: 'Modify custom role metadata, names, and descriptions.' },
@@ -47,20 +27,16 @@ export const CANONICAL_PERMISSIONS = [
   { key: 'role.assign', category: 'ROLES', desc: 'Assign roles to workspace members.' },
   { key: 'role.revoke', category: 'ROLES', desc: 'Revoke assigned roles from workspace members.' },
 
-  // 5. Granular Permissions
   { key: 'permission.read', category: 'PERMISSIONS', desc: 'View all 35 canonical permission definitions.' },
   { key: 'permission.assign', category: 'PERMISSIONS', desc: 'Attach granular permission keys to custom roles.' },
 
-  // 6. Tasks & Projects
   { key: 'task.read', category: 'TASKS', desc: 'View tasks, project boards, and sprint backlog items.' },
   { key: 'task.create', category: 'TASKS', desc: 'Create new tasks, work items, and sprint deliverables.' },
   { key: 'task.update', category: 'TASKS', desc: 'Update task properties, assignees, priorities, and status.' },
   { key: 'task.delete', category: 'TASKS', desc: 'Delete tasks and work items.' },
 
-  // 7. Security Audit & Telemetry
   { key: 'audit.read', category: 'AUDIT', desc: 'Inspect immutable security audit logs and trails.' },
 
-  // 8. JIT Access & Elevated Requests
   { key: 'access_request.read', category: 'ACCESS_REQUESTS', desc: 'Inspect pending Just-In-Time access elevation requests.' },
   { key: 'access_request.create', category: 'ACCESS_REQUESTS', desc: 'Submit temporary access elevation requests.' },
   { key: 'access_request.approve', category: 'ACCESS_REQUESTS', desc: 'Approve pending JIT access requests.' },
@@ -70,7 +46,6 @@ export const CANONICAL_PERMISSIONS = [
   { key: 'access_grant.create', category: 'ACCESS_REQUESTS', desc: 'Issue direct temporary access grants with TTL.' },
   { key: 'access_grant.revoke', category: 'ACCESS_REQUESTS', desc: 'Prematurely revoke active time-bound access grants.' },
 
-  // 9. System Notifications & Broadcasts
   { key: 'notification.read', category: 'NOTIFICATIONS', desc: 'Read notifications, activity mentions, and security alerts.' },
   { key: 'notification.update', category: 'NOTIFICATIONS', desc: 'Acknowledge, dismiss, or configure alerts.' },
 ];
@@ -92,10 +67,6 @@ export const permissionsByCategory = CANONICAL_PERMISSIONS.reduce((acc, perm) =>
   acc[perm.category].push(perm);
   return acc;
 }, {});
-
-// ============================================================================
-// SECTION: SYSTEM BROADCASTS CONSTANTS
-// ============================================================================
 
 export const BROADCAST_TYPES = {
   OUTAGE: {
@@ -140,10 +111,6 @@ export const BROADCAST_TYPES = {
   },
 };
 
-// ============================================================================
-// SECTION: SUPER ADMIN PLATFORM CONSTANTS
-// ============================================================================
-
 export const SUPER_ADMIN_NAV_ITEMS = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard', path: 'dashboard' },
   { id: 'users-access', label: 'Users & Access', icon: 'group', path: 'users-access' },
@@ -165,10 +132,6 @@ export const WORKSPACE_ROLES_MAP = {
 };
 
 export const DEFAULT_WORKSPACE = 'Research & Development';
-
-// ============================================================================
-// SECTION: AUDIT LOG CONSTANTS
-// ============================================================================
 
 export const AUDIT_SEVERITY = {
   CRITICAL: {
@@ -203,6 +166,3 @@ export const AUDIT_CATEGORIES = {
   SECURITY: 'Security & Policy',
   TEAM_MGMT: 'Workspaces & Teams',
 };
-
-
-

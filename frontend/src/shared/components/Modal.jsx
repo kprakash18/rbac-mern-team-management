@@ -14,7 +14,6 @@ export default function Modal({
       <div
         className={`bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full ${maxWidth} overflow-hidden animate-in fade-in zoom-in-95 duration-150`}
       >
-        {/* Header */}
         <div className="p-md border-b border-border-subtle flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             {icon && (
@@ -43,7 +42,6 @@ export default function Modal({
           </button>
         </div>
 
-        {/* Modal Body */}
         {children}
       </div>
     </div>

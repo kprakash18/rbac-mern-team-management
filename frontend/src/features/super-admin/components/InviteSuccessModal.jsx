@@ -25,7 +25,6 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
   return (
     <div className="flex flex-col w-full h-full items-center justify-center p-md bg-inverse-surface/40 backdrop-blur-sm fixed inset-0 z-50">
       <div className="w-full max-w-145 bg-card-bg shadow-xl flex flex-col rounded-xl overflow-hidden animate-[fade-in_0.3s_ease-out]">
-        {/* Header */}
         <div className="flex items-center justify-between px-lg py-md border-b border-border-subtle bg-success-bg/20">
           <div className="flex items-center gap-sm text-success-text">
             <span className="material-symbols-outlined text-[24px]">
@@ -44,7 +43,6 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
           </button>
         </div>
 
-        {/* Content */}
         <div className="p-lg flex flex-col gap-lg">
           <p className="font-body-base text-body-base text-on-surface-variant">
             {isDirectAssignment ? (
@@ -58,7 +56,6 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
             )}
           </p>
 
-          {/* Direct Link Sharing */}
           <div className="flex flex-col gap-sm">
             <label className="font-label-sm text-label-sm text-on-surface-variant flex items-center gap-xs">
               <span className="material-symbols-outlined text-[16px]">content_copy</span>
@@ -87,7 +84,6 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
             </div>
           </div>
 
-          {/* Summary Section */}
           <div className="bg-surface-container-low rounded-lg p-md flex flex-col gap-sm border border-border-subtle">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-sm">
               <div className="flex flex-col">
@@ -131,7 +127,6 @@ export default function InviteSuccessModal({ isOpen, inviteData, onClose, onInvi
           </div>
         </div>
 
-        {/* Footer Actions */}
         <div className="px-lg py-md border-t border-border-subtle bg-surface-container-lowest flex justify-end gap-sm items-center">
           <button
             onClick={onInviteAnother}
