@@ -16,7 +16,7 @@ const FALLBACK_GENERAL = {
 export default function ChatView({ currentUser, workspace }) {
   const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const currentUserId = currentUser?._id || currentUser?.id || 'usr-current';
+  const currentUserId = currentUser?._id || currentUser?.id || '';
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
   const hasPermission = useCallback(

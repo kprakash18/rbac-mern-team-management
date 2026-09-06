@@ -13,13 +13,19 @@
     "migrate": "node scripts/migrate-v2.js",
     "seed": "node src/database/seed/seed.js",
     "seed:fresh": "node src/database/seed/seed.js --fresh",
-    "seed:system": "node src/database/seed/seed.js --system"
+    "seed:system": "node src/database/seed/seed.js --system",
+    "docker:up": "docker compose -f ../docker-compose.yml up -d",
+    "docker:down": "docker compose -f ../docker-compose.yml down",
+    "docker:redis": "docker compose -f ../docker-compose.yml up -d redis"
   },
   "dependencies": {
+    "@socket.io/redis-adapter": "^8.3.0",
+    "@upstash/redis": "^1.38.4",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
+    "ioredis": "^6.0.0",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.3",
     "nodemailer": "^9.1.0",

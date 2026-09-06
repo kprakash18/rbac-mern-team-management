@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { BROADCAST_TYPES } from '@/constants';
+import api from '@/lib/api';
 
 const getDefaultDateTime = (daysAhead = 0, hoursAhead = 1) => {
   const d = new Date();
@@ -15,7 +16,7 @@ const getInitialFormData = () => ({
   type: 'OUTAGE',
   severity: 'P0 Critical Outage',
   scope: 'GLOBAL',
-  targetWorkspaces: ['All Workspaces (18 active)'],
+  targetWorkspaces: ['All Workspaces'],
   targetRoles: ['All Roles'],
   ackMode: 'READ_RECEIPT',
   ctaLabel: '',
@@ -34,10 +35,28 @@ export default function CreateEditBroadcastModal({
 }) {
   const [activeStep, setActiveStep] = useState(1);
   const [formData, setFormData] = useState(getInitialFormData);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState([]);
+  const [availableRoles, setAvailableRoles] = useState([]);
 
   useEffect(() => {
     if (isOpen) {
       setActiveStep(1);
+      
+      // Fetch dynamic workspaces & roles
+      Promise.allSettled([
+        api.get('/api/teams?status=ACTIVE'),
+        api.get('/api/roles?status=all'),
+      ]).then(([teamsRes, rolesRes]) => {
+        if (teamsRes.status === 'fulfilled') {
+          const rawTeams = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
+          setAvailableWorkspaces(rawTeams.map((t) => ({ id: t._id || t.id, name: t.name, membersCount: t.membersCount || 1 })));
+        }
+        if (rolesRes.status === 'fulfilled') {
+          const rawRoles = rolesRes.value.data?.data || [];
+          setAvailableRoles(rawRoles.map((r) => ({ id: r._id || r.id, name: r.name })));
+        }
+      });
+
       if (broadcastToEdit) {
         setFormData({
           title: broadcastToEdit.title || '',
@@ -45,7 +64,7 @@ export default function CreateEditBroadcastModal({
           type: broadcastToEdit.type || 'OUTAGE',
           severity: broadcastToEdit.severity || 'P0 Critical Outage',
           scope: broadcastToEdit.scope || 'GLOBAL',
-          targetWorkspaces: broadcastToEdit.targetWorkspaces?.length ? broadcastToEdit.targetWorkspaces : ['All Workspaces (18 active)'],
+          targetWorkspaces: broadcastToEdit.targetWorkspaces?.length ? broadcastToEdit.targetWorkspaces : ['All Workspaces'],
           targetRoles: broadcastToEdit.targetRoles?.length ? broadcastToEdit.targetRoles : ['All Roles'],
           ackMode: broadcastToEdit.ackMode || 'READ_RECEIPT',
           ctaLabel: broadcastToEdit.cta?.label || '',
@@ -61,6 +80,9 @@ export default function CreateEditBroadcastModal({
     }
   }, [isOpen, broadcastToEdit]);
 
+  const workspaceNames = useMemo(() => availableWorkspaces.map((w) => w.name), [availableWorkspaces]);
+  const roleNames = useMemo(() => availableRoles.map((r) => r.name), [availableRoles]);
+
   if (!isOpen) return null;
 
   const currentTypeConfig = BROADCAST_TYPES[formData.type] || BROADCAST_TYPES.OUTAGE;
@@ -68,6 +90,15 @@ export default function CreateEditBroadcastModal({
   const handleSubmit = (e) => {
     e.preventDefault();
     if (!formData.title.trim() || !formData.message.trim()) return;
+
+    const dynamicBreakdown = availableWorkspaces.map((ws) => ({
+      workspace: ws.name,
+      targeted: ws.membersCount || 1,
+      viewed: 0,
+      acknowledged: 0,
+    }));
+
+    const totalTargeted = availableWorkspaces.reduce((acc, ws) => acc + (ws.membersCount || 1), 0);
 
     const newBroadcast = {
       id: broadcastToEdit?.id || `bc-${Date.now()}`,
@@ -79,7 +110,7 @@ export default function CreateEditBroadcastModal({
       scope: formData.scope,
       targetWorkspaces:
         formData.scope === 'GLOBAL'
-          ? ['All Workspaces (18 active)']
+          ? ['All Workspaces']
           : formData.targetWorkspaces.filter((w) => typeof w === 'string' && !w.includes('All Workspaces')),
       targetRoles:
         formData.scope === 'ROLE_SCOPED'
@@ -88,15 +119,11 @@ export default function CreateEditBroadcastModal({
       ackMode: formData.ackMode,
       cta: formData.ctaLabel ? { label: formData.ctaLabel, url: formData.ctaUrl } : null,
       metrics: broadcastToEdit?.metrics || {
-        targetedUsers: formData.scope === 'GLOBAL' ? 1240 : 320,
+        targetedUsers: formData.scope === 'GLOBAL' ? totalTargeted : Math.max(1, Math.round(totalTargeted / 3)),
         viewedCount: 0,
         acknowledgedCount: 0,
       },
-      workspaceBreakdown: broadcastToEdit?.workspaceBreakdown || [
-        { workspace: 'Engineering Core', targeted: 180, viewed: 0, acknowledged: 0 },
-        { workspace: 'Operations & SRE', targeted: 80, viewed: 0, acknowledged: 0 },
-        { workspace: 'Finance Secure', targeted: 60, viewed: 0, acknowledged: 0 },
-      ],
+      workspaceBreakdown: broadcastToEdit?.workspaceBreakdown || dynamicBreakdown,
       roleBreakdown: broadcastToEdit?.roleBreakdown || [],
       recentAcks: [],
       startAt: formData.startTiming === 'SCHEDULED' ? formData.scheduledDate : new Date().toISOString(),
@@ -269,15 +296,15 @@ export default function CreateEditBroadcastModal({
                           if (item.id === 'WORKSPACE_SCOPED') {
                             updatedWorkspaces = formData.targetWorkspaces.filter((w) => typeof w === 'string' && !w.includes('All Workspaces'));
                             if (updatedWorkspaces.length === 0) {
-                              updatedWorkspaces = ['Engineering Core'];
+                              updatedWorkspaces = workspaceNames.length > 0 ? [workspaceNames[0]] : [];
                             }
                           } else if (item.id === 'ROLE_SCOPED') {
                             updatedRoles = formData.targetRoles.filter((r) => typeof r === 'string' && !r.includes('All Roles'));
                             if (updatedRoles.length === 0) {
-                              updatedRoles = ['Workspace Admin'];
+                              updatedRoles = roleNames.length > 0 ? [roleNames[0]] : [];
                             }
                           } else {
-                            updatedWorkspaces = ['All Workspaces (18 active)'];
+                            updatedWorkspaces = ['All Workspaces'];
                             updatedRoles = ['All Roles'];
                           }
                           setFormData({
@@ -307,16 +334,7 @@ export default function CreateEditBroadcastModal({
                       Targeted Workspaces (Multi-Select)
                     </label>
                     <div className="p-sm bg-surface-container-low rounded-lg space-y-1.5 max-h-40 overflow-y-auto">
-                      {[
-                        'Engineering Core',
-                        'Product & Design',
-                        'DevOps & Cloud Infra',
-                        'Security & Compliance',
-                        'Data & AI Platform',
-                        'Research & AI Lab',
-                        'Customer Operations',
-                        'Legacy Billing Gateway',
-                      ].map((ws) => (
+                      {workspaceNames.map((ws) => (
                         <label key={ws} className="flex items-center gap-sm text-[12px] font-medium text-on-surface cursor-pointer">
                           <input
                             type="checkbox"
@@ -346,36 +364,19 @@ export default function CreateEditBroadcastModal({
                       <button
                         type="button"
                         onClick={() => {
-                          const allRoles = [
-                            'Workspace Admin',
-                            'Lead Architect',
-                            'DevOps Engineer',
-                            'Compliance Officer',
-                            'Billing Manager',
-                            'Team Member / Developer',
-                            'Read-Only Auditor',
-                          ];
-                          const isAllSelected = formData.targetRoles.length === allRoles.length;
+                          const isAllSelected = formData.targetRoles.length === roleNames.length;
                           setFormData({
                             ...formData,
-                            targetRoles: isAllSelected ? ['Workspace Admin'] : allRoles,
+                            targetRoles: isAllSelected ? (roleNames.length > 0 ? [roleNames[0]] : []) : roleNames,
                           });
                         }}
                         className="text-[11px] text-primary underline font-medium cursor-pointer"
                       >
-                        {formData.targetRoles.length === 7 ? 'Deselect All' : 'Select All Roles'}
+                        {formData.targetRoles.length === roleNames.length ? 'Deselect All' : 'Select All Roles'}
                       </button>
                     </div>
                     <div className="p-sm bg-surface-container-low rounded-lg grid grid-cols-1 sm:grid-cols-2 gap-1.5 max-h-48 overflow-y-auto border border-border-subtle">
-                      {[
-                        'Workspace Admin',
-                        'Lead Architect',
-                        'DevOps Engineer',
-                        'Compliance Officer',
-                        'Billing Manager',
-                        'Team Member / Developer',
-                        'Read-Only Auditor',
-                      ].map((role) => (
+                      {roleNames.map((role) => (
                         <label key={role} className="flex items-center gap-sm text-[12px] font-medium text-on-surface cursor-pointer p-1 rounded hover:bg-surface-container">
                           <input
                             type="checkbox"
