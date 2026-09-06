@@ -22,7 +22,8 @@ let socketInstance = null;
 export function connectSocket(token) {
   if (socketInstance?.connected) return;
 
-  socketInstance = io(import.meta.env.VITE_SOCKET_URL, {
+  const socketUrl = import.meta.env.VITE_SOCKET_URL || undefined;
+  socketInstance = io(socketUrl, {
     auth: { token },
     // Reconnect up to 5 times with exponential backoff
     reconnectionAttempts: 5,

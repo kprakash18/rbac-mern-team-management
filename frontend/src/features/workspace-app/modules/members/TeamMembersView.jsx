@@ -17,10 +17,26 @@ const ROLES_FILTER_OPTIONS = [
 ];
 
 export default function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const hasPermission = useCallback(
+    (permKey) => {
+      if (isTeamAdmin || currentUser?.isSuperAdmin) return true;
+      if (typeof currentUser?.hasPermission === 'function') return currentUser.hasPermission(permKey);
+      if (typeof hasPermissionContext === 'function') return hasPermissionContext(permKey);
+      return (currentUser?.permissions || []).includes(permKey);
+    },
+    [currentUser, hasPermissionContext, isTeamAdmin]
+  );
+
+  const canInvite = isTeamAdmin || hasPermission('invitation.create') || hasPermission('membership.create');
+  const canRevokeInvite = isTeamAdmin || hasPermission('invitation.revoke');
+  const canAssignRole = isTeamAdmin || hasPermission('role.assign');
+  const canManageMembership = isTeamAdmin || hasPermission('membership.update');
+  const canRemoveMember = isTeamAdmin || hasPermission('membership.remove');
 
   const [activeMainTab, setActiveMainTab] = useState('members'); // 'members' | 'invitations'
   const [members, setMembers] = useState([]);
@@ -255,7 +271,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         </div>
 
         <div className="flex items-center gap-sm">
-          {isTeamAdmin ? (
+          {canInvite ? (
             <button
               type="button"
               onClick={() => setIsInviteModalOpen(true)}
@@ -267,7 +283,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
           ) : (
             <div
               className="flex items-center gap-xs px-md py-2 rounded-lg bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm opacity-60 cursor-not-allowed border border-border-subtle select-none"
-              title="Restricted: Only Team Admins can invite new members to this workspace."
+              title="Restricted: Requires invitation or membership permissions."
             >
               <span className="material-symbols-outlined text-[18px]">lock</span>
               <span>+ Invite Member</span>
@@ -341,7 +357,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
               <span className="text-body-sm text-on-surface-variant text-[12px] hidden sm:inline">
                 Showing {filteredInvitations.length} of {pendingInvitations.length} invitations
               </span>
-              {isTeamAdmin && (
+              {canInvite && (
                 <button
                   type="button"
                   onClick={() => setIsInviteModalOpen(true)}
@@ -413,7 +429,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                         </div>
                       </td>
                       <td className="py-3.5 px-4 text-right">
-                        {isTeamAdmin ? (
+                        {canRevokeInvite ? (
                           <button
                             type="button"
                             onClick={() => setConfirmRevokeInvite(inv)}
@@ -423,7 +439,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                             <span>Revoke</span>
                           </button>
                         ) : (
-                          <span className="text-[11px] text-on-surface-variant italic">Admin only</span>
+                          <span className="text-[11px] text-on-surface-variant italic">Restricted</span>
                         )}
                       </td>
                     </tr>
@@ -596,7 +612,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                 <div className="flex items-center justify-between pt-2 border-t border-border-subtle/70">
                   <span className="text-[11px] text-on-surface-variant">Joined {member.joinedDate}</span>
                   <div className="flex items-center gap-2">
-                    {isTeamAdmin && member.id !== currentUserId && (
+                    {canAssignRole && member.id !== currentUserId && (
                       <button
                         type="button"
                         onClick={(e) => {
@@ -696,7 +712,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                     <td className="py-3 px-4 text-on-surface-variant text-[12px]">{member.joinedDate}</td>
                     <td className="py-3 px-4 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {isTeamAdmin && member.id !== currentUserId && (
+                        {canAssignRole && member.id !== currentUserId && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -709,7 +725,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                             <span className="material-symbols-outlined text-[18px]">badge</span>
                           </button>
                         )}
-                        {isTeamAdmin && member.id !== currentUserId && (
+                        {canManageMembership && member.id !== currentUserId && (
                           <button
                             type="button"
                             onClick={(e) => {
@@ -839,48 +855,54 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                   </div>
                 </div>
 
-                {/* Team Admin Actions */}
-                {isTeamAdmin && selectedMember.id !== currentUserId && (
+                {/* Management Actions */}
+                {(canAssignRole || canManageMembership || canRemoveMember) && selectedMember.id !== currentUserId && (
                   <div className="flex flex-col gap-2.5 pt-md border-t border-border-subtle">
                     <h4 className="text-label-bold text-label-bold text-on-surface flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[18px] text-amber-600">admin_panel_settings</span>
-                      <span>Team Admin Actions</span>
+                      <span>Management Actions</span>
                     </h4>
                     <div className="flex flex-col gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setRoleEditingMember(selectedMember)}
-                        className="w-full py-2 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">badge</span>
-                        <span>Change Member Role</span>
-                      </button>
+                      {canAssignRole && (
+                        <button
+                          type="button"
+                          onClick={() => setRoleEditingMember(selectedMember)}
+                          className="w-full py-2 px-3 rounded-lg bg-primary/10 hover:bg-primary/20 text-primary border border-primary/20 text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">badge</span>
+                          <span>Change Member Role</span>
+                        </button>
+                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => handleToggleSuspendMember(selectedMember.id)}
-                        className={`w-full py-2 px-3 rounded-lg text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
-                          selectedMember.status === 'Suspended'
-                            ? 'bg-success-bg text-success-text border-success-text/30 hover:bg-success-bg/80'
-                            : 'bg-warning-bg/40 text-warning-text border-warning-text/30 hover:bg-warning-bg/70'
-                        }`}
-                      >
-                        <span className="material-symbols-outlined text-[18px]">
-                          {selectedMember.status === 'Suspended' ? 'play_circle' : 'pause_circle'}
-                        </span>
-                        <span>
-                          {selectedMember.status === 'Suspended' ? 'Reactivate Member' : 'Suspend Member Access'}
-                        </span>
-                      </button>
+                      {canManageMembership && (
+                        <button
+                          type="button"
+                          onClick={() => handleToggleSuspendMember(selectedMember.id)}
+                          className={`w-full py-2 px-3 rounded-lg text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer border ${
+                            selectedMember.status === 'Suspended'
+                              ? 'bg-success-bg text-success-text border-success-text/30 hover:bg-success-bg/80'
+                              : 'bg-warning-bg/40 text-warning-text border-warning-text/30 hover:bg-warning-bg/70'
+                          }`}
+                        >
+                          <span className="material-symbols-outlined text-[18px]">
+                            {selectedMember.status === 'Suspended' ? 'play_circle' : 'pause_circle'}
+                          </span>
+                          <span>
+                            {selectedMember.status === 'Suspended' ? 'Reactivate Member' : 'Suspend Member Access'}
+                          </span>
+                        </button>
+                      )}
 
-                      <button
-                        type="button"
-                        onClick={() => setConfirmRemovalMember(selectedMember)}
-                        className="w-full py-2 px-3 rounded-lg bg-error-container/30 hover:bg-error-container/60 text-error border border-error/30 text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">person_remove</span>
-                        <span>Remove from Workspace</span>
-                      </button>
+                      {canRemoveMember && (
+                        <button
+                          type="button"
+                          onClick={() => setConfirmRemovalMember(selectedMember)}
+                          className="w-full py-2 px-3 rounded-lg bg-error-container/30 hover:bg-error-container/60 text-error border border-error/30 text-label-sm font-label-bold flex items-center justify-center gap-2 transition-colors cursor-pointer"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">person_remove</span>
+                          <span>Remove from Workspace</span>
+                        </button>
+                      )}
                     </div>
                   </div>
                 )}
@@ -900,7 +922,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                 <span className="material-symbols-outlined text-[18px]">chat</span>
                 <span>Send Message</span>
               </button>
-              {isTeamAdmin && selectedMember.id !== currentUserId && (
+              {canAssignRole && selectedMember.id !== currentUserId && (
                 <button
                   type="button"
                   onClick={() => setRoleEditingMember(selectedMember)}

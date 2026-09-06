@@ -20,7 +20,10 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
   const isAuditor = currentUser?.role?.toLowerCase().includes('auditor');
-  const hasAccess = isTeamAdmin || isAuditor;
+  const hasAccess =
+    isTeamAdmin ||
+    isAuditor ||
+    (typeof currentUser?.hasPermission === 'function' && currentUser.hasPermission('audit.read'));
 
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);

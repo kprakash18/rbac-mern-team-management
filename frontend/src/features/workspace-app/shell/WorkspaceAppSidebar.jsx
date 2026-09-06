@@ -17,7 +17,11 @@ export default function WorkspaceAppSidebar({
   onToggleCollapse,
 }) {
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
-  const isAuditorOrAdmin = isTeamAdmin || currentUser?.teamRole === 'Security Auditor' || currentUser?.role === 'Security Auditor';
+  const isAuditorOrAdmin =
+    isTeamAdmin ||
+    currentUser?.teamRole === 'Security Auditor' ||
+    currentUser?.role === 'Security Auditor' ||
+    (typeof currentUser?.hasPermission === 'function' && currentUser.hasPermission('audit.read'));
 
   const navItems = WORKSPACE_APP_NAV.filter((item) => {
     if (item.id === 'audit-log') {

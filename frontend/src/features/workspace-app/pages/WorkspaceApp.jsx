@@ -3,6 +3,7 @@ import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
 import WorkspaceAppTopbar from '../shell/WorkspaceAppTopbar';
+import { useApp } from '@/context/useApp';
 import DirectMessageSidebar from '../shell/DirectMessageSidebar';
 import MyDashboardView from '../modules/dashboard/MyDashboardView';
 import MyPermissionsView from '../modules/dashboard/MyPermissionsView';
@@ -64,7 +65,10 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     setIsDirectMessageMinimized(false);
   };
 
+  const { hasPermission: appHasPermission, workspacePermissions, refreshPermissions } = useApp();
+
   const isTeamAdmin = Boolean(
+    currentUser?.isSuperAdmin ||
     currentUser?.isTeamAdmin ||
     currentWorkspace?.isTeamAdmin ||
     currentWorkspace?.role === 'Team Admin' ||
@@ -82,6 +86,9 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     teamRoleTitle,
     teamRole: teamRoleTitle,
     role: teamRoleTitle,
+    permissions: workspacePermissions,
+    hasPermission: appHasPermission,
+    refreshPermissions,
   };
   const unreadAnnouncementsCount = announcements.filter((a) => !a.isRead).length;
 
