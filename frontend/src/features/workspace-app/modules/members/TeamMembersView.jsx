@@ -4,9 +4,7 @@ import ManageMemberRoleModal from './ManageMemberRoleModal';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
 import { useToast } from '../../../../lib/useToast';
-import ConfirmModal from '../../../../components/shared/ConfirmModal';
-import Toast from '../../../../components/shared/Toast';
-import SearchInput from '../../../../components/shared/SearchInput';
+import { ConfirmModal, Toast, SearchInput } from '@/shared/components';
 
 const ROLES_FILTER_OPTIONS = [
   'All Roles',

@@ -8,7 +8,7 @@ import EditUserTtlModal from './roles/EditUserTtlModal';
 import ReassignUserModal from './roles/ReassignUserModal';
 import ChangeWorkspaceModal from './roles/ChangeWorkspaceModal';
 import SafeDeleteRoleModal from './roles/SafeDeleteRoleModal';
-import Toast from '../../../components/shared/Toast';
+import { Toast } from '@/shared/components';
 import { useToast } from '../../../lib/useToast';
 import api from '@/lib/api';
 import { CANONICAL_PERMISSIONS, permissionsByCategory } from '@/constants';
