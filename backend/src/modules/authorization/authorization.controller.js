@@ -8,12 +8,16 @@ import { BadRequestError } from "../../common/errors/index.js";
  */
 export async function getMyPermissionsController(req, res, next) {
   try {
-    const teamId = req.query.teamId ;
+    const teamId = req.query.teamId || req.headers["x-team-id"] || req.params?.teamId;
     if (teamId) {
       const permissions = await resolvePermissions(req.user.id, teamId);
       return res.status(200).json({
         success: true,
-        data: { teamId, permissions },
+        data: {
+          teamId,
+          permissions,
+          effectivePermissions: permissions,
+        },
       });
     }
     const teams = await getAllUserPermissions(req.user.id);

@@ -7,6 +7,7 @@ import MembershipRole from "../member-roles/member-role.model.js";
 import Role from "../roles/role.model.js";
 import User from "../users/user.model.js";
 import Team from "../teams/team.model.js";
+import Task from "../tasks/task.model.js";
 import Permission from "../permissions/permission.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { createNotification, createTargetedNotifications } from "../notifications/notification.service.js";
@@ -60,6 +61,20 @@ export async function createAccessRequest({
   const expiresAt = effectiveHours ? new Date(Date.now() + effectiveHours * 3600000) : null;
   const resourceKey = resource || "*";
 
+  // Validate Resource Scoping to prevent cross-tenant resource spoofing
+  if (resourceKey !== "*") {
+    const rawTaskId = resourceKey.replace(/^task:/, "").trim();
+    if (mongoose.Types.ObjectId.isValid(rawTaskId)) {
+      const taskDoc = await Task.findById(rawTaskId);
+      if (!taskDoc) {
+        throw new NotFoundError("The requested task resource does not exist.");
+      }
+      if (taskDoc.teamId.toString() !== teamId.toString()) {
+        throw new BadRequestError("The requested task resource does not belong to this team workspace.");
+      }
+    }
+  }
+
   const existingPending = await AccessRequest.findOne({
     targetUserId: target,
     teamId,
@@ -72,12 +87,18 @@ export async function createAccessRequest({
     throw new ConflictError("A pending access request already exists for this permission and resource");
   }
 
-  // Determine approvalLevel: Team Admin requests must be approved by Super Admin
+  // Determine approvalLevel:
+  // 1. Permissions beyond the Team Admin role scope require Super Admin approval
+  // 2. Team Admin requester requests must be approved by Super Admin
   let approvalLevel = "TEAM_ADMIN";
-  const requesterMembershipForLevel = await Membership.findOne({ userId: requesterId, teamId, status: "ACTIVE" });
-  if (requesterMembershipForLevel) {
-    const teamAdminRoleForLevel = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
-    if (teamAdminRoleForLevel) {
+  const teamAdminRoleForLevel = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" });
+  if (teamAdminRoleForLevel) {
+    if (Array.isArray(teamAdminRoleForLevel.permissions) && !teamAdminRoleForLevel.permissions.includes(permission.key)) {
+      approvalLevel = "SUPER_ADMIN";
+    }
+
+    const requesterMembershipForLevel = await Membership.findOne({ userId: requesterId, teamId, status: "ACTIVE" });
+    if (requesterMembershipForLevel) {
       const isRequesterTeamAdmin = await MembershipRole.exists({
         membershipId: requesterMembershipForLevel._id,
         roleId: teamAdminRoleForLevel._id,
@@ -443,8 +464,18 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   const targetUserId = request.targetUserId || request.requesterId;
   const resourceKey = request.resource || "*";
 
+  const reviewerIsSuperAdmin = await isSuperAdmin(reviewerId);
+
   // Enforce approval hierarchy:
-  // If the requester is a Team Admin, only a Super Admin may approve their JIT request.
+  // 1. If request has approvalLevel SUPER_ADMIN, non-Super Admins cannot approve it
+  if (request.approvalLevel === "SUPER_ADMIN" && !reviewerIsSuperAdmin) {
+    throw new ForbiddenError(
+      "This JIT access request requires Super Admin approval.",
+      "SUPER_ADMIN_APPROVAL_REQUIRED"
+    );
+  }
+
+  // 2. If the requester is a Team Admin, only a Super Admin may approve their JIT request.
   const requesterMembership = await Membership.findOne({ userId: request.requesterId, teamId: effectiveTeamId, status: "ACTIVE" });
   if (requesterMembership) {
     const teamAdminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
@@ -455,14 +486,11 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
         revokedAt: null,
         $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
       });
-      if (requesterIsTeamAdmin) {
-        const reviewerIsSuperAdmin = await isSuperAdmin(reviewerId);
-        if (!reviewerIsSuperAdmin) {
-          throw new ForbiddenError(
-            "JIT access requests from Team Admins can only be approved by a Super Admin.",
-            "SUPER_ADMIN_APPROVAL_REQUIRED"
-          );
-        }
+      if (requesterIsTeamAdmin && !reviewerIsSuperAdmin) {
+        throw new ForbiddenError(
+          "JIT access requests from Team Admins can only be approved by a Super Admin.",
+          "SUPER_ADMIN_APPROVAL_REQUIRED"
+        );
       }
     }
   }
@@ -478,44 +506,85 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     permissionDoc = defaultPerm;
   }
 
+  const permKey = permissionDoc?.key || "task.read";
+
+  // Privilege Clamping: Non-superadmin approvers cannot grant permissions beyond their own permission ceiling
+  if (!reviewerIsSuperAdmin) {
+    const reviewerHasPermission = await can(reviewerId, effectiveTeamId, permKey);
+    if (!reviewerHasPermission) {
+      throw new ForbiddenError(
+        "Privilege escalation prevented: You cannot approve a JIT grant for a permission exceeding your own effective permissions.",
+        "PRIVILEGE_CLAWBACK_PREVENTED"
+      );
+    }
+  }
+
   const effectiveHours = typeof durationHours === "number" ? durationHours : (typeof request.durationHours === "number" ? request.durationHours : 2);
   const finalExpiresAt = new Date(Date.now() + effectiveHours * 3600000);
 
-  request.status = "APPROVED";
-  request.reviewedBy = reviewerId;
-  request.reviewedAt = new Date();
-  request.expiresAt = finalExpiresAt;
-  await request.save();
+  // Execute Atomic CAS Transition & Dual-Gated Grant Creation in Transaction
+  const session = await mongoose.startSession();
+  let grant = null;
+  let updatedRequest = null;
 
-  // Find existing grant or create a new active one
-  let grant = await AccessGrant.findOne({
-    userId: targetUserId,
-    teamId: effectiveTeamId,
-    permissionId: permissionId,
-    resource: resourceKey,
-  });
+  try {
+    await session.withTransaction(async () => {
+      // Dual-Gated Invariant: Target must have ACTIVE membership in team
+      const targetMembership = await Membership.findOne({
+        userId: targetUserId,
+        teamId: effectiveTeamId,
+        status: "ACTIVE",
+      }).session(session);
 
-  if (grant) {
-    grant.status = "ACTIVE";
-    grant.grantedBy = reviewerId;
-    grant.source = "ACCESS_REQUEST";
-    grant.accessRequestId = request._id;
-    grant.expiresAt = finalExpiresAt;
-    grant.revokedAt = null;
-    grant.revokedBy = null;
-    await grant.save();
-  } else {
-    grant = await AccessGrant.create({
-      userId: targetUserId,
-      teamId: effectiveTeamId,
-      permissionId: permissionId,
-      resource: resourceKey,
-      grantedBy: reviewerId,
-      source: "ACCESS_REQUEST",
-      accessRequestId: request._id,
-      status: "ACTIVE",
-      expiresAt: finalExpiresAt,
+      if (!targetMembership) {
+        throw new ForbiddenError(
+          "Target user must be an active member of this workspace to receive JIT access.",
+          "TARGET_NOT_ACTIVE_MEMBER"
+        );
+      }
+
+      // Atomic CAS Transition: Only transitions if still PENDING
+      updatedRequest = await AccessRequest.findOneAndUpdate(
+        { _id: requestId, status: "PENDING", ...(teamId ? { teamId } : {}) },
+        {
+          $set: {
+            status: "APPROVED",
+            reviewedBy: reviewerId,
+            reviewedAt: new Date(),
+            expiresAt: finalExpiresAt,
+          },
+        },
+        { returnDocument: "after", session }
+      );
+
+      if (!updatedRequest) {
+        throw new ConflictError("Access request is no longer pending or was already resolved.");
+      }
+
+      grant = await AccessGrant.findOneAndUpdate(
+        {
+          userId: targetUserId,
+          teamId: effectiveTeamId,
+          permissionId,
+          resource: resourceKey,
+        },
+        {
+          $set: {
+            status: "ACTIVE",
+            permissionKey: permKey.toLowerCase().trim(),
+            grantedBy: reviewerId,
+            source: "ACCESS_REQUEST",
+            accessRequestId: updatedRequest._id,
+            expiresAt: finalExpiresAt,
+            revokedAt: null,
+            revokedBy: null,
+          },
+        },
+        { upsert: true, returnDocument: "after", session }
+      );
     });
+  } finally {
+    await session.endSession();
   }
 
   const permLabel = permissionDoc?.name || permissionDoc?.key || "resource";
@@ -530,7 +599,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
   // Real-time Event Emissions & Persistent Notification to Requester
   try {
     emitToUser(request.requesterId, "access_request:resolved", {
-      requestId: request._id,
+      requestId: updatedRequest._id,
       teamId: effectiveTeamId,
       status: "APPROVED",
       expiresAt: finalExpiresAt,
@@ -540,7 +609,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
       reason: "GRANT_APPROVED",
     });
     emitToTeam(effectiveTeamId, "access_request:resolved", {
-      requestId: request._id,
+      requestId: updatedRequest._id,
       status: "APPROVED",
     });
 
@@ -551,11 +620,11 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
       type: "ACCESS_GRANTED",
       teamId: effectiveTeamId,
       resourceType: "ACCESS_REQUEST",
-      resourceId: request._id,
+      resourceId: updatedRequest._id,
       metadata: {
         permissionName: permLabel,
         grantId: grant._id,
-        requestId: request._id,
+        requestId: updatedRequest._id,
         teamName,
         expiresAt: finalExpiresAt,
         details: `Your access request for '${permLabel}' in ${teamName} has been approved.`,
@@ -576,7 +645,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     actorId: reviewerId,
     action: "access_request.approved",
     targetType: "AccessRequest",
-    targetId: request._id,
+    targetId: updatedRequest._id,
     teamId: effectiveTeamId,
     metadata: {
       grantId: grant._id,
@@ -584,7 +653,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     },
   });
 
-  return { request, grant };
+  return { request: updatedRequest, grant };
 }
 
 export async function rejectAccessRequest({ teamId, requestId, reviewerId, reason }) {
@@ -606,14 +675,23 @@ export async function rejectAccessRequest({ teamId, requestId, reviewerId, reaso
 
   const effectiveTeamId = request.teamId;
 
-  request.status = "REJECTED";
-  request.reviewedBy = reviewerId;
-  request.reviewedAt = new Date();
-  if (reason) {
-    request.rejectionReason = reason;
-  }
+  // Atomic CAS transition
+  const updatedRequest = await AccessRequest.findOneAndUpdate(
+    { _id: requestId, status: "PENDING", ...(teamId ? { teamId } : {}) },
+    {
+      $set: {
+        status: "REJECTED",
+        reviewedBy: reviewerId,
+        reviewedAt: new Date(),
+        ...(reason ? { rejectionReason: reason } : {}),
+      },
+    },
+    { returnDocument: "after" }
+  );
 
-  await request.save();
+  if (!updatedRequest) {
+    throw new ConflictError("Access request is no longer pending or was already resolved.");
+  }
 
   // Resolve permission name for notification
   let rejectedPermLabel = "resource";

@@ -65,6 +65,20 @@ export async function archiveTeam(req, res, next) {
   }
 }
 
+export async function getWorkspaceBootstrap(req, res, next) {
+  try {
+    const { teamId } = req.params;
+    const bootstrapData = await teamService.getWorkspaceBootstrap({
+      teamId,
+      userId: req.user.id,
+      actor: req.user,
+    });
+    return res.status(200).json({ success: true, data: bootstrapData });
+  } catch (error) {
+    next(error);
+  }
+}
+
 export const teamController = {
   createTeam,
   getMyTeams,
@@ -72,6 +86,7 @@ export const teamController = {
   getTeamById,
   updateTeam,
   archiveTeam,
+  getWorkspaceBootstrap,
 };
 
 export default teamController;

@@ -21,6 +21,13 @@ const membershipSchema = new mongoose.Schema(
       index: true,
     },
 
+    roleIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Role",
+      },
+    ],
+
     joinedAt: {
       type: Date,
       default: Date.now,

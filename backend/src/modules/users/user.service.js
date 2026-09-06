@@ -89,6 +89,10 @@ export async function updateUser(userId, data = {}, actorId = null) {
     if (data.lastLogoutAt) {
       user.lastLogoutAt = new Date(data.lastLogoutAt);
     }
+
+    if (typeof data.isSuperAdmin === "boolean") {
+      user.isSuperAdmin = data.isSuperAdmin;
+    }
   }
 
   await user.save();
