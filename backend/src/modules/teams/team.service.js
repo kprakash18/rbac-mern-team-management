@@ -65,6 +65,8 @@ export async function createTeam({ name, description = "", createdBy }) {
       assignedBy: createdBy,
       assignedAt: new Date(),
     });
+    membership.roleIds = [adminRole._id];
+    await membership.save();
   }
 
   logAuditEvent({
@@ -304,6 +306,65 @@ export async function archiveTeam(teamId, actorId = null) {
   };
 }
 
+import { resolvePermissions, isSuperAdmin } from "../authorization/authorization.service.js";
+import AccessGrant from "../access/access-grant.model.js";
+import Task from "../tasks/task.model.js";
+
+export async function getWorkspaceBootstrap({ teamId, userId, actor }) {
+  if (!mongoose.Types.ObjectId.isValid(teamId) || !mongoose.Types.ObjectId.isValid(userId)) {
+    throw new BadRequestError("Invalid team ID or user ID format.");
+  }
+
+  const team = await Team.findById(teamId);
+  if (!team || team.status === "ARCHIVED") {
+    throw new NotFoundError("Team workspace not found.");
+  }
+
+  const superAdmin = actor?.isSuperAdmin ?? (await isSuperAdmin(userId));
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" }).populate("roleIds", "name description permissions isSystemRole");
+
+  if (!membership && !superAdmin) {
+    throw new NotFoundError("Active team membership not found for this workspace.");
+  }
+
+  const [permissions, activeGrants, memberCount, activeTaskCount] = await Promise.all([
+    resolvePermissions(userId, teamId),
+    AccessGrant.find({
+      userId,
+      teamId,
+      status: "ACTIVE",
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }),
+    Membership.countDocuments({ teamId, status: "ACTIVE" }),
+    Task.countDocuments({ teamId, status: { $ne: "DONE" } }),
+  ]);
+
+  return {
+    team: {
+      id: team._id,
+      name: team.name,
+      description: team.description,
+      status: team.status,
+      createdAt: team.createdAt,
+    },
+    membership: membership
+      ? {
+          id: membership._id,
+          status: membership.status,
+          joinedAt: membership.joinedAt,
+          roles: membership.roleIds || [],
+        }
+      : null,
+    isSuperAdmin: superAdmin,
+    permissions: superAdmin ? ["*"] : permissions,
+    activeGrants,
+    stats: {
+      memberCount,
+      activeTaskCount,
+    },
+  };
+}
+
 export const teamService = {
   createTeam,
   getUserTeams,
@@ -311,5 +372,6 @@ export const teamService = {
   getTeamById,
   updateTeam,
   archiveTeam,
+  getWorkspaceBootstrap,
 };
 export default teamService;

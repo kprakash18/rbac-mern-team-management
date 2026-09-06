@@ -29,13 +29,14 @@ export async function createRole({name, description="", permissionIds = [], crea
     if(DoesRoleExist){
         throw new ConflictError("A role with this name already exsists");
     }
-    // 2. validate permissions Ids if supplied
-   if (permissionIds.length > 0) {
-        const validPermissions = await Permission.find({ _id: { $in: permissionIds } });
-    if (validPermissions.length !== permissionIds.length) {
+    let permissionKeys = [];
+    if (permissionIds.length > 0) {
+      const validPermissions = await Permission.find({ _id: { $in: permissionIds } });
+      if (validPermissions.length !== permissionIds.length) {
         throw new BadRequestError("One or more permission IDs are invalid.");
+      }
+      permissionKeys = validPermissions.map((p) => p.key);
     }
-  }
 
   // 3 create the role 
   const role = await Role.create({
@@ -44,6 +45,7 @@ export async function createRole({name, description="", permissionIds = [], crea
     createdBy,
     isSystemRole: false,
     status: "ACTIVE",
+    permissions: permissionKeys,
   });
 
   // 4. create RolePermission junction record
@@ -183,17 +185,18 @@ export async function updateRole(roleId, { name, description, status, permission
     }
     role.status = status;
   }
-  await role.save();
 
   // If permissionIds is provided, synchronize permissions with active-user guardrail
   if (permissionIds !== undefined && Array.isArray(permissionIds)) {
     // 1. Validate all incoming permission IDs exist
+    let validPermissions = [];
     if (permissionIds.length > 0) {
-      const validPermissions = await Permission.find({ _id: { $in: permissionIds } });
+      validPermissions = await Permission.find({ _id: { $in: permissionIds } });
       if (validPermissions.length !== permissionIds.length) {
         throw new BadRequestError("One or more permission IDs are invalid.");
       }
     }
+    role.permissions = validPermissions.map((p) => p.key);
 
     // 2. Fetch current permissions mapped to this role
     const currentMappings = await RolePermission.find({ roleId: role._id });
@@ -236,6 +239,8 @@ export async function updateRole(roleId, { name, description, status, permission
       await RolePermission.insertMany(junctionDocs);
     }
   }
+
+  await role.save();
 
   logAuditEvent({
     actorId,

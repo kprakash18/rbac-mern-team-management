@@ -2,8 +2,8 @@ import permissionService from "./permission.service.js";
 
 export async function getPermissions(req, res, next){
     try {
-        const { category }  = req.query ;
-        const permissions = await permissionService.listPermissions({category});
+        const { category, scope }  = req.query ;
+        const permissions = await permissionService.listPermissions({ category, scope });
         return res.status(200).json({
             success : true,
             data : permissions,

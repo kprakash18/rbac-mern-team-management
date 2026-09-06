@@ -27,6 +27,21 @@ const roleSchema = new mongoose.Schema(
       default: false,
     },
 
+    teamId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Team",
+      default: null,
+      index: true,
+    },
+
+    permissions: [
+      {
+        type: String,
+        trim: true,
+        lowercase: true,
+      },
+    ],
+
     status: {
       type: String,
       enum: ["ACTIVE", "DISABLED", "ARCHIVED"],
@@ -38,6 +53,7 @@ const roleSchema = new mongoose.Schema(
   }
 );
 
+roleSchema.index({ teamId: 1, name: 1 });
 roleSchema.index({ name: 1 });
 
 const Role = mongoose.model("Role", roleSchema);

@@ -1,8 +1,9 @@
+import mongoose from "mongoose";
 import Membership from "../memberships/membership.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
-import RolePermission from "../roles/role-permission.model.js";
 import User from "../users/user.model.js";
 import Role from "../roles/role.model.js";
+import RolePermission from "../roles/role-permission.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
 
@@ -10,24 +11,32 @@ import AccessGrant from "../access/access-grant.model.js";
  * 1. Find active team membership for a user
  */
 export async function getMembership(userId, teamId) {
-  if (!userId || !teamId) return null;
+  if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
+    return null;
+  }
   return Membership.findOne({ userId, teamId, status: "ACTIVE" });
 }
 
 /**
- * 2. Get active role IDs for a membership (filters out expired / disabled roles)
+ * 2. Get active role IDs for a membership (Dual-Model aware)
  */
 export async function getActiveRoleIds(membershipId) {
-  if (!membershipId) return [];
+  if (!membershipId || !mongoose.Types.ObjectId.isValid(membershipId)) return [];
+  const membership = await Membership.findById(membershipId).select("roleIds status");
+  if (!membership || membership.status !== "ACTIVE") return [];
 
-  const membershipRoles = await MembershipRole.find({
-    membershipId,
-    revokedAt: null,
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-  }).select("roleId");
+  let roleIds = Array.isArray(membership.roleIds) && membership.roleIds.length > 0 ? membership.roleIds : null;
 
-  const roleIds = membershipRoles.map((mr) => mr.roleId);
-  if (roleIds.length === 0) return [];
+  if (!roleIds || roleIds.length === 0) {
+    const membershipRoles = await MembershipRole.find({
+      membershipId: membership._id,
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).select("roleId");
+    roleIds = membershipRoles.map((mr) => mr.roleId);
+  }
+
+  if (!roleIds || roleIds.length === 0) return [];
 
   const activeRoles = await Role.find({
     _id: { $in: roleIds },
@@ -38,39 +47,75 @@ export async function getActiveRoleIds(membershipId) {
 }
 
 /**
- * 3. Resolve all permission keys granted through the user's active team roles
+ * 3. Resolve all permission keys granted through the user's active team roles (Document-Native with Fallback)
  */
 export async function resolveRolePermissions(userId, teamId) {
-  const membership = await getMembership(userId, teamId);
+  if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
+    return new Set();
+  }
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" });
   if (!membership) return new Set();
 
-  const roleIds = await getActiveRoleIds(membership._id);
-  if (roleIds.length === 0) return new Set();
+  let roleIds = Array.isArray(membership.roleIds) && membership.roleIds.length > 0 ? membership.roleIds : null;
 
-  const rolePermissions = await RolePermission.find({
-    roleId: { $in: roleIds },
-  }).populate("permissionId", "key");
+  // Fallback: If roleIds array is empty or not backfilled, query MembershipRole junction
+  if (!roleIds || roleIds.length === 0) {
+    const membershipRoles = await MembershipRole.find({
+      membershipId: membership._id,
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).select("roleId");
+    roleIds = membershipRoles.map((mr) => mr.roleId);
+  }
 
-  return new Set(
-    rolePermissions
-      .filter((rp) => rp.permissionId?.key)
-      .map((rp) => rp.permissionId.key)
-  );
+  if (!roleIds || roleIds.length === 0) return new Set();
+
+  const roles = await Role.find({
+    _id: { $in: roleIds },
+    status: "ACTIVE",
+  }).select("permissions");
+
+  const permissionKeys = new Set();
+  const rolesNeedingFallback = [];
+
+  for (const role of roles) {
+    if (Array.isArray(role.permissions) && role.permissions.length > 0) {
+      for (const perm of role.permissions) {
+        permissionKeys.add(perm);
+      }
+    } else {
+      rolesNeedingFallback.push(role._id);
+    }
+  }
+
+  // Fallback: Query RolePermission for any roles whose embedded permissions are empty
+  if (rolesNeedingFallback.length > 0) {
+    const rolePermissions = await RolePermission.find({
+      roleId: { $in: rolesNeedingFallback },
+    }).populate("permissionId", "key");
+
+    for (const rp of rolePermissions) {
+      if (rp.permissionId?.key) {
+        permissionKeys.add(rp.permissionId.key);
+      }
+    }
+  }
+
+  return permissionKeys;
 }
 
 /**
- * 4. Check if a valid, unexpired direct access grant exists
+ * 4. Check if a valid, unexpired direct access grant exists (Document-Native with Fallback)
  */
 export async function hasValidDirectGrant({ userId, teamId, permissionKey, resource = null }) {
   if (!userId || !teamId || !permissionKey) return false;
+  if (!mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) return false;
 
-  const permission = await Permission.findOne({ key: permissionKey.toLowerCase().trim() });
-  if (!permission) return false;
+  const normalizedKey = permissionKey.toLowerCase().trim();
 
   const query = {
     userId,
     teamId,
-    permissionId: permission._id,
     status: "ACTIVE",
     $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
   };
@@ -82,14 +127,44 @@ export async function hasValidDirectGrant({ userId, teamId, permissionKey, resou
     };
   }
 
-  const grant = await AccessGrant.findOne(query);
-  return Boolean(grant);
+  const grantByKey = await AccessGrant.findOne({
+    ...query,
+    permissionKey: normalizedKey,
+  }).select("_id");
+
+  if (grantByKey) return true;
+
+  const permission = await Permission.findOne({ key: normalizedKey }).select("_id");
+  if (permission) {
+    const grantById = await AccessGrant.findOne({
+      ...query,
+      permissionId: permission._id,
+    }).select("_id");
+    if (grantById) return true;
+  }
+
+  return false;
 }
 
 /**
  * 5. Effective permissions array (Roles + Direct Grants)
  */
 export async function resolvePermissions(userId, teamId) {
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) {
+    return [];
+  }
+
+  // Super Admin platform override: Super Admins hold all permissions globally
+  if (await isSuperAdmin(userId)) {
+    const allPerms = await Permission.find({}).select("key");
+    const allKeys = new Set(allPerms.map((p) => p.key));
+    allKeys.add("*");
+    return Array.from(allKeys);
+  }
+
+  if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) {
+    return [];
+  }
   const permissions = await resolveRolePermissions(userId, teamId);
 
   const membership = await getMembership(userId, teamId);
@@ -99,10 +174,12 @@ export async function resolvePermissions(userId, teamId) {
       teamId,
       status: "ACTIVE",
       $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-    }).populate("permissionId", "key");
+    }).populate("permissionId", "key").select("permissionKey permissionId");
 
     for (const grant of grants) {
-      if (grant.permissionId?.key) {
+      if (grant.permissionKey) {
+        permissions.add(grant.permissionKey);
+      } else if (grant.permissionId?.key) {
         permissions.add(grant.permissionId.key);
       }
     }
@@ -112,47 +189,78 @@ export async function resolvePermissions(userId, teamId) {
 }
 
 /**
- * Helper: Check if a user holds an active Super Admin role dynamically in the database
+ * Helper: Check if a user holds an active Super Admin platform flag
  */
 export async function isSuperAdmin(userId) {
   if (!userId) return false;
+  const idStr =
+    userId instanceof mongoose.Types.ObjectId
+      ? userId.toString()
+      : userId._id
+      ? userId._id.toString()
+      : typeof userId === "string"
+      ? userId
+      : String(userId);
 
-  const superAdminRoles = await Role.find({
+  if (!mongoose.Types.ObjectId.isValid(idStr)) return false;
+
+  const user = await User.findById(idStr).select("isSuperAdmin accountStatus");
+  if (!user || user.accountStatus === "SUSPENDED" || user.accountStatus === "DISABLED") {
+    return false;
+  }
+
+  if (user.isSuperAdmin === true) {
+    return true;
+  }
+  if (user.isSuperAdmin === false) {
+    return false;
+  }
+
+  // Legacy data fallback: if isSuperAdmin is undefined/null, check if user holds a platform Super Admin system role
+  const superAdminRole = await Role.findOne({
     name: { $in: ["Super Admin", "Platform Super Admin"] },
+    isSystemRole: true,
     status: "ACTIVE",
   }).select("_id");
 
-  if (!superAdminRoles || superAdminRoles.length === 0) return false;
-  const superAdminRoleIds = superAdminRoles.map((r) => r._id);
+  if (superAdminRole) {
+    const memberships = await Membership.find({ userId: idStr, status: "ACTIVE" }).select("_id");
+    if (memberships.length > 0) {
+      const hasRole = await MembershipRole.exists({
+        membershipId: { $in: memberships.map((m) => m._id) },
+        roleId: superAdminRole._id,
+        revokedAt: null,
+        $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+      });
+      if (hasRole) {
+        await User.updateOne({ _id: idStr }, { $set: { isSuperAdmin: true } });
+        return true;
+      }
+    }
+  }
 
-  const memberships = await Membership.find({
-    userId,
-    status: "ACTIVE",
-  }).select("_id");
-
-  if (!memberships || memberships.length === 0) return false;
-  const membershipIds = memberships.map((m) => m._id);
-
-  const hasSuperAdminRole = await MembershipRole.exists({
-    membershipId: { $in: membershipIds },
-    roleId: { $in: superAdminRoleIds },
-    revokedAt: null,
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-  });
-
-  return Boolean(hasSuperAdminRole);
+  return false;
 }
 
 /**
  * Helper: Check if a user is a Team Admin in a specific team
  */
 export async function isTeamAdmin(userId, teamId) {
-  if (!userId || !teamId) return false;
-  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" }).select("_id");
+  if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
+    return false;
+  }
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" });
   if (!membership) return false;
 
-  const adminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" }).select("_id");
+  const adminRole = await Role.findOne({
+    name: { $in: ["Team Admin", "Admin"] },
+    status: "ACTIVE",
+  }).select("_id");
   if (!adminRole) return false;
+
+  if (Array.isArray(membership.roleIds) && membership.roleIds.some((r) => String(r) === String(adminRole._id))) {
+    return true;
+  }
 
   const hasAdminRole = await MembershipRole.exists({
     membershipId: membership._id,
@@ -168,90 +276,182 @@ export async function isTeamAdmin(userId, teamId) {
  * Helper: Get all active Super Admin User IDs across the system
  */
 export async function getAllSuperAdminUserIds() {
+  const superAdmins = await User.find({
+    isSuperAdmin: true,
+    accountStatus: "ACTIVE",
+  }).select("_id");
+
+  const userIds = new Set(superAdmins.map((u) => u._id.toString()));
+
+  // Fallback for unmigrated databases
   const superAdminRoles = await Role.find({
     name: { $in: ["Super Admin", "Platform Super Admin"] },
+    isSystemRole: true,
     status: "ACTIVE",
   }).select("_id");
 
-  if (!superAdminRoles || superAdminRoles.length === 0) return [];
-  const superAdminRoleIds = superAdminRoles.map((r) => r._id);
+  if (superAdminRoles.length > 0) {
+    const memberRoles = await MembershipRole.find({
+      roleId: { $in: superAdminRoles.map((r) => r._id) },
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).select("membershipId");
 
-  const memberRoles = await MembershipRole.find({
-    roleId: { $in: superAdminRoleIds },
-    revokedAt: null,
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-  }).select("membershipId");
+    if (memberRoles.length > 0) {
+      const memberships = await Membership.find({
+        _id: { $in: memberRoles.map((mr) => mr.membershipId) },
+        status: "ACTIVE",
+      }).select("userId");
+      for (const m of memberships) {
+        if (m.userId) userIds.add(m.userId.toString());
+      }
+    }
+  }
 
-  if (!memberRoles || memberRoles.length === 0) return [];
-  const membershipIds = memberRoles.map((mr) => mr.membershipId);
-
-  const memberships = await Membership.find({
-    _id: { $in: membershipIds },
-    status: "ACTIVE",
-  }).select("userId");
-
-  const userIds = memberships.map((m) => m.userId.toString());
-  return Array.from(new Set(userIds));
+  return Array.from(userIds);
 }
 
 /**
  * Helper: Get unique active role names for a user across all active memberships
  */
 export async function getUserActiveRoleNames(userId) {
-  if (!userId) return [];
-  const memberships = await Membership.find({ userId, status: "ACTIVE" }).select("_id");
+  if (!userId || !mongoose.Types.ObjectId.isValid(userId)) return [];
+  const memberships = await Membership.find({ userId, status: "ACTIVE" });
   if (!memberships.length) return [];
-  const membershipIds = memberships.map((m) => m._id);
 
-  const mRoles = await MembershipRole.find({
-    membershipId: { $in: membershipIds },
-    revokedAt: null,
-    $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-  }).populate("roleId", "name status");
-
-  const names = new Set();
-  for (const mr of mRoles) {
-    if (mr.roleId?.name && mr.roleId.status === "ACTIVE") {
-      names.add(mr.roleId.name);
-    }
+  let roleIds = memberships.flatMap((m) => m.roleIds || []);
+  if (!roleIds.length) {
+    const mRoles = await MembershipRole.find({
+      membershipId: { $in: memberships.map((m) => m._id) },
+      revokedAt: null,
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }).select("roleId");
+    roleIds = mRoles.map((mr) => mr.roleId);
   }
-  return Array.from(names);
+
+  if (!roleIds.length) return [];
+
+  const roles = await Role.find({
+    _id: { $in: roleIds },
+    status: "ACTIVE",
+  }).select("name");
+
+  return Array.from(new Set(roles.map((r) => r.name).filter(Boolean)));
 }
 
 /**
- * 6. Main access check: Can user perform permission in team on resource?
- *    Super Admins (verified dynamically via DB roles) bypass all team-scoped checks.
+ * 6. High-Performance Layered Authorization Engine: can()
+ * 
+ * Supports both structured signature can({ actor, teamId, action, resourceId, resourceType })
+ * and positional backwards-compatible signature can(actorOrUserId, teamId, action, resourceId, resourceType)
+ * 
+ * Invariants:
+ * - Layer 1: Super Admin bypasses RBAC checks (if account is active)
+ * - Layer 2: Gated strictly on active Membership (JIT grants cannot bypass membership requirement)
+ * - Layer 3: Document-Native Role permissions check
+ * - Layer 4: JIT / Direct AccessGrant check
  */
-export async function can(userId, teamId, permissionKey, resource = null) {
-  if (!userId || !permissionKey) return false;
+export async function can(param1, param2, param3, param4 = null, param5 = null) {
+  let actor;
+  let teamId;
+  let action;
+  let resourceId = null;
+  let resourceType = null;
 
-  // Dynamic Super Admin check: Any user holding an active Super Admin role
-  // in the database has unrestricted global access without hardcoded emails.
-  const userIsSuperAdmin = await isSuperAdmin(userId);
-  if (userIsSuperAdmin) {
+  if (
+    param1 &&
+    typeof param1 === "object" &&
+    !(param1 instanceof mongoose.Types.ObjectId) &&
+    (param1.actor || param1.user || param1.userId || param1.action || param1.permissionKey)
+  ) {
+    actor = param1.actor || param1.user || param1.userId;
+    teamId = param1.teamId;
+    action = param1.action || param1.permission || param1.permissionKey;
+    resourceId = param1.resourceId || param1.resource || null;
+    resourceType = param1.resourceType || null;
+  } else {
+    actor = param1;
+    teamId = param2;
+    action = param3;
+    resourceId = param4;
+    resourceType = param5;
+  }
+
+  if (!actor || !action) return false;
+
+  let actorId = null;
+  let isSuperAdminFlag = false;
+
+  if (actor instanceof mongoose.Types.ObjectId) {
+    actorId = actor.toString();
+  } else if (typeof actor === "object" && actor !== null) {
+    if (actor._id) {
+      actorId = actor._id.toString();
+    } else if (actor.id && typeof actor.id === "string") {
+      actorId = actor.id;
+    } else if (typeof actor.toString === "function") {
+      actorId = actor.toString();
+    }
+
+    if (actor.accountStatus === "SUSPENDED" || actor.accountStatus === "DISABLED") {
+      return false;
+    }
+    if (typeof actor.isSuperAdmin === "boolean") {
+      isSuperAdminFlag = actor.isSuperAdmin;
+    }
+  } else if (typeof actor === "string") {
+    actorId = actor;
+  }
+
+  if (!actorId || !mongoose.Types.ObjectId.isValid(actorId)) return false;
+
+  if (!isSuperAdminFlag) {
+    isSuperAdminFlag = await isSuperAdmin(actorId);
+  }
+
+  // Layer 1: Super Admin Bypass
+  if (isSuperAdminFlag) {
     return true;
   }
 
-  if (!teamId) return false;
+  if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) return false;
 
-  // Step 1: Check Role permissions in the given team
-  const rolePermissions = await resolveRolePermissions(userId, teamId);
-  if (rolePermissions.has(permissionKey) || rolePermissions.has("*")) {
+  // Layer 2: Membership Gating (Dual-Gated Fail-Closed Invariant)
+  const membership = await Membership.findOne({
+    userId: actorId,
+    teamId,
+    status: "ACTIVE",
+  }).select("roleIds");
+
+  if (!membership) {
+    return false;
+  }
+
+  const normalizedAction = action.toLowerCase().trim();
+
+  // Layer 3: Role Resolution (Document-Native with Fallback)
+  const rolePermissions = await resolveRolePermissions(actorId, teamId);
+  if (rolePermissions.has(normalizedAction) || rolePermissions.has("*")) {
     return true;
   }
 
-  // Step 2: Check Direct Access Grants
-  return hasValidDirectGrant({ userId, teamId, permissionKey, resource });
+  // Layer 4: JIT / Direct AccessGrant Resolution
+  return hasValidDirectGrant({
+    userId: actorId,
+    teamId,
+    permissionKey: normalizedAction,
+    resource: resourceId,
+  });
 }
 
 // get all permissions for a user across all teams
-export async function getAllUserPermissions(userId){
-  if(!userId) return [];
+export async function getAllUserPermissions(userId) {
+  if (!userId) return [];
   const memberships = await Membership.find({
     userId,
-    status : "ACTIVE",
+    status: "ACTIVE",
   }).populate("teamId", "name description status");
-  
+
   const results = [];
   for (const membership of memberships) {
     if (!membership.teamId || membership.teamId.status === "ARCHIVED") {

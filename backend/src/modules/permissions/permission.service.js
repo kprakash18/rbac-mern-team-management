@@ -1,10 +1,11 @@
 import Permission from "./permission.model.js";
+import Role from "../roles/role.model.js";
 import { NotFoundError, BadRequestError } from "../../common/errors/index.js";
 import VALID_CATEGORIES from "./constants.js";
 import mongoose from "mongoose";
 
 
-export async function listPermissions({ category } = {}){
+export async function listPermissions({ category, scope } = {}){
     const queryFilter = {};
 
     if(category){
@@ -17,7 +18,13 @@ export async function listPermissions({ category } = {}){
         queryFilter.category = normalizedCategory;
     }
 
-    // TODO #1: Return list of permissions matching queryFilter, sorted by category (1) and key (1)
+    if (scope === "team" || scope === "team_admin") {
+        const teamAdminRole = await Role.findOne({ name: { $in: ["Team Admin", "Admin"] }, status: "ACTIVE" });
+        if (teamAdminRole && Array.isArray(teamAdminRole.permissions)) {
+            queryFilter.key = { $in: teamAdminRole.permissions };
+        }
+    }
+
     return await Permission.find(queryFilter).sort({ category: 1, key: 1 });
 }    
 export async function getPermissionById(permissionId) {
