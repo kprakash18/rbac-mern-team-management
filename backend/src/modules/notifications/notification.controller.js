@@ -1,267 +1,94 @@
+import { asyncHandler } from "../../common/utils/async-handler.js";
 import * as notificationService from "./notification.service.js";
 
-/**
- * GET /api/notifications
- * Get logged-in user's notifications (paginated, unreadOnly filter)
- */
-export async function getMyNotificationsController(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { unreadOnly, page, limit } = req.query;
+export const getMyNotificationsController = asyncHandler(async (req, res) => {
+  const data = await notificationService.getUserNotifications({
+    userId: req.user.id,
+    unreadOnly: req.query.unreadOnly === "true",
+    page: req.query.page,
+    limit: req.query.limit,
+  });
+  res.status(200).json({ success: true, data });
+});
 
-    const data = await notificationService.getUserNotifications({
-      userId,
-      unreadOnly: unreadOnly === "true",
-      page,
-      limit,
-    });
+export const getUnreadCountController = asyncHandler(async (req, res) => {
+  const data = await notificationService.getUnreadNotificationCount({ userId: req.user.id });
+  res.status(200).json({ success: true, data });
+});
 
-    return res.status(200).json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const markNotificationAsReadController = asyncHandler(async (req, res) => {
+  const data = await notificationService.markNotificationAsRead({
+    notificationId: req.params.notificationId,
+    userId: req.user.id,
+  });
+  res.status(200).json({ success: true, data });
+});
 
-/**
- * GET /api/notifications/unread-count
- * Lightweight unread notifications count
- */
-export async function getUnreadCountController(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const data = await notificationService.getUnreadNotificationCount({ userId });
+export const markAllNotificationsAsReadController = asyncHandler(async (req, res) => {
+  const data = await notificationService.markAllNotificationsAsRead(req.user.id);
+  res.status(200).json({ success: true, data });
+});
 
-    return res.status(200).json({
-      success: true,
-      data,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const deleteNotificationController = asyncHandler(async (req, res) => {
+  const result = await notificationService.deleteNotification({
+    notificationId: req.params.notificationId,
+    userId: req.user.id,
+  });
+  res.status(200).json({ success: true, data: { deleted: Boolean(result) } });
+});
 
-/**
- * PATCH /api/notifications/:notificationId/read
- * Mark a single notification as read
- */
-export async function markNotificationAsReadController(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { notificationId } = req.params;
+export const createTeamBroadcastController = asyncHandler(async (req, res) => {
+  const { title, message, body, type, isSticky, requiresAck, startsAt, expiresAt } = req.body;
+  const broadcast = await notificationService.broadcastToTeam({
+    teamId: req.params.teamId,
+    senderId: req.user.id,
+    title,
+    body: body || message,
+    type,
+    isSticky,
+    requiresAck,
+    startsAt,
+    expiresAt,
+  });
+  res.status(201).json({ success: true, data: broadcast, message: "Broadcast dispatched to team members successfully." });
+});
 
-    const notification = await notificationService.markNotificationAsRead({
-      notificationId,
-      userId,
-    });
+export const getTeamBroadcastsController = asyncHandler(async (req, res) => {
+  const data = await notificationService.getTeamBroadcasts({ teamId: req.params.teamId });
+  res.status(200).json({ success: true, data });
+});
 
-    return res.status(200).json({
-      success: true,
-      data: notification,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const getActiveBulletinsController = asyncHandler(async (req, res) => {
+  const data = await notificationService.getActiveSystemBulletins({ teamId: req.query.teamId || null });
+  res.status(200).json({ success: true, data });
+});
 
-/**
- * PATCH /api/notifications/read-all
- * Mark all notifications as read for current user
- */
-export async function markAllNotificationsAsReadController(req, res, next) {
-  try {
-    const userId = req.user.id;
+export const getAllBroadcastsController = asyncHandler(async (req, res) => {
+  const data = await notificationService.getAllBroadcasts(req.query);
+  res.status(200).json({ success: true, data });
+});
 
-    const result = await notificationService.markAllNotificationsAsRead(userId);
+export const createGlobalBroadcastController = asyncHandler(async (req, res) => {
+  const data = await notificationService.createGlobalBroadcast({
+    senderId: req.user.id,
+    data: req.body,
+  });
+  res.status(201).json({ success: true, data, message: "System broadcast published successfully." });
+});
 
-    return res.status(200).json({
-      success: true,
-      data: result,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
+export const updateBroadcastController = asyncHandler(async (req, res) => {
+  const data = await notificationService.updateBroadcast({
+    broadcastId: req.params.broadcastId,
+    updates: req.body,
+    senderId: req.user.id,
+  });
+  res.status(200).json({ success: true, data, message: "System broadcast updated successfully." });
+});
 
-/**
- * DELETE /api/notifications/:notificationId
- * Delete a notification
- */
-export async function deleteNotificationController(req, res, next) {
-  try {
-    const userId = req.user.id;
-    const { notificationId } = req.params;
-
-    const result = await notificationService.deleteNotification({
-      notificationId,
-      userId,
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: { deleted: Boolean(result) },
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * POST /api/teams/:teamId/broadcasts
- * Broadcast a system message to all active members of a team
- */
-export async function createTeamBroadcastController(req, res, next) {
-  try {
-    const senderId = req.user.id;
-    const { teamId } = req.params;
-    const { title, message, body, type, isSticky, requiresAck, startsAt, expiresAt } = req.body;
-
-    const broadcast = await notificationService.broadcastToTeam({
-      teamId,
-      senderId,
-      title,
-      body: body || message,
-      type,
-      isSticky,
-      requiresAck,
-      startsAt,
-      expiresAt,
-    });
-
-    return res.status(201).json({
-      success: true,
-      data: broadcast,
-      message: "Broadcast dispatched to team members successfully.",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * GET /api/teams/:teamId/broadcasts
- * Fetch system broadcasts sent to a team
- */
-export async function getTeamBroadcastsController(req, res, next) {
-  try {
-    const { teamId } = req.params;
-
-    const broadcasts = await notificationService.getTeamBroadcasts({ teamId });
-
-    return res.status(200).json({
-      success: true,
-      data: broadcasts,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * GET /api/notifications/bulletins/active
- * Fetch currently active system bulletins within valid time window (startsAt <= now <= expiresAt)
- */
-export async function getActiveBulletinsController(req, res, next) {
-  try {
-    const teamId = req.query.teamId || null;
-    const bulletins = await notificationService.getActiveSystemBulletins({ teamId });
-
-    return res.status(200).json({
-      success: true,
-      data: bulletins,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * GET /api/notifications/broadcasts
- * Super Admin: List all system broadcasts
- */
-export async function getAllBroadcastsController(req, res, next) {
-  try {
-    const { status, type, search } = req.query;
-    const broadcasts = await notificationService.getAllBroadcasts({ status, type, search });
-
-    return res.status(200).json({
-      success: true,
-      data: broadcasts,
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * POST /api/notifications/broadcasts
- * Super Admin: Create a new global system broadcast
- */
-export async function createGlobalBroadcastController(req, res, next) {
-  try {
-    const senderId = req.user.id;
-    const broadcast = await notificationService.createGlobalBroadcast({
-      senderId,
-      data: req.body,
-    });
-
-    return res.status(201).json({
-      success: true,
-      data: broadcast,
-      message: "System broadcast published successfully.",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * PATCH /api/notifications/broadcasts/:broadcastId
- * Super Admin: Update/End Early a system broadcast
- */
-export async function updateBroadcastController(req, res, next) {
-  try {
-    const senderId = req.user.id;
-    const { broadcastId } = req.params;
-    const broadcast = await notificationService.updateBroadcast({
-      broadcastId,
-      updates: req.body,
-      senderId,
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: broadcast,
-      message: "System broadcast updated successfully.",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-/**
- * DELETE /api/notifications/broadcasts/:broadcastId
- * Super Admin: Delete a system broadcast
- */
-export async function deleteBroadcastController(req, res, next) {
-  try {
-    const senderId = req.user.id;
-    const { broadcastId } = req.params;
-    const result = await notificationService.deleteBroadcast({
-      broadcastId,
-      senderId,
-    });
-
-    return res.status(200).json({
-      success: true,
-      data: result,
-      message: "System broadcast deleted successfully.",
-    });
-  } catch (error) {
-    next(error);
-  }
-}
-
-
+export const deleteBroadcastController = asyncHandler(async (req, res) => {
+  const data = await notificationService.deleteBroadcast({
+    broadcastId: req.params.broadcastId,
+    senderId: req.user.id,
+  });
+  res.status(200).json({ success: true, data, message: "System broadcast deleted successfully." });
+});

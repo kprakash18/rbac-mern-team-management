@@ -50,7 +50,6 @@ export default function AuditLogsTable({
                     onClick={() => onInspectLog(log)}
                     className="hover:bg-surface-container-low/50 transition-colors group cursor-pointer"
                   >
-                    {/* Timestamp */}
                     <td className="px-md py-md whitespace-nowrap">
                       <div className="flex flex-col">
                         <span className="font-label-bold text-label-sm text-on-surface">
@@ -62,7 +61,6 @@ export default function AuditLogsTable({
                       </div>
                     </td>
 
-                    {/* Actor */}
                     <td className="px-md py-md whitespace-nowrap">
                       <div className="flex items-center gap-sm">
                         <div
@@ -81,7 +79,6 @@ export default function AuditLogsTable({
                       </div>
                     </td>
 
-                    {/* Action & Severity Badge */}
                     <td className="px-md py-md whitespace-nowrap">
                       <div className="flex items-center gap-xs">
                         <span className={`w-2 h-2 rounded-full ${severity.dotClass} shrink-0`}></span>
@@ -91,24 +88,20 @@ export default function AuditLogsTable({
                       </div>
                     </td>
 
-                    {/* Target Identifier */}
                     <td className="px-md py-md whitespace-nowrap">
                       <span className="font-mono text-[12px] bg-surface-container px-1.5 py-0.5 rounded text-on-surface">
                         {log.targetIdentifier || log.targetType}
                       </span>
                     </td>
 
-                    {/* Workspace */}
                     <td className="px-md py-md whitespace-nowrap font-body-sm text-[12px] text-on-surface">
                       {log.workspace}
                     </td>
 
-                    {/* Client IP */}
                     <td className="px-md py-md whitespace-nowrap font-mono text-[12px] text-on-surface-variant">
                       {log.ipAddress}
                     </td>
 
-                    {/* Result */}
                     <td className="px-md py-md whitespace-nowrap">
                       <span
                         className={`px-2 py-0.5 rounded-full font-label-bold text-[10px] tracking-wider uppercase border ${
@@ -121,7 +114,6 @@ export default function AuditLogsTable({
                       </span>
                     </td>
 
-                    {/* Actions */}
                     <td className="px-md py-md text-right whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                       <button
                         type="button"
@@ -140,7 +132,6 @@ export default function AuditLogsTable({
         </table>
       </div>
 
-      {/* Table Pagination / Count Footer */}
       <div className="px-md py-sm bg-surface-container-low border-t border-surface-variant flex items-center justify-between text-body-sm text-on-surface-variant">
         <span>Showing {logs.length} recorded security events</span>
         <div className="flex items-center gap-xs">

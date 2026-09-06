@@ -1,8 +1,3 @@
-/**
- * Standardized Semantic Color Tokens for the Shared Design System.
- * Use these constants to maintain visual consistency across all feature modules.
- */
-
 export const SEMANTIC_COLORS = {
   primary: {
     bg: 'bg-primary',

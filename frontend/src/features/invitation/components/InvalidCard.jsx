@@ -1,7 +1,6 @@
 export default function InvalidInvitationCard({ onGoToLogin }) {
   return (
     <div className="w-full max-w-md bg-surface-container-lowest rounded-xl shadow-lg relative z-10">
-      {/* Header Illustration */}
       <div className="w-full h-32 bg-surface-container flex items-center justify-center rounded-t-xl overflow-hidden relative">
         <div className="absolute inset-0 bg-gradient-to-br from-error-container/50 to-surface-container"></div>
         <div className="relative w-16 h-16 bg-surface-container-lowest rounded-full shadow-sm flex items-center justify-center">
@@ -11,7 +10,6 @@ export default function InvalidInvitationCard({ onGoToLogin }) {
         </div>
       </div>
 
-      {/* Content Area */}
       <div className="p-stack-lg flex flex-col items-center text-center gap-stack-md">
         <div className="flex flex-col gap-unit">
           <h1 className="font-headline-sm text-headline-sm text-on-surface">
@@ -19,7 +17,6 @@ export default function InvalidInvitationCard({ onGoToLogin }) {
           </h1>
         </div>
 
-        {/* Message Block */}
         <div className="w-full bg-surface-container-low rounded-lg p-stack-md text-left flex items-start gap-stack-sm shadow-inner">
           <span className="material-symbols-outlined text-on-surface-variant text-[20px] mt-[2px]">
             info
@@ -30,7 +27,6 @@ export default function InvalidInvitationCard({ onGoToLogin }) {
           </p>
         </div>
 
-        {/* Actions */}
         <div className="w-full flex flex-col gap-stack-md mt-stack-sm">
           <button
             onClick={onGoToLogin}

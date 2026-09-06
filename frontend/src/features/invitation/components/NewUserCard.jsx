@@ -11,7 +11,6 @@ export default function NewUserCard({ invitation, onJoin }) {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // Live password validation rules
   const hasMinLength = password.length >= 8;
   const hasNumberOrSymbol = /[0-9!@#$%^&*(),.?":{}|<>]/.test(password);
   const isCommonPassword = ['password', '12345678', 'admin123'].includes(
@@ -29,7 +28,6 @@ export default function NewUserCard({ invitation, onJoin }) {
 
   return (
     <div className="w-full max-w-[480px] bg-surface-container-lowest rounded-xl shadow-xl p-section-gap">
-      {/* Header */}
       <div className="flex flex-col items-center text-center">
         <div className="w-16 h-16 bg-surface-container rounded-xl flex items-center justify-center mb-stack-lg shadow-sm">
           <img
@@ -47,7 +45,6 @@ export default function NewUserCard({ invitation, onJoin }) {
         </p>
       </div>
 
-      {/* Workspace Summary Block */}
       <div className="mt-stack-lg bg-surface-container rounded-lg p-stack-md flex flex-col gap-stack-sm shadow-sm relative overflow-hidden">
         <div className="absolute top-0 left-0 w-1 h-full bg-primary"></div>
         <div className="flex items-center justify-between">
@@ -68,9 +65,7 @@ export default function NewUserCard({ invitation, onJoin }) {
         </div>
       </div>
 
-      {/* Form */}
       <form className="mt-section-gap flex flex-col gap-stack-lg" onSubmit={handleSubmit}>
-        {/* Email (Read-only) */}
         <div className="flex flex-col gap-stack-sm">
           <label className="font-label-md text-label-md text-on-surface">
             Email Address
@@ -83,7 +78,6 @@ export default function NewUserCard({ invitation, onJoin }) {
           />
         </div>
 
-        {/* Full Name */}
         <div className="flex flex-col gap-stack-sm">
           <label className="font-label-md text-label-md text-on-surface">
             Full Name
@@ -98,7 +92,6 @@ export default function NewUserCard({ invitation, onJoin }) {
           />
         </div>
 
-        {/* Password */}
         <div className="flex flex-col gap-stack-sm">
           <label className="font-label-md text-label-md text-on-surface flex justify-between">
             <span>Password</span>
@@ -123,7 +116,6 @@ export default function NewUserCard({ invitation, onJoin }) {
             </button>
           </div>
 
-          {/* Dynamic Password Requirements Checklist */}
           <div className="mt-stack-sm bg-surface-container-low p-stack-sm rounded-lg flex flex-col gap-2">
             <div
               className={`flex items-center gap-2 font-label-sm text-label-sm ${
@@ -160,7 +152,6 @@ export default function NewUserCard({ invitation, onJoin }) {
           </div>
         </div>
 
-        {/* Submit Button */}
         <button
           className="mt-stack-md w-full h-12 bg-primary text-on-primary rounded-lg font-label-md text-label-md shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           type="submit"

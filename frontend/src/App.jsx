@@ -9,9 +9,6 @@ import WorkspacePage from './features/workspaces/pages/WorkspacePage';
 import WorkspaceApp from './features/workspace-app/pages/WorkspaceApp';
 import SuperAdminPage from './features/super-admin/pages/SuperAdminPage';
 
-/**
- * Inner router — has access to AppContext and react-router hooks.
- */
 function AppRoutes() {
   const { authUser, activeWorkspace, isSuperAdmin, login, logout, updateAuthUser, selectWorkspace, clearWorkspace } =
     useApp();
@@ -26,13 +23,10 @@ function AppRoutes() {
 
   return (
     <Routes>
-      {/* 1. Global Public Route: Accept Invitation */}
       <Route path="/invite" element={<AcceptInvitationPage />} />
 
-      {/* 2. Unauthenticated State */}
       {!authUser && <Route path="*" element={<LoginPage onLoginSuccess={login} />} />}
 
-      {/* 3. Suspended Account Screen */}
       {authUser && isSuspended && (
         <Route
           path="*"
@@ -40,7 +34,6 @@ function AppRoutes() {
         />
       )}
 
-      {/* 3. Mandatory Password Change */}
       {authUser?.mustChangePassword && (
         <Route
           path="*"
@@ -54,7 +47,6 @@ function AppRoutes() {
         />
       )}
 
-      {/* 4. Active Workspace View (Super Admin or Member) */}
       {authUser && !authUser.mustChangePassword && activeWorkspace && (
         <>
           <Route
@@ -94,7 +86,6 @@ function AppRoutes() {
         </>
       )}
 
-      {/* 5. Explicit Workspaces Picker route */}
       {authUser && !authUser.mustChangePassword && !activeWorkspace && (
         <>
           <Route
@@ -120,7 +111,6 @@ function AppRoutes() {
         </>
       )}
 
-      {/* 6. Super Admin Default Control Plane */}
       {authUser && !authUser.mustChangePassword && isSuperAdmin && !activeWorkspace && (
         <Route
           path="*"
@@ -134,7 +124,6 @@ function AppRoutes() {
         />
       )}
 
-      {/* 7. Regular Member Default Workspace Picker */}
       {authUser && !authUser.mustChangePassword && !isSuperAdmin && !activeWorkspace && (
         <Route
           path="*"

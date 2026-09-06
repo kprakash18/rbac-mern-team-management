@@ -76,7 +76,6 @@ export default function RoleCard({
           </p>
         </div>
 
-        {/* Members Assignment Indicator */}
         <div className="flex items-center justify-between pt-xs pb-xs bg-surface-container-low/60 p-2 rounded-lg transition-colors border border-border-subtle/30">
           {isArchived ? (
             <>
@@ -105,7 +104,6 @@ export default function RoleCard({
           )}
         </div>
 
-        {/* Permissions Pills */}
         <div className="flex flex-wrap gap-xs pt-xs">
           {role.permPills?.map((pill, idx) => {
             if (pill.dot) {
@@ -140,7 +138,6 @@ export default function RoleCard({
         </div>
       </div>
 
-      {/* Footer & Action Buttons */}
       <div
         className="pt-lg mt-md flex items-center justify-between gap-xs border-t border-border-subtle/40"
         onClick={(e) => e.stopPropagation()}
@@ -191,7 +188,6 @@ export default function RoleCard({
                 <span className="material-symbols-outlined text-[16px]">edit</span>
                 <span>Edit</span>
               </button>
-              {/* Context Menu */}
               <div className="relative">
                 <button
                   className="h-9 w-9 rounded-lg hover:bg-surface-container-low text-on-surface-variant flex items-center justify-center transition-colors cursor-pointer"

@@ -20,7 +20,6 @@ export default function CreateEditRoleModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-md" id="modal-create-role">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div
         className="relative bg-card-bg rounded-xl max-w-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] border border-border-subtle z-[1000] animate-in zoom-in-95 duration-150"
@@ -87,7 +86,6 @@ export default function CreateEditRoleModal({
               </select>
             </div>
 
-            {/* Permissions Matrix Header */}
             <div className="pt-sm">
               <div className="flex items-center justify-between pb-xs">
                 <label className="font-label-bold text-label-bold text-on-surface">
@@ -117,7 +115,6 @@ export default function CreateEditRoleModal({
                 </div>
               </div>
 
-              {/* Search Permissions */}
               <div className="relative mb-sm">
                 <span className="material-symbols-outlined absolute left-2.5 top-2 text-outline text-[16px]">
                   search
@@ -131,7 +128,6 @@ export default function CreateEditRoleModal({
                 />
               </div>
 
-              {/* Category Matrix */}
               <div className="space-y-md">
                 {Object.entries(permissionsByCategory).map(([categoryKey, perms]) => {
                   const filteredPerms = perms.filter((p) => {

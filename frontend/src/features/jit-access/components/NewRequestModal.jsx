@@ -27,7 +27,6 @@ export default function NewRequestModal({
       maxWidth="max-w-lg"
     >
       <form onSubmit={onSubmit} className="p-md flex flex-col gap-3.5">
-        {/* Permission / Capability */}
         <div>
           <label className="text-label-sm font-label-bold text-on-surface block mb-1">
             Target Permission / Capability *
@@ -51,7 +50,6 @@ export default function NewRequestModal({
           )}
         </div>
 
-        {/* Ticket & Duration (2 columns) */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-label-sm font-label-bold text-on-surface block mb-1">
@@ -90,7 +88,6 @@ export default function NewRequestModal({
           </div>
         </div>
 
-        {/* Justification */}
         <div>
           <label className="text-label-sm font-label-bold text-on-surface block mb-1">
             Business Justification *
@@ -105,7 +102,6 @@ export default function NewRequestModal({
           ></textarea>
         </div>
 
-        {/* Footer */}
         <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
           <span className="text-[11px] text-on-surface-variant flex items-center gap-1">
             <span className="material-symbols-outlined text-[14px] text-primary">

@@ -45,7 +45,6 @@ export default function ChatView({ currentUser, workspace }) {
   const [isSocketLive, setIsSocketLive] = useState(false);
   const [typingUsers, setTypingUsers] = useState({});
 
-  // Edit / Modals
   const [editingMessageId, setEditingMessageId] = useState(null);
   const [editingText, setEditingText] = useState('');
   const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null);
@@ -54,7 +53,6 @@ export default function ChatView({ currentUser, workspace }) {
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
   const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
 
-  // Forms
   const [newGroupName, setNewGroupName] = useState('');
   const [newGroupTopic, setNewGroupTopic] = useState('');
   const [selectedMemberIds, setSelectedMemberIds] = useState([currentUserId]);
@@ -138,7 +136,6 @@ export default function ChatView({ currentUser, workspace }) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeGroupId, messages]);
 
-  // Socket Connection
   useEffect(() => {
     const socket = getSocket();
     if (!socket) {
@@ -437,7 +434,6 @@ export default function ChatView({ currentUser, workspace }) {
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col flex-1 h-[calc(100vh-140px)]">
       <div className="flex-1 flex flex-col md:flex-row rounded-2xl bg-surface-container-lowest border border-border-subtle shadow-sm overflow-hidden">
-        {/* Left Sidebar */}
         <aside className="w-full md:w-64 bg-surface-container-low border-r border-border-subtle flex flex-col justify-between shrink-0">
           <div>
             <div className="p-3 border-b border-border-subtle flex items-center justify-between">
@@ -496,14 +492,12 @@ export default function ChatView({ currentUser, workspace }) {
             <Avatar name={currentUser?.name || 'User'} size="sm" />
             <div className="min-w-0 flex-1">
               <span className="text-[12px] font-semibold text-on-surface block truncate">{currentUser?.name}</span>
-              <span className="text-[10px] text-on-surface-variant block truncate">{isTeamAdmin ? '👑 Team Admin' : currentUser?.role}</span>
+              <span className="text-[10px] text-on-surface-variant block truncate">{isTeamAdmin ? ' Team Admin' : currentUser?.role}</span>
             </div>
           </div>
         </aside>
 
-        {/* Right Active Chat Panel */}
         <main className="flex-1 flex flex-col justify-between bg-surface-container-lowest overflow-hidden">
-          {/* Header */}
           <div className="p-3.5 border-b border-border-subtle flex items-center justify-between bg-surface-container-lowest shrink-0">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
@@ -548,7 +542,6 @@ export default function ChatView({ currentUser, workspace }) {
             </div>
           </div>
 
-          {/* Messages Feed */}
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
             {activeMessages.map((msg) => {
               const isMe = msg.senderId === currentUserId;
@@ -622,14 +615,12 @@ export default function ChatView({ currentUser, workspace }) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Typing */}
           {Object.keys(typingUsers).length > 0 && (
             <div className="px-4 py-1 text-[11px] text-primary font-medium animate-pulse bg-primary/5">
               {Object.values(typingUsers).join(', ')} typing...
             </div>
           )}
 
-          {/* Input */}
           <form onSubmit={handleSendMessage} className="p-3 border-t border-border-subtle bg-surface-container-lowest shrink-0">
             <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border ${isSystemBroadcastMode ? 'bg-amber-50 border-amber-400' : 'bg-surface-container-low border-border-subtle'}`}>
               <input
@@ -656,7 +647,6 @@ export default function ChatView({ currentUser, workspace }) {
         </main>
       </div>
 
-      {/* Create Channel Modal */}
       <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create Channel" subtitle="Create a dedicated channel for team communication">
         <form onSubmit={handleCreateGroup} className="flex flex-col gap-4">
           <div>
@@ -707,7 +697,6 @@ export default function ChatView({ currentUser, workspace }) {
         </form>
       </Modal>
 
-      {/* Invite Modal */}
       <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="Invite to Channel" subtitle={`Add members to #${activeGroup.name}`}>
         <form onSubmit={handleInviteMembers} className="flex flex-col gap-4">
           <div className="max-h-60 overflow-y-auto space-y-1">
@@ -734,7 +723,6 @@ export default function ChatView({ currentUser, workspace }) {
         </form>
       </Modal>
 
-      {/* Confirm Delete Channel */}
       <ConfirmModal
         isOpen={Boolean(confirmDeleteGroup)}
         title={`Delete #${confirmDeleteGroup?.name}?`}
@@ -746,7 +734,6 @@ export default function ChatView({ currentUser, workspace }) {
         onClose={() => setConfirmDeleteGroup(null)}
       />
 
-      {/* Confirm Leave Channel */}
       <ConfirmModal
         isOpen={Boolean(confirmLeaveGroup)}
         title={`Leave #${confirmLeaveGroup?.name}?`}

@@ -47,7 +47,6 @@ export default function JitRequestView({ currentUser, workspace }) {
     withdrawRequest,
   } = useJitRequests({ teamId, currentUserId, showToast });
 
-  // Modals & Confirmation States
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [confirmRevokeReq, setConfirmRevokeReq] = useState(null);
   const [confirmRejectReq, setConfirmRejectReq] = useState(null);
@@ -63,14 +62,12 @@ export default function JitRequestView({ currentUser, workspace }) {
   const [justification, setJustification] = useState('');
   const [submitting, setSubmitting] = useState(false);
 
-  // Set default selection when catalog loads
   useEffect(() => {
     if (permissionsCatalog.length > 0 && !selectedRole) {
       setSelectedRole(permissionsCatalog[0]._id || permissionsCatalog[0].key);
     }
   }, [permissionsCatalog, selectedRole]);
 
-  // Handle New Request Submit
   const handleSubmitRequest = async (e) => {
     e.preventDefault();
     if (!ticketId.trim() || !justification.trim() || !teamId || submitting) return;
@@ -116,7 +113,6 @@ export default function JitRequestView({ currentUser, workspace }) {
     }
   };
 
-  // Handle Edit Request
   const handleStartEditRequest = (req) => {
     setEditingRequest(req);
     setEditTicketId(req.ticketId || '');
@@ -171,14 +167,12 @@ export default function JitRequestView({ currentUser, workspace }) {
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
-      {/* Toast Notification */}
       {toast && (
         <div className="fixed top-6 right-6 z-50 animate-in slide-in-from-top-4 duration-200">
           <Toast message={toast.msg} type={toast.type} onClose={() => setToast(null)} />
         </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <h1 className="font-display-title text-[24px] font-semibold text-on-surface tracking-tight">
@@ -200,7 +194,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         </Button>
       </div>
 
-      {/* Filter & Search Bar */}
       <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1">
           <SearchInput
@@ -213,7 +206,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* Requester Filter */}
           <Tabs
             options={[
               { key: 'ALL', label: 'All Requests' },
@@ -223,7 +215,6 @@ export default function JitRequestView({ currentUser, workspace }) {
             onChange={setRequesterFilter}
           />
 
-          {/* Status Tabs */}
           <Tabs
             options={JIT_STATUS_TABS}
             value={statusFilter}
@@ -232,7 +223,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         </div>
       </div>
 
-      {/* Main Table */}
       <div className="w-full bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
         {loading ? (
           <LoadingState message="Loading access requests..." />
@@ -281,7 +271,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         )}
       </div>
 
-      {/* New Request Modal */}
       <NewRequestModal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
@@ -299,7 +288,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         isTeamAdmin={isTeamAdmin}
       />
 
-      {/* Edit Request Modal */}
       <EditRequestModal
         editingRequest={editingRequest}
         onClose={() => setEditingRequest(null)}
@@ -312,7 +300,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         onSubmit={handleSaveEditRequest}
       />
 
-      {/* Revoke Lease Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(confirmRevokeReq)}
         title="Revoke Active JIT Lease?"
@@ -325,7 +312,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         onClose={() => setConfirmRevokeReq(null)}
       />
 
-      {/* Reject Request Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(confirmRejectReq)}
         title="Reject JIT Access Request"
@@ -351,7 +337,6 @@ export default function JitRequestView({ currentUser, workspace }) {
         </div>
       </ConfirmModal>
 
-      {/* Withdraw Request Confirmation Modal */}
       <ConfirmModal
         isOpen={Boolean(confirmWithdrawReq)}
         title="Withdraw Access Request?"

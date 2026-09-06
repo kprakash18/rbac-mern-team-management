@@ -1,7 +1,3 @@
-/**
- * Safe localStorage utilities with fail-safe error handling and JSON parsing.
- */
-
 export function getStorage(key, fallback = null) {
   try {
     const item = localStorage.getItem(key);

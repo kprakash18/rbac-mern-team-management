@@ -55,17 +55,14 @@ export default function RoleMembersDrawer({
 
   return (
     <div className="fixed inset-0 z-[999]">
-      {/* Dark Backdrop */}
       <div
         className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity"
         onClick={onClose}
       />
-      {/* Slide-over panel pinned directly to right edge of browser */}
       <div
         className="fixed top-0 bottom-0 right-0 w-full sm:w-[500px] bg-card-bg shadow-2xl flex flex-col justify-between border-l border-border-subtle z-[1000] animate-in slide-in-from-right duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Drawer Header */}
         <div className="p-lg bg-surface-container-lowest border-b border-border-subtle flex items-center justify-between shrink-0">
           <div className="flex items-center gap-sm">
             <div
@@ -103,7 +100,6 @@ export default function RoleMembersDrawer({
           </button>
         </div>
 
-        {/* Drawer Tab Navigation */}
         <div className="flex border-b border-border-subtle bg-surface-container-lowest px-lg pt-sm gap-md shrink-0">
           <button
             type="button"
@@ -131,10 +127,8 @@ export default function RoleMembersDrawer({
           </button>
         </div>
 
-        {/* Drawer Body - Tab 1: Assigned Members */}
         {activeTab === 'members' ? (
           <div className="p-lg flex-1 overflow-y-auto space-y-md">
-            {/* Controls: Search & Add Member button */}
             <div className="flex items-center gap-sm">
               <div className="relative flex-1">
                 <span className="material-symbols-outlined absolute left-3 top-2 text-outline text-[18px]">search</span>
@@ -162,7 +156,6 @@ export default function RoleMembersDrawer({
               </button>
             </div>
 
-            {/* Inline Assign Member Form */}
             {isAssignFormOpen && (
               <form
                 onSubmit={handleFormSubmit}
@@ -238,7 +231,6 @@ export default function RoleMembersDrawer({
                   </div>
                 </div>
 
-                {/* Custom TTL Inputs if "custom" is selected */}
                 {assignFormData.ttlType === 'custom' && (
                   <div className="p-xs bg-surface-container-lowest rounded-lg border border-border-subtle space-y-xs animate-in fade-in-50 duration-150">
                     <label className="text-[11px] font-label-bold text-primary block">
@@ -295,7 +287,6 @@ export default function RoleMembersDrawer({
               </form>
             )}
 
-            {/* User Roster List */}
             <div className="space-y-xs">
               {drawerFilteredUsers.length === 0 ? (
                 <div className="py-xl text-center text-on-surface-variant">
@@ -320,7 +311,6 @@ export default function RoleMembersDrawer({
                           <div className="font-label-bold text-label-sm text-on-surface">{user.name}</div>
                           <div className="font-body-sm text-[12px] text-on-surface-variant">{user.email}</div>
                           <div className="flex items-center gap-xs mt-1 flex-wrap">
-                            {/* Interactive Workspace Badge */}
                             <button
                               type="button"
                               onClick={() => onOpenEditWorkspace(user)}
@@ -331,7 +321,6 @@ export default function RoleMembersDrawer({
                               <span className="material-symbols-outlined text-[11px] text-outline">edit</span>
                             </button>
                             <span className="text-outline text-[10px]">•</span>
-                            {/* Interactive TTL Expiration Badge */}
                             <button
                               type="button"
                               onClick={() => onOpenEditTtl(user)}
@@ -346,7 +335,6 @@ export default function RoleMembersDrawer({
                         </div>
                       </div>
 
-                      {/* Member Quick Action Controls */}
                       <div className="flex items-center gap-xs shrink-0">
                         <button
                           className="h-8 px-xs rounded-lg hover:bg-surface-container text-on-surface font-label-sm text-[12px] flex items-center gap-1 transition-colors cursor-pointer border border-border-subtle"
@@ -368,7 +356,6 @@ export default function RoleMembersDrawer({
                     </div>
                   ))}
 
-                  {/* Developer batch overflow notice */}
                   {role.id === 'dev' && (
                     <div className="p-sm bg-surface-container-lowest rounded-lg border border-dashed border-border-subtle text-center text-[12px] text-on-surface-variant">
                       + 102 additional workspace developers holding active scoped tokens.
@@ -379,7 +366,6 @@ export default function RoleMembersDrawer({
             </div>
           </div>
         ) : (
-          /* Drawer Body - Tab 2: Permissions Matrix */
           <div className="p-lg flex-1 overflow-y-auto space-y-md">
             <div className="bg-surface-container-low p-md rounded-lg flex items-center justify-between">
               <div>
@@ -451,7 +437,6 @@ export default function RoleMembersDrawer({
           </div>
         )}
 
-        {/* Drawer Footer */}
         <div className="p-md bg-surface-container-low border-t border-border-subtle flex items-center justify-between shrink-0">
           <div className="flex items-center gap-sm">
             {role.type === 'custom' && (

@@ -93,9 +93,6 @@ const DEMO_PERSONAS_SUMMARY = [
   },
 ];
 
-/**
- * Print a detailed database summary with document counts and test credentials.
- */
 export async function printSeedSummary(rawInvitationTokens = new Map()) {
   const counts = await Promise.all(
     MONITORED_COLLECTIONS.map(async ({ name, model }) => ({

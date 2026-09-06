@@ -1,16 +1,13 @@
 import { demoUsersData } from "./users.data.js";
 
-// Helper to partition user emails
 const activeUsers = demoUsersData.filter((u) => u.accountStatus === "ACTIVE");
 const suspendedUsers = demoUsersData.filter((u) => u.accountStatus === "SUSPENDED");
 const disabledUsers = demoUsersData.filter((u) => u.accountStatus === "DISABLED");
 const invitedUsers = demoUsersData.filter((u) => u.accountStatus === "INVITED");
 
-// 1. Memberships across workspaces
 const memberships = [];
 const membershipRoles = [];
 
-// Base system workspaces
 const workspaceNames = [
   "Engineering Core",
   "Product & Design",
@@ -21,7 +18,6 @@ const workspaceNames = [
   "Customer Operations",
 ];
 
-// System Admin memberships
 memberships.push({ userEmail: "admin@system.local", teamName: "Security & Compliance", status: "ACTIVE" });
 memberships.push({ userEmail: "admin@system.local", teamName: "Engineering Core", status: "ACTIVE" });
 membershipRoles.push({
@@ -37,8 +33,6 @@ membershipRoles.push({
   assignedByEmail: "admin@system.local",
 });
 
-// Explicit Scenario Users:
-// Alice: Admin in Engineering Core, Viewer in Research & AI Lab
 memberships.push({ userEmail: "alice@example.com", teamName: "Engineering Core", status: "ACTIVE" });
 memberships.push({ userEmail: "alice@example.com", teamName: "Research & AI Lab", status: "ACTIVE" });
 membershipRoles.push({
@@ -54,17 +48,13 @@ membershipRoles.push({
   assignedByEmail: "admin@system.local",
 });
 
-// Frank: Suspended in Research & AI Lab, Active with NO roles in Product & Design
 memberships.push({ userEmail: "frank@example.com", teamName: "Research & AI Lab", status: "SUSPENDED" });
 memberships.push({ userEmail: "frank@example.com", teamName: "Product & Design", status: "ACTIVE" });
 
-// Hannah: Active in Engineering Core with NO roles (revoked role scenario)
 memberships.push({ userEmail: "hannah@example.com", teamName: "Engineering Core", status: "ACTIVE" });
 
-// Special scenario handled emails to avoid automatic loop collisions
 const specialHandledEmails = new Set(["alice@example.com", "frank@example.com", "hannah@example.com"]);
 
-// Distribute remaining active users across workspaces
 activeUsers
   .filter((u) => !specialHandledEmails.has(u.email))
   .forEach((user, index) => {
@@ -89,7 +79,6 @@ activeUsers
       assignedByEmail: "admin@system.local",
     });
 
-    // Secondary workspace for cross-functional members
     if (index % 2 === 0) {
       const secondaryWs = workspaceNames[(index + 1) % workspaceNames.length];
       memberships.push({ userEmail: user.email, teamName: secondaryWs, status: "ACTIVE" });
@@ -102,7 +91,6 @@ activeUsers
     }
   });
 
-// Suspended users memberships
 suspendedUsers.forEach((user, index) => {
   const ws = workspaceNames[index % workspaceNames.length];
   memberships.push({ userEmail: user.email, teamName: ws, status: "SUSPENDED" });
@@ -114,9 +102,7 @@ suspendedUsers.forEach((user, index) => {
   });
 });
 
-// Invitations (Pending, Accepted, Revoked, Expired)
 const invitations = [
-  // Grace Hopper scenario: Pending invitation to Engineering Core
   {
     email: "grace@example.com",
     teamName: "Engineering Core",
@@ -124,7 +110,6 @@ const invitations = [
     status: "PENDING",
     expiresInDays: 7,
   },
-  // Distribute other invited users
   ...invitedUsers
     .filter((u) => u.email !== "grace@example.com")
     .map((u, i) => ({
@@ -159,7 +144,6 @@ const invitations = [
   },
 ];
 
-// JIT Access Requests
 const accessRequests = [
   {
     key: "req-david",
@@ -225,9 +209,7 @@ const accessRequests = [
   },
 ];
 
-// Active & Expired Access Grants (TTL-Bounded)
 const accessGrants = [
-  // Charlie scenario: Active grant on real Task ObjectId
   {
     key: "grant-charlie",
     userEmail: "charlie@example.com",
@@ -258,7 +240,6 @@ const accessGrants = [
     status: "ACTIVE",
     expiresInDays: 2,
   },
-  // Ian scenario: Expired grant in the past
   {
     key: "grant-ian",
     userEmail: "ian@example.com",
@@ -271,9 +252,7 @@ const accessGrants = [
   },
 ];
 
-// Notifications
 const notifications = [
-  // Hannah scenario: Notification for role revocation
   {
     recipientEmail: "hannah@example.com",
     type: "ROLE_REVOKED",
@@ -348,9 +327,7 @@ const notifications = [
   },
 ];
 
-// Audit Logs (Historical Telemetry & Scenario Events)
 const auditLogs = [
-  // Hannah scenario: ROLE_REVOKED audit log
   {
     actorEmail: "admin@system.local",
     action: "ROLE_REVOKED",
@@ -453,7 +430,6 @@ const auditLogs = [
   },
 ];
 
-// Generate 60+ additional audit logs for telemetry analytics
 for (let i = 1; i <= 60; i++) {
   const isFail = i % 12 === 0;
   auditLogs.push({

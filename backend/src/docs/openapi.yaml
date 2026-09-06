@@ -19,11 +19,11 @@ tags:
   - name: Roles & Permissions
     description: Dynamic role CRUD, system role immutability, and role-permission junction management
   - name: Teams
-    description: Multi-tenant team workspace CRUD and soft-archival management
+    description: Multi-tenant team workspace CRUD, bootstrap payload, and soft-archival management
   - name: Memberships
     description: Team membership onboarding, listings, and lifecycle state transitions (suspend, reactivate, remove)
   - name: Users
-    description: User discovery and safe catalog search
+    description: User discovery, safe catalog search, and account updates
   - name: Team Membership Roles
     description: Team-scoped role assignments, TTL expiration management, and soft-revocation
   - name: Workspace Invitations
@@ -32,10 +32,17 @@ tags:
     description: Multi-tenant task CRUD, active-membership assignee verification, and fine-grained resource authorization
   - name: Access Requests & Grants
     description: Just-in-time privilege elevation, temporary direct grants, self-service request modifications, and reviewer decision control plane
+  - name: Global Access Requests
+    description: Platform-wide access request control plane for Super Admins across all workspaces
   - name: Audit Logs
     description: Security audit ledger tracking system mutations, auth attempts, role assignments, and access evaluations
   - name: Notifications
-    description: In-app notification inbox and real-time alerts
+    description: In-app notification inbox, real-time alerts, and global/team broadcast management
+  - name: Team Chat & Channels
+    description: Real-time team collaboration channels and membership management
+  - name: Health Check
+    description: System health and liveness probe
+
 
 
 components:
@@ -561,10 +568,32 @@ components:
 
 paths:
 
+  /health:
+    get:
+      tags: [Health Check]
+      summary: Health & Liveness Probe
+      description: Returns server operational status and server timestamp.
+      security: []
+      responses:
+        200:
+          description: Server is healthy and running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "OK"
+                  timestamp:
+                    type: string
+                    format: date-time
+
   # ============================================================================
   # 1. AUTHENTICATION
   # ============================================================================
   /api/auth/login:
+
     post:
       tags: [Authentication]
       summary: User Login & JWT Issuance
@@ -1313,6 +1342,130 @@ paths:
         200:
           description: List of teams retrieved successfully
 
+  /api/teams/{teamId}/bootstrap:
+    get:
+      tags: [Teams]
+      summary: Get Workspace Bootstrap Data
+      description: >
+        Fast single-roundtrip aggregation endpoint delivering team workspace details, members with roles,
+        all available roles, canonical permissions, user resolved permissions, active access grants, and metrics.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Workspace bootstrap data retrieved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      team:
+                        $ref: '#/components/schemas/Team'
+                      members:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Membership'
+                      roles:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Role'
+                      permissions:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/Permission'
+                      userPermissions:
+                        type: array
+                        items:
+                          type: string
+                      activeGrants:
+                        type: array
+                        items:
+                          $ref: '#/components/schemas/AccessGrant'
+                      stats:
+                        type: object
+        401:
+          description: Missing or invalid authentication token
+        404:
+          description: Team not found or archived
+
+  /api/teams/{teamId}/broadcasts:
+    get:
+      tags: [Teams]
+      summary: Get Team Broadcasts
+      description: Retrieves bulletin broadcasts targeting this specific team workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: List of team broadcasts
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: array
+                    items:
+                      type: object
+
+    post:
+      tags: [Teams]
+      summary: Create Team Broadcast Bulletin
+      description: Publishes an announcements bulletin visible to all members of the team.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, message]
+              properties:
+                title:
+                  type: string
+                  example: "Sprint Planning Tomorrow"
+                message:
+                  type: string
+                  example: "Please update your Jira tickets prior to standup."
+                priority:
+                  type: string
+                  enum: [NORMAL, URGENT, SYSTEM]
+                  default: NORMAL
+                expiresAt:
+                  type: string
+                  format: date-time
+      responses:
+        201:
+          description: Team broadcast created successfully
+
   /api/teams/{teamId}:
     get:
       tags: [Teams]
@@ -1378,6 +1531,7 @@ paths:
           description: Team archived successfully
         404:
           description: Team not found
+
 
   # ============================================================================
   # 7. MEMBERSHIPS & LIFECYCLE
@@ -1616,6 +1770,81 @@ paths:
         200:
           description: Users list retrieved successfully
 
+  /api/users/{userId}:
+    put:
+      tags: [Users]
+      summary: Update User Profile & Workspaces
+      description: Updates basic user info (name) or administrative status and team assignments (Super Admin only).
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                  example: "Alice Johnson"
+                accountStatus:
+                  type: string
+                  enum: [ACTIVE, SUSPENDED, DISABLED, INVITED]
+                mustChangePassword:
+                  type: boolean
+                workspaces:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      teamId:
+                        type: string
+                      role:
+                        type: string
+                      isTeamAdmin:
+                        type: boolean
+      responses:
+        200:
+          description: User account updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    $ref: '#/components/schemas/User'
+
+    patch:
+      tags: [Users]
+      summary: Partially Update User Profile & Workspaces
+      description: Partially updates basic user info or administrative status and team assignments.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: userId
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: User account updated successfully
+
   # ============================================================================
   # 9. WORKSPACE INVITATIONS
   # ============================================================================
@@ -1755,6 +1984,63 @@ paths:
         409:
           description: Conflict - Only pending invitations can be revoked
 
+  /api/invitations/verify/{token}:
+    get:
+      tags: [Workspace Invitations]
+      summary: Verify Invitation Token Validity
+      description: Validates whether an invitation token is active, unexpired, and retrieves workspace onboarding metadata.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Invitation token is valid
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                    example: true
+                  data:
+                    type: object
+                    properties:
+                      email:
+                        type: string
+                      teamName:
+                        type: string
+                      inviterName:
+                        type: string
+                      roles:
+                        type: array
+                        items:
+                          type: string
+                      isExistingUser:
+                        type: boolean
+        400:
+          description: Invalid or expired invitation token
+
+  /api/invitations/{token}:
+    get:
+      tags: [Workspace Invitations]
+      summary: Verify Invitation Token (Alias)
+      description: Alias for `/api/invitations/verify/{token}`.
+      security: []
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Invitation token is valid
+
   /api/invitations/accept:
     post:
       tags: [Workspace Invitations]
@@ -1795,6 +2081,33 @@ paths:
           description: Invitation token not found or target team archived
         409:
           description: Conflict - Invitation already accepted/revoked or user already active member
+
+  /api/invitations/accept/{token}:
+    post:
+      tags: [Workspace Invitations]
+      summary: Accept Workspace Invitation (Path Parameter Variant)
+      description: Accepts invitation where token is supplied in path.
+      parameters:
+        - name: token
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name:
+                  type: string
+                password:
+                  type: string
+      responses:
+        200:
+          description: Invitation accepted successfully
+
 
   # ============================================================================
   # 10. TEAM TASKS
@@ -2351,6 +2664,28 @@ paths:
         409:
           description: Conflict - Only pending access requests can be rejected
 
+  /api/teams/{teamId}/access-requests/{requestId}/revoke:
+    delete:
+      tags: [Access Requests & Grants]
+      summary: Early Revoke Active Grant by Request ID
+      description: Soft-revokes an active access grant associated with this access request ID.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema:
+            type: string
+        - name: requestId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        200:
+          description: Access grant revoked successfully
+
   /api/teams/{teamId}/access-requests/grants/{grantId}:
     delete:
       tags: [Access Requests & Grants]
@@ -2387,7 +2722,108 @@ paths:
           description: Active access grant not found in this team
 
   # ============================================================================
-  # 12. AUDIT LOGS
+  # 12. GLOBAL ACCESS REQUESTS (PLATFORM CONTROL PLANE)
+  # ============================================================================
+  /api/access-requests:
+    get:
+      tags: [Global Access Requests]
+      summary: List All Global Access Requests (Super Admin)
+      description: Platform-wide query across all team workspaces for Super Admins.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: status
+          in: query
+          schema: { type: string, enum: [PENDING, APPROVED, REJECTED, CANCELLED, EXPIRED] }
+        - name: teamId
+          in: query
+          schema: { type: string }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        200:
+          description: Global access requests list retrieved successfully
+
+  /api/access-requests/{requestId}:
+    get:
+      tags: [Global Access Requests]
+      summary: Get Access Request Details (Global)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Access request details retrieved
+
+    delete:
+      tags: [Global Access Requests]
+      summary: Cancel / Delete Access Request (Global)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Access request deleted
+
+  /api/access-requests/{requestId}/approve:
+    post:
+      tags: [Global Access Requests]
+      summary: Approve Access Request (Global)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Access request approved
+
+  /api/access-requests/{requestId}/reject:
+    post:
+      tags: [Global Access Requests]
+      summary: Reject Access Request (Global)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Access request rejected
+
+  /api/access-requests/{requestId}/revoke:
+    delete:
+      tags: [Global Access Requests]
+      summary: Revoke Access Request (Global)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: requestId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Access grant revoked
+
+  # ============================================================================
+  # 13. AUDIT LOGS
   # ============================================================================
   /api/teams/{teamId}/audit-logs:
     get:
@@ -2446,9 +2882,123 @@ paths:
         403:
           description: Forbidden - Insufficient permissions (`audit.read`)
 
+  /api/audit-logs:
+    get:
+      tags: [Audit Logs]
+      summary: List All Global Audit Logs (Super Admin)
+      description: System-wide audit log query for Platform Super Admins.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: search
+          in: query
+          schema: { type: string }
+        - name: actorId
+          in: query
+          schema: { type: string }
+        - name: action
+          in: query
+          schema: { type: string }
+        - name: result
+          in: query
+          schema: { type: string, enum: [SUCCESS, FAILURE] }
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        200:
+          description: Global audit logs retrieved successfully
+
   # ============================================================================
-  # 13. NOTIFICATIONS
+  # 14. NOTIFICATIONS & BROADCASTS
   # ============================================================================
+  /api/notifications/bulletins/active:
+    get:
+      tags: [Notifications]
+      summary: Get Active Bulletins & Announcements
+      description: Retrieves active non-expired system announcements and broadcasts.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Active bulletins retrieved successfully
+
+  /api/notifications/broadcasts:
+    get:
+      tags: [Notifications]
+      summary: List All Broadcasts (Super Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema: { type: integer, default: 1 }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 20 }
+      responses:
+        200:
+          description: Broadcasts list retrieved successfully
+
+    post:
+      tags: [Notifications]
+      summary: Create Global Broadcast Bulletin (Super Admin)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [title, message]
+              properties:
+                title: { type: string }
+                message: { type: string }
+                priority: { type: string, enum: [NORMAL, URGENT, SYSTEM] }
+                expiresAt: { type: string, format: date-time }
+      responses:
+        201:
+          description: Broadcast created successfully
+
+  /api/notifications/broadcasts/{broadcastId}:
+    patch:
+      tags: [Notifications]
+      summary: Update Broadcast Bulletin (Super Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+      responses:
+        200:
+          description: Broadcast updated successfully
+
+    delete:
+      tags: [Notifications]
+      summary: Delete Broadcast Bulletin (Super Admin)
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: broadcastId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Broadcast deleted successfully
+
   /api/notifications:
     get:
       tags: [Notifications]
@@ -2488,6 +3038,49 @@ paths:
         401:
           description: Missing or invalid authentication token
 
+  /api/notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Get Unread Notification Count
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: Unread notification count retrieved
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      unreadCount: { type: integer, example: 3 }
+
+  /api/notifications/read-all:
+    patch:
+      tags: [Notifications]
+      summary: Mark All Notifications as Read
+      description: Marks all unread notifications for the authenticated user as read.
+      security:
+        - bearerAuth: []
+      responses:
+        200:
+          description: All notifications marked as read
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success: { type: boolean, example: true }
+                  data:
+                    type: object
+                    properties:
+                      updatedCount: { type: integer, example: 4 }
+        401:
+          description: Missing or invalid authentication token
+
   /api/notifications/{notificationId}/read:
     patch:
       tags: [Notifications]
@@ -2515,28 +3108,119 @@ paths:
         404:
           description: Notification not found
 
-  /api/notifications/read-all:
-    patch:
+  /api/notifications/{notificationId}:
+    delete:
       tags: [Notifications]
-      summary: Mark All Notifications as Read
-      description: Marks all unread notifications for the authenticated user as read.
+      summary: Delete Notification
+      description: Deletes an individual notification from the user inbox.
       security:
         - bearerAuth: []
+      parameters:
+        - name: notificationId
+          in: path
+          required: true
+          schema: { type: string }
       responses:
         200:
-          description: All notifications marked as read
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  success: { type: boolean, example: true }
-                  data:
-                    type: object
-                    properties:
-                      updatedCount: { type: integer, example: 4 }
-        401:
-          description: Missing or invalid authentication token
+          description: Notification deleted successfully
+
+  # ============================================================================
+  # 15. TEAM CHAT & CHANNELS
+  # ============================================================================
+  /api/teams/{teamId}/channels:
+    get:
+      tags: [Team Chat & Channels]
+      summary: List Channels for Team
+      description: Retrieves default and joined channels for the current user within a workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Channels list retrieved successfully
+
+    post:
+      tags: [Team Chat & Channels]
+      summary: Create Channel in Team
+      description: Creates a new discussion channel in the workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, example: "engineering" }
+                topic: { type: string, example: "Sprint technical discussions" }
+                memberIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        201:
+          description: Channel created successfully
+
+  /api/teams/{teamId}/channels/{channelId}/members:
+    post:
+      tags: [Team Chat & Channels]
+      summary: Add Members to Channel
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [memberIds]
+              properties:
+                memberIds:
+                  type: array
+                  items: { type: string }
+      responses:
+        200:
+          description: Members added to channel
+
+  /api/teams/{teamId}/channels/{channelId}:
+    delete:
+      tags: [Team Chat & Channels]
+      summary: Delete Channel
+      description: Deletes a non-default channel from the workspace.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: teamId
+          in: path
+          required: true
+          schema: { type: string }
+        - name: channelId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        200:
+          description: Channel deleted successfully
+
 
 
 

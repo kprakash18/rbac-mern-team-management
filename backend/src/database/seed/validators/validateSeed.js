@@ -13,9 +13,6 @@ import AccessGrant from "../../../modules/access/access-grant.model.js";
 import Notification from "../../../modules/notifications/notification.model.js";
 import AuditLog from "../../../modules/audit/audit-log.model.js";
 
-/**
- * Validate post-seed referential integrity and authorization test scenario contracts.
- */
 export async function validateSeed() {
   console.log("\n========================================================");
   console.log("             RUNNING SEED VALIDATION CHECKS");
@@ -32,11 +29,7 @@ export async function validateSeed() {
   };
 
   try {
-    // ----------------------------------------------------
-    // 1. Referential Integrity Checks
-    // ----------------------------------------------------
 
-    // Role -> User (createdBy)
     const roles = await Role.find({}).populate("createdBy");
     const invalidRoles = roles.filter((r) => !r.createdBy);
     recordCheck(
@@ -45,7 +38,6 @@ export async function validateSeed() {
       invalidRoles.length > 0 ? `${invalidRoles.length} orphaned roles found` : "All roles have valid creators"
     );
 
-    // RolePermission -> Role & Permission
     const rolePerms = await RolePermission.find({}).populate("roleId permissionId");
     const invalidRolePerms = rolePerms.filter((rp) => !rp.roleId || !rp.permissionId);
     recordCheck(
@@ -56,7 +48,6 @@ export async function validateSeed() {
         : "All role-permissions valid"
     );
 
-    // Team -> User (createdBy)
     const teams = await Team.find({}).populate("createdBy");
     const invalidTeams = teams.filter((t) => !t.createdBy);
     recordCheck(
@@ -65,7 +56,6 @@ export async function validateSeed() {
       invalidTeams.length > 0 ? `${invalidTeams.length} orphaned teams found` : "All teams have valid creators"
     );
 
-    // Membership -> User & Team
     const memberships = await Membership.find({}).populate("userId teamId");
     const invalidMemberships = memberships.filter((m) => !m.userId || !m.teamId);
     recordCheck(
@@ -76,7 +66,6 @@ export async function validateSeed() {
         : "All memberships valid"
     );
 
-    // MembershipRole -> Membership & Role
     const memRoles = await MembershipRole.find({}).populate("membershipId roleId");
     const invalidMemRoles = memRoles.filter((mr) => !mr.membershipId || !mr.roleId);
     recordCheck(
@@ -87,7 +76,6 @@ export async function validateSeed() {
         : "All membership roles valid"
     );
 
-    // Task -> Team & User
     const tasks = await Task.find({}).populate("teamId createdBy");
     const invalidTasks = tasks.filter((t) => !t.teamId || !t.createdBy);
     recordCheck(
@@ -96,7 +84,6 @@ export async function validateSeed() {
       invalidTasks.length > 0 ? `${invalidTasks.length} broken tasks` : "All tasks valid"
     );
 
-    // AccessGrant -> User, Team, Permission
     const grants = await AccessGrant.find({}).populate("userId teamId permissionId");
     const invalidGrants = grants.filter((g) => !g.userId || !g.teamId || !g.permissionId);
     recordCheck(
@@ -105,7 +92,6 @@ export async function validateSeed() {
       invalidGrants.length > 0 ? `${invalidGrants.length} broken grants` : "All grants valid"
     );
 
-    // AccessRequest -> Requester, Target, Team, Permission
     const requests = await AccessRequest.find({}).populate("requesterId targetUserId teamId permissionId");
     const invalidRequests = requests.filter((r) => !r.requesterId || !r.targetUserId || !r.teamId || !r.permissionId);
     recordCheck(
@@ -114,11 +100,6 @@ export async function validateSeed() {
       invalidRequests.length > 0 ? `${invalidRequests.length} broken requests` : "All requests valid"
     );
 
-    // ----------------------------------------------------
-    // 2. Scenario Checks
-    // ----------------------------------------------------
-
-    // Scenario: Alice cross-team roles (Admin in Eng, Viewer in Research)
     const alice = await User.findOne({ email: "alice@example.com" });
     const engTeam = await Team.findOne({ name: "Engineering Core" });
     const resTeam = await Team.findOne({ name: "Research & AI Lab" });
@@ -140,7 +121,6 @@ export async function validateSeed() {
       aliceScenarioPassed ? "Verified dual role assignments" : "Alice missing expected team roles"
     );
 
-    // Scenario: Charlie active temporary grant for task.update on real Task ObjectId
     const charlie = await User.findOne({ email: "charlie@example.com" });
     let charlieGrantPassed = false;
     if (charlie && engTeam) {
@@ -162,7 +142,6 @@ export async function validateSeed() {
       charlieGrantPassed ? "Verified task.update grant on concrete task" : "Charlie grant missing or broken"
     );
 
-    // Scenario: David pending access request on real Task ObjectId
     const david = await User.findOne({ email: "david@example.com" });
     let davidRequestPassed = false;
     if (david && engTeam) {
@@ -184,7 +163,6 @@ export async function validateSeed() {
       davidRequestPassed ? "Verified pending request on concrete task" : "David request missing or broken"
     );
 
-    // Scenario: Frank suspended in Research & roleless in Product
     const frank = await User.findOne({ email: "frank@example.com" });
     let frankScenarioPassed = false;
     if (frank && resTeam && prodTeam) {
@@ -203,7 +181,6 @@ export async function validateSeed() {
       frankScenarioPassed ? "Verified suspended & roleless membership states" : "Frank scenario conditions not met"
     );
 
-    // Scenario: Grace invited user state & invitation tokenHash
     const grace = await User.findOne({ email: "grace@example.com" });
     let graceScenarioPassed = false;
     if (grace && engTeam) {
@@ -224,7 +201,6 @@ export async function validateSeed() {
       graceScenarioPassed ? "Verified invited state & token hash" : "Grace invited scenario conditions not met"
     );
 
-    // Scenario: Hannah role revoked (active member, 0 roles, ROLE_REVOKED audit log + notification)
     const hannah = await User.findOne({ email: "hannah@example.com" });
     let hannahScenarioPassed = false;
     if (hannah && engTeam) {
@@ -245,7 +221,6 @@ export async function validateSeed() {
       hannahScenarioPassed ? "Verified role revocation history & zero active roles" : "Hannah scenario conditions not met"
     );
 
-    // Scenario: Ian expired grant
     const ian = await User.findOne({ email: "ian@example.com" });
     let ianScenarioPassed = false;
     if (ian && engTeam) {
@@ -268,10 +243,10 @@ export async function validateSeed() {
   console.table(checks);
 
   if (errors.length > 0) {
-    console.error("\n❌ Seed validation encountered failures:");
+    console.error("\nSeed validation encountered failures:");
     for (const err of errors) console.error(`  - ${err}`);
     throw new Error(`Seed validation failed with ${errors.length} error(s).`);
   }
 
-  console.log("\n✅ All seed referential integrity and authorization scenario checks PASSED successfully.\n");
+  console.log("\nAll seed referential integrity and authorization scenario checks PASSED successfully.\n");
 }

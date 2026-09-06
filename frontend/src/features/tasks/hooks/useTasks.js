@@ -54,7 +54,6 @@ export function useTasks({ teamId, currentUserId }) {
     }
   }, [teamId]);
 
-  // Real-time Socket.IO subscriptions
   const normalizeRef = useRef(normalizeTask);
   useEffect(() => {
     normalizeRef.current = normalizeTask;
@@ -132,7 +131,6 @@ export function useTasks({ teamId, currentUserId }) {
   const getMember = (id) =>
     teamMembers.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' };
 
-  // Filter Tasks
   const filteredTasks = tasks.filter((t) => {
     const matchesSearch =
       !searchQuery ||

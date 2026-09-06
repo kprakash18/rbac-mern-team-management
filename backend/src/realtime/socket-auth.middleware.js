@@ -1,7 +1,6 @@
 import { verifyAccessToken } from "../common/security/jwt.js";
 import User from "../modules/users/user.model.js";
 
-
 export async function socketAuthMiddleware(socket, next){
 
     let token = socket.handshake.auth?.token || socket.handshake.headers?.authorization;
@@ -10,7 +9,6 @@ export async function socketAuthMiddleware(socket, next){
        return next(new Error("Authentication required. Missing token."));
     }
 
-    // Strip 'Bearer ' prefix if present
     if (token.startsWith("Bearer ")) {
         token = token.slice(7).trim();
     }
@@ -36,9 +34,6 @@ export async function socketAuthMiddleware(socket, next){
             }
         }
 
-
-
-
         socket.data.user = {
             id: user._id.toString(),
             email: user.email,
@@ -50,5 +45,4 @@ export async function socketAuthMiddleware(socket, next){
         return next(new Error("Authentication error: Invalid or expired token"));
     }
     
-
 }

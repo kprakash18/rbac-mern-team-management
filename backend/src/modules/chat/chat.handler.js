@@ -42,7 +42,6 @@ export function registerChatHandlers(io, socket) {
   const user = socket.data.user;
   const messageTimestamps = [];
 
-  // Simple sliding-window rate limiter (10 messages per 3 seconds per socket)
   function isRateLimited() {
     const now = Date.now();
     while (messageTimestamps.length > 0 && messageTimestamps[0] < now - 3000) {
@@ -55,7 +54,6 @@ export function registerChatHandlers(io, socket) {
     return false;
   }
 
-  // 1. Send Message
   socket.on("chat:send", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
@@ -118,7 +116,6 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
-  // 2. Fetch Chat History (Cursor-based)
   socket.on("chat:history", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
@@ -143,7 +140,6 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
-  // 3. Typing Indicators
   socket.on("chat:typing", async (data) => {
     const { teamId, groupId = "grp-general", isTyping } = data || {};
     if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) return;
@@ -157,7 +153,6 @@ export function registerChatHandlers(io, socket) {
     });
   });
 
-  // 4. Edit Message
   socket.on("chat:edit", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
@@ -193,7 +188,6 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
-  // 5. Delete Message
   socket.on("chat:delete", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
 
@@ -225,7 +219,26 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
-  // 6. Channel / Group Creation Notification & Broadcast
+  async function notifyChannelMembers(teamId, groupId, channelName, rawMemberIds) {
+    const memberIds = Array.isArray(rawMemberIds) ? rawMemberIds : [];
+    for (const rawMemberId of memberIds) {
+      const resolvedUserId = await resolveToUserId(rawMemberId);
+      if (resolvedUserId && String(resolvedUserId) !== String(user.id)) {
+        createNotification({
+          recipientId: resolvedUserId,
+          actorId: user.id,
+          type: "CHANNEL_ADDED",
+          teamId,
+          resourceType: "CHANNEL",
+          resourceId: groupId,
+          metadata: { groupId, channelName, actorName: user.name },
+          title: "Added to Channel",
+          message: `You were added to channel #${channelName} by ${user.name}.`,
+        }).catch((err) => console.error("Failed to persist notification:", err));
+      }
+    }
+  }
+
   socket.on("chat:group_create", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
     try {
@@ -233,29 +246,7 @@ export function registerChatHandlers(io, socket) {
       if (!teamId || !group) return respond({ ok: false });
 
       io.to(`team:${teamId}`).emit("chat:group_created", { teamId, group });
-
-      const memberIds = Array.isArray(group.memberIds) ? group.memberIds : [];
-      for (const rawMemberId of memberIds) {
-        const resolvedUserId = await resolveToUserId(rawMemberId);
-        if (resolvedUserId && String(resolvedUserId) !== String(user.id)) {
-          createNotification({
-            recipientId: resolvedUserId,
-            actorId: user.id,
-            type: "CHANNEL_ADDED",
-            teamId,
-            resourceType: "CHANNEL",
-            resourceId: group.id,
-            metadata: {
-              groupId: group.id,
-              channelName: group.name,
-              actorName: user.name,
-            },
-            title: "Added to Channel",
-            message: `You were added to channel #${group.name} by ${user.name}.`,
-          }).catch((err) => console.error("Failed to persist notification:", err));
-        }
-      }
-
+      await notifyChannelMembers(teamId, group.id, group.name, group.memberIds);
       respond({ ok: true });
     } catch (err) {
       console.error("Error in chat:group_create:", err);
@@ -263,41 +254,14 @@ export function registerChatHandlers(io, socket) {
     }
   });
 
-  // 7. Channel / Group Members Added Notification & Broadcast
   socket.on("chat:group_members_add", async (data, callback) => {
     const respond = typeof callback === "function" ? callback : () => {};
     try {
       const { teamId, groupId, groupName, addedUserIds } = data || {};
       if (!teamId || !groupId) return respond({ ok: false });
 
-      io.to(`team:${teamId}`).emit("chat:group_members_added", {
-        teamId,
-        groupId,
-        addedUserIds,
-      });
-
-      const memberIds = Array.isArray(addedUserIds) ? addedUserIds : [];
-      for (const rawMemberId of memberIds) {
-        const resolvedUserId = await resolveToUserId(rawMemberId);
-        if (resolvedUserId && String(resolvedUserId) !== String(user.id)) {
-          createNotification({
-            recipientId: resolvedUserId,
-            actorId: user.id,
-            type: "CHANNEL_ADDED",
-            teamId,
-            resourceType: "CHANNEL",
-            resourceId: groupId,
-            metadata: {
-              groupId,
-              channelName: groupName || "channel",
-              actorName: user.name,
-            },
-            title: "Added to Channel",
-            message: `You were added to channel #${groupName || "channel"} by ${user.name}.`,
-          }).catch((err) => console.error("Failed to persist notification:", err));
-        }
-      }
-
+      io.to(`team:${teamId}`).emit("chat:group_members_added", { teamId, groupId, addedUserIds });
+      await notifyChannelMembers(teamId, groupId, groupName || "channel", addedUserIds);
       respond({ ok: true });
     } catch (err) {
       console.error("Error in chat:group_members_add:", err);

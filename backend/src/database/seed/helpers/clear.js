@@ -14,7 +14,6 @@ import Notification from "../../../modules/notifications/notification.model.js";
 import AuditLog from "../../../modules/audit/audit-log.model.js";
 import ChatMessage from "../../../modules/chat/chat-message.model.js";
 
-// Ordered from leaf dependents to root dependencies
 const DEMO_COLLECTION_MODELS = [
   ChatMessage,
   AuditLog,
@@ -47,10 +46,6 @@ async function truncateModels(models) {
   }
 }
 
-/**
- * Safely clear all application collections in reverse dependency order.
- * Never drops the entire database, and refuses to run in production.
- */
 export async function clearAllCollections() {
   assertNotProduction();
   console.log("Safely clearing all collections in reverse dependency order...");
@@ -61,21 +56,16 @@ export async function clearAllCollections() {
   console.log("All collections cleared.");
 }
 
-/**
- * Clear only non-system demo data (preserves permissions, system roles, and system admin user).
- */
 export async function clearDevelopmentData() {
   assertNotProduction();
   console.log("Safely clearing development/demo collections...");
 
   await truncateModels(DEMO_COLLECTION_MODELS);
 
-  // Remove non-system roles & role permissions
   const systemRoleIds = await Role.find({ isSystemRole: true }).distinct("_id");
   await RolePermission.deleteMany({ roleId: { $nin: systemRoleIds } });
   await Role.deleteMany({ isSystemRole: { $ne: true } });
 
-  // Remove demo users except system admin
   await User.deleteMany({ email: { $ne: "admin@system.local" } });
 
   console.log("Development collections cleared.");
