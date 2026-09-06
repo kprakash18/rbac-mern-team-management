@@ -26,8 +26,10 @@ import { env } from "./config/env.js";
 
 const app = express();
 
+const cleanUrl = (url) => (typeof url === "string" ? url.trim().replace(/\/+$/, "") : "");
+
 const allowedOrigins = [
-  env.clientUrl,
+  cleanUrl(env.clientUrl),
   "http://localhost:5173",
   "http://localhost:3000",
   "http://127.0.0.1:5173",
@@ -36,7 +38,14 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: (origin, callback) => {
-      if (!origin || allowedOrigins.includes(origin) || env.nodeEnv === "development") {
+      if (!origin) return callback(null, true);
+      const normalizedOrigin = cleanUrl(origin);
+      const isAllowed =
+        allowedOrigins.includes(normalizedOrigin) ||
+        normalizedOrigin.endsWith(".vercel.app") ||
+        env.nodeEnv === "development";
+
+      if (isAllowed) {
         return callback(null, true);
       }
       return callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
