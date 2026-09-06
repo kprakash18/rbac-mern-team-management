@@ -300,9 +300,10 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
 
                   return (
                     <div
-                      key={index}
+                      key={ws.id || ws._id || ws.name || index}
                       className="flex flex-col sm:flex-row sm:items-center justify-between p-md bg-surface-container rounded-lg shadow-sm gap-3"
                     >
+
                       <div className="flex items-center gap-sm flex-1 min-w-0">
                         <div className="w-8 h-8 bg-primary text-on-primary rounded-lg flex items-center justify-center shadow-sm shrink-0">
                           <span className="material-symbols-outlined text-[18px]">{icon}</span>
