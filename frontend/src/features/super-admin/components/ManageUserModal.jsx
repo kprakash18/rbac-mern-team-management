@@ -1,5 +1,6 @@
-import { useState } from 'react';
-import { WORKSPACE_ROLES_MAP } from '@/constants';
+import { useState, useEffect } from 'react';
+import { WORKSPACE_ROLES_MAP, DEFAULT_WORKSPACE } from '@/constants';
+import api from '@/lib/api';
 
 const WORKSPACE_ICONS = {
   'Research & Development': 'biotech',
@@ -31,6 +32,37 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
   const [mustChangePassword, setMustChangePassword] = useState(() => Boolean(user?.mustChangePassword));
   const [sessionsTerminated, setSessionsTerminated] = useState(false);
   const [confirmModal, setConfirmModal] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [roles, setRoles] = useState([]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    Promise.allSettled([
+      api.get('/api/teams?status=all'),
+      api.get('/api/roles?status=all'),
+    ]).then(([teamsRes, rolesRes]) => {
+      if (teamsRes.status === 'fulfilled') {
+        const list = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
+        if (Array.isArray(list) && list.length > 0) {
+          setTeams(list);
+        }
+      }
+      if (rolesRes.status === 'fulfilled') {
+        const roleList = rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || [];
+        if (Array.isArray(roleList) && roleList.length > 0) {
+          setRoles(roleList);
+        }
+      }
+    });
+  }, [isOpen]);
+
+  const workspaceOptions = teams.length > 0
+    ? Array.from(new Set([...teams.map((t) => t.name), ...Object.keys(WORKSPACE_ROLES_MAP)]))
+    : Object.keys(WORKSPACE_ROLES_MAP);
+
+  const availableRoleNames = roles.length > 0
+    ? Array.from(new Set(roles.map((r) => r.name)))
+    : ['Admin', 'Developer', 'Viewer', 'Editor', 'Manager'];
 
   if (!isOpen || !user) return null;
 
@@ -40,13 +72,19 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
     );
   };
 
-  const handleAddWorkspace = () => {
-    const availableWorkspaces = Object.keys(WORKSPACE_ROLES_MAP);
-    const nextWorkspace =
-      availableWorkspaces.find((ws) => !workspaces.some((w) => w.name === ws)) ||
-      availableWorkspaces[0];
+  const handleWorkspaceChange = (index, newWorkspaceName) => {
+    setWorkspaces((prev) =>
+      prev.map((item, i) => (i === index ? { ...item, name: newWorkspaceName } : item))
+    );
+  };
 
-    const defaultRole = WORKSPACE_ROLES_MAP[nextWorkspace]?.[0] || 'Viewer';
+  const handleAddWorkspace = () => {
+    const nextWorkspace =
+      workspaceOptions.find((ws) => !workspaces.some((w) => w.name === ws)) ||
+      workspaceOptions[0] ||
+      DEFAULT_WORKSPACE;
+
+    const defaultRole = availableRoleNames[0] || 'Developer';
 
     setWorkspaces((prev) => [
       ...prev,
@@ -265,63 +303,81 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
               ) : (
                 workspaces.map((ws, index) => {
                   const icon = WORKSPACE_ICONS[ws.name] || 'corporate_fare';
-                  const availableRoles = WORKSPACE_ROLES_MAP[ws.name] || ['Admin', 'Developer', 'Viewer'];
 
                   return (
                     <div
                       key={index}
-                      className="flex flex-col sm:flex-row sm:items-center justify-between p-md bg-surface-container rounded-lg shadow-sm gap-2"
+                      className="flex flex-col sm:flex-row sm:items-center justify-between p-md bg-surface-container rounded-lg shadow-sm gap-3"
                     >
-                      <div className="flex items-center gap-sm">
-                        <div className="w-8 h-8 bg-primary text-on-primary rounded-lg flex items-center justify-center shadow-sm">
+                      <div className="flex items-center gap-sm flex-1 min-w-0">
+                        <div className="w-8 h-8 bg-primary text-on-primary rounded-lg flex items-center justify-center shadow-sm shrink-0">
                           <span className="material-symbols-outlined text-[18px]">{icon}</span>
                         </div>
-                        <div>
-                          <span className="font-label-bold text-on-surface block">{ws.name}</span>
-                          {ws.isTeamAdmin && (
-                            <span className="text-[10px] text-amber-700 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.2 rounded font-semibold inline-flex items-center gap-0.5">
-                              <span className="material-symbols-outlined text-[12px] text-amber-600">crown</span>
-                              Team Admin
-                            </span>
-                          )}
+                        {/* Workspace Selector Dropdown */}
+                        <div className="relative flex-1 min-w-[160px]">
+                          <select
+                            value={ws.name}
+                            onChange={(e) => handleWorkspaceChange(index, e.target.value)}
+                            className="w-full appearance-none bg-surface-container-lowest text-on-surface font-label-bold py-1.5 pl-sm pr-8 rounded-lg shadow-sm border border-border-subtle focus:outline-none focus:ring-2 focus:ring-primary text-sm cursor-pointer"
+                          >
+                            {!workspaceOptions.includes(ws.name) && ws.name && (
+                              <option value={ws.name}>{ws.name}</option>
+                            )}
+                            {workspaceOptions.map((opt) => (
+                              <option key={opt} value={opt}>
+                                {opt}
+                              </option>
+                            ))}
+                          </select>
+                          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] pointer-events-none">
+                            expand_more
+                          </span>
                         </div>
                       </div>
-                      <div className="flex items-center gap-md">
+
+                      <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
                         {/* Team Admin Toggle Checkbox */}
-                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface cursor-pointer select-none">
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface cursor-pointer select-none bg-surface-container-lowest px-2.5 py-1.5 rounded-lg border border-border-subtle hover:bg-surface-container-high transition-colors">
                           <input
                             type="checkbox"
                             checked={Boolean(ws.isTeamAdmin)}
                             onChange={(e) => handleToggleTeamAdmin(index, e.target.checked)}
                             className="w-3.5 h-3.5 rounded border-border-subtle text-primary focus:ring-primary accent-primary cursor-pointer"
                           />
-                          <span className="flex items-center gap-0.5 text-on-surface-variant hover:text-on-surface">
+                          <span className="flex items-center gap-1 text-on-surface-variant hover:text-on-surface">
                             <span className="material-symbols-outlined text-[14px] text-amber-500">crown</span>
                             <span>Team Admin</span>
                           </span>
                         </label>
 
+                        {/* Role Selection Dropdown */}
                         <div className="relative w-36">
                           <select
                             value={ws.role}
                             onChange={(e) => handleRoleChange(index, e.target.value)}
-                            className="w-full appearance-none bg-surface-container-lowest text-on-surface font-body-sm py-xs pl-sm pr-lg rounded shadow-sm outline-none cursor-pointer"
+                            className="w-full appearance-none bg-surface-container-lowest text-on-surface font-body-sm py-1.5 pl-sm pr-7 rounded-lg shadow-sm border border-border-subtle focus:outline-none focus:ring-2 focus:ring-primary text-sm cursor-pointer"
                           >
-                            {availableRoles.map((r) => (
+                            {!availableRoleNames.includes(ws.role) && ws.role && (
+                              <option value={ws.role}>{ws.role}</option>
+                            )}
+                            {availableRoleNames.map((r) => (
                               <option key={r} value={r}>
                                 {r}
                               </option>
                             ))}
                           </select>
-                          <span className="material-symbols-outlined absolute right-xs top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px] pointer-events-none">
+                          <span className="material-symbols-outlined absolute right-2 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px] pointer-events-none">
                             arrow_drop_down
                           </span>
                         </div>
+
+                        {/* Remove Workspace Button */}
                         <button
                           type="button"
-                          aria-label="Remove role"
+                          aria-label="Remove workspace assignment"
                           onClick={() => handleRemoveWorkspaceRequest(index)}
-                          className="p-xs text-error hover:bg-error-container/50 rounded-lg transition-colors cursor-pointer"
+                          className="p-1.5 text-error hover:bg-error-container/50 rounded-lg transition-colors cursor-pointer"
+                          title="Remove workspace assignment"
                         >
                           <span className="material-symbols-outlined text-[20px]">delete</span>
                         </button>

@@ -10,6 +10,9 @@ import { BadRequestError, NotFoundError, ForbiddenError } from "../../common/err
 import { isSuperAdmin } from "../authorization/authorization.service.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 
+import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
+import { createTargetedNotifications } from "../notifications/notification.service.js";
+
 export async function searchUsers({ query = "", page = 1, limit = 50, status } = {}) {
   const filter = {};
   if (status) {
@@ -84,6 +87,8 @@ export async function updateUser(userId, data = {}, actorId = null) {
 
   // 2. Update Workspaces / Roles if provided
   if (Array.isArray(data.workspaces)) {
+    const targetTeamIds = new Set();
+
     for (const ws of data.workspaces) {
       if (!ws.name && !ws.id && !ws.teamId) continue;
 
@@ -93,6 +98,8 @@ export async function updateUser(userId, data = {}, actorId = null) {
 
       const team = await Team.findOne(teamQuery);
       if (!team) continue;
+
+      targetTeamIds.add(team._id.toString());
 
       // Find or create Membership
       let membership = await Membership.findOne({ userId: user._id, teamId: team._id });
@@ -138,6 +145,53 @@ export async function updateUser(userId, data = {}, actorId = null) {
           assignedBy: actorId || user._id,
           assignedAt: new Date(),
         });
+      }
+    }
+
+    // Cascade remove any active memberships not in the new workspaces list
+    const existingActiveMemberships = await Membership.find({
+      userId: user._id,
+      status: { $ne: "REMOVED" },
+    });
+
+    for (const mem of existingActiveMemberships) {
+      if (!targetTeamIds.has(mem.teamId.toString())) {
+        mem.status = "REMOVED";
+        mem.removedAt = new Date();
+        await mem.save();
+
+        // Cascade soft-revoke any active roles for this membership
+        await MembershipRole.updateMany(
+          { membershipId: mem._id, revokedAt: null },
+          { $set: { revokedAt: new Date(), revokedBy: actorId } }
+        );
+
+        // Real-time Event Emissions
+        emitToUser(user._id, "access:changed", {
+          teamId: mem.teamId,
+          reason: "MEMBERSHIP_REMOVED",
+        });
+        emitToTeam(mem.teamId, "member:removed", {
+          userId: user._id,
+          membershipId: mem._id,
+        });
+
+        const teamDoc = await Team.findById(mem.teamId).select("name");
+        const teamName = teamDoc?.name || "the team";
+
+        createTargetedNotifications({
+          recipients: [user._id],
+          actorId,
+          type: "USER_STATUS_CHANGED",
+          teamId: mem.teamId,
+          resourceType: "TEAM",
+          resourceId: mem.teamId,
+          metadata: {
+            status: "REMOVED",
+            teamName,
+            details: `Your team membership in ${teamName} has been removed by an administrator.`,
+          },
+        }).catch((err) => console.error("Failed to persist notification on workspace removal:", err));
       }
     }
   }
