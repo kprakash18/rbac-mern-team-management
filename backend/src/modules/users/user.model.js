@@ -42,6 +42,11 @@ const userSchema = new mongoose.Schema(
     lastLogoutAt: {
       type: Date,
       default: null
+    },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+      index: true
     }
   },
   { timestamps: true }
