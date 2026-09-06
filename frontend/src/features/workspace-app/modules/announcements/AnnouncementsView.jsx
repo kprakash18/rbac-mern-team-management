@@ -11,9 +11,19 @@ const TYPE_CONFIG = {
 };
 
 export default function AnnouncementsView({ currentUser, workspace, announcements = [], onAddAnnouncement, onMarkRead, onAcknowledge }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, hasPermission: appHasPermission } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const isTeamAdmin = currentUser?.isTeamAdmin ?? true;
+  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const hasPermission = useCallback((permKey) => {
+    if (currentUser?.hasPermission) return currentUser.hasPermission(permKey);
+    if (appHasPermission) return appHasPermission(permKey);
+    if (isTeamAdmin || currentUser?.isSuperAdmin) return true;
+    const perms = currentUser?.permissions || [];
+    return perms.includes(permKey) || perms.includes('*');
+  }, [currentUser, appHasPermission, isTeamAdmin]);
+
+  const canBroadcast = hasPermission('notification.create') || hasPermission('broadcast.create') || isTeamAdmin;
 
   const [expandedId, setExpandedId] = useState(null);
   const [toast, setToast] = useState(null);
@@ -186,8 +196,8 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
           </p>
         </div>
 
-        {/* Broadcast Button (Team Admin) */}
-        {isTeamAdmin ? (
+        {/* Broadcast Button */}
+        {canBroadcast ? (
           <button
             type="button"
             onClick={handleOpenBroadcastModal}
@@ -199,10 +209,10 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
         ) : (
           <div
             className="flex items-center gap-xs px-md py-2 rounded-lg bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm opacity-60 cursor-not-allowed border border-border-subtle select-none"
-            title="Only Team Admins can broadcast system-level messages"
+            title="Permission required to broadcast system messages"
           >
             <span className="material-symbols-outlined text-[18px]">lock</span>
-            <span>Broadcast (Admin Only)</span>
+            <span>Broadcast (Restricted)</span>
           </div>
         )}
       </div>
@@ -472,10 +482,13 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                   </button>
                   <button
                     type="submit"
-                    className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer flex items-center gap-1"
+                    disabled={submitting}
+                    className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 disabled:opacity-50 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer flex items-center gap-1"
                   >
-                    <span className="material-symbols-outlined text-[16px]">send</span>
-                    <span>Send to All Users</span>
+                    <span className="material-symbols-outlined text-[16px]">
+                      {submitting ? 'hourglass_top' : 'send'}
+                    </span>
+                    <span>{submitting ? 'Sending...' : 'Send to All Users'}</span>
                   </button>
                 </div>
               </div>

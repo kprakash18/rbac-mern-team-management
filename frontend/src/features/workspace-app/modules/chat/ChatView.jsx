@@ -16,10 +16,25 @@ const FALLBACK_GENERAL = {
 const INITIAL_MESSAGES = {};
 
 export default function ChatView({ currentUser, workspace }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id || 'usr-current';
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const hasPermission = useCallback(
+    (permKey) => {
+      if (isTeamAdmin || currentUser?.isSuperAdmin) return true;
+      if (typeof currentUser?.hasPermission === 'function') return currentUser.hasPermission(permKey);
+      if (typeof hasPermissionContext === 'function') return hasPermissionContext(permKey);
+      return (currentUser?.permissions || []).includes(permKey);
+    },
+    [currentUser, hasPermissionContext, isTeamAdmin]
+  );
+
+  const canCreateGroup = isTeamAdmin || hasPermission('team.update') || hasPermission('chat.create');
+  const canInviteMembers = isTeamAdmin || hasPermission('membership.create') || hasPermission('chat.invite') || hasPermission('team.update');
+  const canDeleteGroup = isTeamAdmin || hasPermission('team.update') || hasPermission('chat.delete');
+  const canBroadcast = isTeamAdmin || hasPermission('notification.create') || hasPermission('broadcast.create');
 
   const [teamMembers, setTeamMembers] = useState([]);
 
@@ -359,7 +374,7 @@ export default function ChatView({ currentUser, workspace }) {
     if (!inputText.trim()) return;
 
     const content = inputText.trim();
-    const isBroadcast = isTeamAdmin && isSystemBroadcastMode;
+    const isBroadcast = canBroadcast && isSystemBroadcastMode;
     const tempId = `msg-${Date.now()}`;
     const userInitials = (currentUser?.name || 'Alice Vance')
       .split(' ')
@@ -623,8 +638,8 @@ export default function ChatView({ currentUser, workspace }) {
 
   // Filter channels the user has access to
   const visibleGroups = groups.filter((g) => {
-    // If admin, see all. If member, see groups where member or default.
-    const hasMembership = isTeamAdmin || g.isDefault || g.memberIds.includes(currentUserId);
+    // If admin or permitted, see all. If member, see groups where member or default.
+    const hasMembership = isTeamAdmin || hasPermission('team.read') || g.isDefault || g.memberIds.includes(currentUserId);
     const matchesSearch = !searchChannel || g.name.toLowerCase().includes(searchChannel.toLowerCase());
     return hasMembership && matchesSearch;
   });
@@ -646,7 +661,7 @@ export default function ChatView({ currentUser, workspace }) {
                 <h2 className="font-headline-md text-[15px] font-bold text-on-surface">Team Chat</h2>
               </div>
 
-              {isTeamAdmin ? (
+              {canCreateGroup ? (
                 <button
                   type="button"
                   onClick={handleOpenCreateModal}
@@ -659,7 +674,7 @@ export default function ChatView({ currentUser, workspace }) {
               ) : (
                 <span
                   className="p-1 text-on-surface-variant/50 cursor-not-allowed"
-                  title="Only Team Admins can create chat groups"
+                  title="Only Team Admins or authorized members can create chat groups"
                 >
                   <span className="material-symbols-outlined text-[18px]">lock</span>
                 </span>
@@ -795,8 +810,8 @@ export default function ChatView({ currentUser, workspace }) {
                 )}
               </div>
 
-              {/* Invite Member Button (Admin Only) */}
-              {isTeamAdmin ? (
+              {/* Invite Member Button (Admin or Permitted) */}
+              {canInviteMembers ? (
                 <button
                   type="button"
                   onClick={handleOpenInviteModal}
@@ -809,17 +824,17 @@ export default function ChatView({ currentUser, workspace }) {
               ) : (
                 <div
                   className="px-2.5 py-1 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant opacity-60 border border-border-subtle cursor-not-allowed"
-                  title="Only Team Admins can invite members to groups"
+                  title="Invite restricted to team admins or authorized members"
                 >
                   <span className="material-symbols-outlined text-[14px] align-middle mr-1">lock</span>
                   <span>{activeGroupMembers.length} Members</span>
                 </div>
               )}
 
-              {/* Channel Actions: Delete (Admin) or Leave (Member) if not default channel */}
+              {/* Channel Actions: Delete (Admin/Authorized) or Leave (Member) if not default channel */}
               {!activeGroup.isDefault && (
                 <>
-                  {isTeamAdmin ? (
+                  {canDeleteGroup ? (
                     <button
                       type="button"
                       onClick={() => setConfirmDeleteGroup(activeGroup)}
@@ -878,7 +893,7 @@ export default function ChatView({ currentUser, workspace }) {
               }
 
               const canEdit = isMe && !msg.isSystemBroadcast;
-              const canDelete = (isMe || isTeamAdmin) && !msg.isSystemBroadcast;
+              const canDelete = (isMe || canDeleteGroup || hasPermission('chat.delete')) && !msg.isSystemBroadcast;
               const isEditing = editingMessageId === msg.id;
 
               return (
@@ -1043,7 +1058,7 @@ export default function ChatView({ currentUser, workspace }) {
                 className="flex-1 bg-transparent text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant"
               />
 
-              {isTeamAdmin && (
+              {canBroadcast && (
                 <button
                   type="button"
                   onClick={() => setIsSystemBroadcastMode((prev) => !prev)}
