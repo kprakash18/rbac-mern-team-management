@@ -12,7 +12,7 @@ const STORAGE_KEYS = {
  * A 401 response clears the session and reloads to the login screen.
  */
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
+  baseURL: import.meta.env.VITE_API_URL || '',
   headers: {
     'Content-Type': 'application/json',
   },

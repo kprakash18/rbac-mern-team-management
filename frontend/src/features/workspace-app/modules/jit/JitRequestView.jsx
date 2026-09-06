@@ -26,6 +26,18 @@ const STATUS_BADGES = {
   CANCELLED: { label: 'Cancelled', class: 'bg-slate-100 text-slate-600 border-slate-200' },
 };
 
+const SUPER_ADMIN_ONLY_PERMISSIONS = new Set([
+  'permission.assign',
+  'role.create',
+  'role.delete',
+  'role.update',
+  'team.create',
+  'team.delete',
+  'user.create',
+  'user.delete',
+  'user.update',
+]);
+
 export default function JitRequestView({ currentUser, workspace }) {
   const { activeWorkspace } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
@@ -71,7 +83,7 @@ export default function JitRequestView({ currentUser, workspace }) {
       setLoading(true);
       const [reqsRes, permsRes] = await Promise.allSettled([
         api.get(`/api/teams/${teamId}/access-requests`),
-        api.get('/api/permissions'),
+        api.get('/api/permissions', { params: { scope: 'team' } }),
       ]);
 
       if (reqsRes.status === 'fulfilled') {
@@ -130,10 +142,10 @@ export default function JitRequestView({ currentUser, workspace }) {
 
       if (permsRes.status === 'fulfilled') {
         const rawPerms = permsRes.value.data?.data?.permissions || permsRes.value.data?.data || [];
-        setPermissionsCatalog(rawPerms);
-        // Always reset to first permission when catalog loads (ensures a valid default)
-        if (rawPerms.length > 0) {
-          setSelectedRole(rawPerms[0]._id || rawPerms[0].key);
+        const teamPerms = rawPerms.filter((p) => !SUPER_ADMIN_ONLY_PERMISSIONS.has(p.key));
+        setPermissionsCatalog(teamPerms);
+        if (teamPerms.length > 0) {
+          setSelectedRole((prev) => prev || teamPerms[0]._id || teamPerms[0].key);
         }
       }
     } catch (err) {
@@ -141,7 +153,7 @@ export default function JitRequestView({ currentUser, workspace }) {
     } finally {
       setLoading(false);
     }
-  }, [teamId, selectedRole]);
+  }, [teamId]);
 
   useEffect(() => {
     fetchRequestsAndCatalog();
@@ -588,12 +600,12 @@ export default function JitRequestView({ currentUser, workspace }) {
                 <tbody className="divide-y divide-border-subtle text-body-sm">
                   {filteredRequests.map((req) => {
                     const isRequester = req.memberId === currentUserId || req.requesterId === currentUserId;
-                    // A request needs Super Admin approval when the requester is themselves a Team Admin.
-                    // The backend stores approvalLevel, but if not set we derive it from the requester's role
-                    // returned by the populate. We flag it in formatting via a field the frontend can trust.
+                    const permKey = req.permissionKey || req.roleKey || req.permissionId?.key;
+                    const isSuperAdminOnlyPerm = SUPER_ADMIN_ONLY_PERMISSIONS.has(permKey);
                     const needsSuperAdminApproval =
                       req.approvalLevel === 'SUPER_ADMIN' ||
-                      req.needsSuperAdminApproval;
+                      req.needsSuperAdminApproval ||
+                      isSuperAdminOnlyPerm;
 
                     // Approve/Reject visible to: Super Admin always, Team Admin only if request doesn't need SA
                     const canActOnRequest =

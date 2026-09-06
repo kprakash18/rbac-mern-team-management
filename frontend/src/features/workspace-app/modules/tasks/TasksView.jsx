@@ -25,10 +25,22 @@ const STATUS_STYLES = {
 };
 
 export default function TasksView({ currentUser, workspace }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, hasPermission: appHasPermission } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
+
+  const hasPermission = useCallback((permKey) => {
+    if (currentUser?.hasPermission) return currentUser.hasPermission(permKey);
+    if (appHasPermission) return appHasPermission(permKey);
+    if (isTeamAdmin || currentUser?.isSuperAdmin) return true;
+    const perms = currentUser?.permissions || [];
+    return perms.includes(permKey) || perms.includes('*');
+  }, [currentUser, appHasPermission, isTeamAdmin]);
+
+  const canCreateTask = hasPermission('task.create');
+  const canUpdateTask = hasPermission('task.update');
+  const canDeleteTask = hasPermission('task.delete');
 
   const [tasks, setTasks] = useState([]);
   const [teamMembers, setTeamMembers] = useState([]);
@@ -39,6 +51,7 @@ export default function TasksView({ currentUser, workspace }) {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
   const [formData, setFormData] = useState({
     title: '',
@@ -183,15 +196,16 @@ export default function TasksView({ currentUser, workspace }) {
 
   const handleSaveTask = async (e) => {
     e.preventDefault();
-    if (!teamId) return;
+    if (!teamId || isSaving) return;
 
-    // Assignees without admin rights can only update status and remarks
+    // Assignees without task.update rights can only update status and remarks
     const isAssigneeOnly = editingTask &&
       editingTask.assignedTo === currentUserId &&
-      !isTeamAdmin;
+      !canUpdateTask;
 
     if (!isAssigneeOnly && !formData.title.trim()) return;
 
+    setIsSaving(true);
     try {
       if (editingTask) {
         const taskId = editingTask._id || editingTask.id;
@@ -215,7 +229,7 @@ export default function TasksView({ currentUser, workspace }) {
         const res = await api.patch(`/api/teams/${teamId}/tasks/${taskId}`, payload);
         const updated = res.data?.data || payload;
         setTasks((prev) =>
-          prev.map((t) => (t.id === taskId ? { ...t, ...updated, id: taskId, remarks: formData.remarks } : t))
+          prev.map((t) => (t.id === taskId || t._id === taskId ? { ...t, ...updated, id: taskId, remarks: formData.remarks } : t))
         );
       } else {
         const payload = {
@@ -234,12 +248,17 @@ export default function TasksView({ currentUser, workspace }) {
           id: created._id || created.id,
           remarks: formData.remarks,
         };
-        setTasks((prev) => [normalized, ...prev]);
+        setTasks((prev) => {
+          const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
+          return exists ? prev : [normalized, ...prev];
+        });
       }
       setIsModalOpen(false);
     } catch (err) {
       console.error('Failed to save task:', err);
       alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to save task.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -290,7 +309,7 @@ export default function TasksView({ currentUser, workspace }) {
           </p>
         </div>
 
-        {isTeamAdmin && (
+        {canCreateTask && (
           <button
             type="button"
             onClick={handleOpenCreateModal}
@@ -393,7 +412,7 @@ export default function TasksView({ currentUser, workspace }) {
                   {filteredTasks.map((task) => {
                     const assignee = getMember(task.assignedTo);
                     const isAssignee = task.assignedTo === currentUserId;
-                    const canEdit = isAssignee || isTeamAdmin;
+                    const canEdit = isAssignee || canUpdateTask;
 
                     return (
                       <tr
@@ -483,17 +502,17 @@ export default function TasksView({ currentUser, workspace }) {
                                 type="button"
                                 onClick={() => handleOpenEditModal(task)}
                                 className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
-                                title={isAssignee && !isTeamAdmin ? 'Update Status & Remarks' : 'Edit Task'}
+                                title={isAssignee && !canUpdateTask ? 'Update Status & Remarks' : 'Edit Task'}
                               >
                                 <span className="material-symbols-outlined text-[18px]">edit</span>
                               </button>
                             )}
-                            {isTeamAdmin && (
+                            {canDeleteTask && (
                               <button
                                 type="button"
                                 onClick={() => handleDeleteTask(task.id)}
                                 className="p-1 rounded text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors cursor-pointer"
-                                title="Delete Task (Team Admin only)"
+                                title="Delete Task"
                               >
                                 <span className="material-symbols-outlined text-[18px]">delete</span>
                               </button>
@@ -524,7 +543,7 @@ export default function TasksView({ currentUser, workspace }) {
           <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
             <div className="p-md border-b border-border-subtle flex items-center justify-between">
               <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
-                {editingTask ? (isTeamAdmin ? 'Edit Task' : 'Update Status & Remarks') : 'New Task'}
+                {editingTask ? (canUpdateTask ? 'Edit Task' : 'Update Status & Remarks') : 'New Task'}
               </h3>
               <button
                 type="button"
@@ -542,12 +561,12 @@ export default function TasksView({ currentUser, workspace }) {
                 <input
                   type="text"
                   required
-                  disabled={editingTask && !isTeamAdmin}
+                  disabled={editingTask && !canUpdateTask}
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
                   placeholder="e.g. Implement user profile caching"
                   className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary ${
-                    editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                    editingTask && !canUpdateTask ? 'opacity-60 cursor-not-allowed' : ''
                   }`}
                 />
               </div>
@@ -557,11 +576,11 @@ export default function TasksView({ currentUser, workspace }) {
                 <div>
                   <label className="text-label-sm font-label-bold text-on-surface block mb-1">Assignee</label>
                   <select
-                    disabled={editingTask && !isTeamAdmin}
+                    disabled={editingTask && !canUpdateTask}
                     value={formData.assignedTo}
                     onChange={(e) => setFormData({ ...formData, assignedTo: e.target.value })}
                     className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer ${
-                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                      editingTask && !canUpdateTask ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
                     <option value="">Unassigned</option>
@@ -576,11 +595,11 @@ export default function TasksView({ currentUser, workspace }) {
                 <div>
                   <label className="text-label-sm font-label-bold text-on-surface block mb-1">Priority</label>
                   <select
-                    disabled={editingTask && !isTeamAdmin}
+                    disabled={editingTask && !canUpdateTask}
                     value={formData.priority}
                     onChange={(e) => setFormData({ ...formData, priority: e.target.value })}
                     className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary cursor-pointer ${
-                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                      editingTask && !canUpdateTask ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   >
                     <option value="LOW">Low</option>
@@ -597,12 +616,12 @@ export default function TasksView({ currentUser, workspace }) {
                   <label className="text-label-sm font-label-bold text-on-surface block mb-1">Due Date</label>
                   <input
                     type="text"
-                    disabled={editingTask && !isTeamAdmin}
+                    disabled={editingTask && !canUpdateTask}
                     value={formData.dueDate}
                     onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
                     placeholder="e.g. Sep 15, 2026"
                     className={`w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary ${
-                      editingTask && !isTeamAdmin ? 'opacity-60 cursor-not-allowed' : ''
+                      editingTask && !canUpdateTask ? 'opacity-60 cursor-not-allowed' : ''
                     }`}
                   />
                 </div>
@@ -642,16 +661,20 @@ export default function TasksView({ currentUser, workspace }) {
               <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
                 <button
                   type="button"
+                  disabled={isSaving}
                   onClick={() => setIsModalOpen(false)}
-                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
+                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
-                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer"
+                  disabled={isSaving}
+                  className={`px-md py-1.5 rounded-lg bg-primary text-on-primary font-label-sm font-label-bold transition-opacity shadow-sm ${
+                    isSaving ? 'opacity-50 cursor-not-allowed' : 'hover:opacity-90 cursor-pointer'
+                  }`}
                 >
-                  {editingTask ? 'Save Changes' : 'Create Task'}
+                  {isSaving ? 'Saving...' : editingTask ? 'Save Changes' : 'Create Task'}
                 </button>
               </div>
             </form>

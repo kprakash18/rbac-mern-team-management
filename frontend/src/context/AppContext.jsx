@@ -1,8 +1,8 @@
 import { useState, useCallback, useEffect } from 'react';
 import { AppContext } from './AppContext.js';
-import { getStorage, setStorage, removeStorage } from '../lib/storage';
-import { connectSocket, disconnectSocket } from '../lib/socket';
-import api from '../lib/api';
+import { getStorage, setStorage, removeStorage } from '../lib/storage.js';
+import { connectSocket, disconnectSocket, getSocket } from '../lib/socket.js';
+import api from '../lib/api.js';
 
 const STORAGE_KEYS = {
   AUTH: 'auth_session',
@@ -171,12 +171,82 @@ export function AppProvider({ children }) {
     authUser?.roles?.includes('Platform Super Admin')
   );
 
+  const [workspacePermissions, setWorkspacePermissions] = useState([]);
+
+  const refreshPermissions = useCallback(async () => {
+    if (isSuperAdmin) {
+      try {
+        const res = await api.get('/api/permissions');
+        const perms = res.data?.data?.permissions || res.data?.data || [];
+        const allKeys = perms.map((p) => p.key).concat('*');
+        setWorkspacePermissions(allKeys);
+        return;
+      } catch {
+        setWorkspacePermissions(['*']);
+        return;
+      }
+    }
+
+    const teamId = activeWorkspace?._id || activeWorkspace?.id;
+    if (!teamId || !authUser?.token) {
+      setWorkspacePermissions([]);
+      return;
+    }
+    try {
+      const res = await api.get(`/api/authorization/permissions?teamId=${teamId}`);
+      const perms = res.data?.data?.permissions || res.data?.data?.effectivePermissions || [];
+      setWorkspacePermissions(perms);
+    } catch (err) {
+      console.warn('[Permissions] Failed to fetch workspace permissions:', err.message);
+    }
+  }, [isSuperAdmin, activeWorkspace?._id, activeWorkspace?.id, authUser?.token]);
+
+  useEffect(() => {
+    refreshPermissions();
+  }, [refreshPermissions]);
+
+  useEffect(() => {
+    const socket = getSocket();
+    if (!socket) return;
+
+    const handleAccessUpdate = (data) => {
+      const currentTeamId = activeWorkspace?._id || activeWorkspace?.id;
+      if (!data?.teamId || String(data.teamId) === String(currentTeamId)) {
+        refreshPermissions();
+      }
+    };
+
+    socket.on('access:changed', handleAccessUpdate);
+    socket.on('access_request:resolved', handleAccessUpdate);
+    socket.on('role:assigned', handleAccessUpdate);
+    socket.on('role:revoked', handleAccessUpdate);
+    socket.on('team:permissions_updated', handleAccessUpdate);
+
+    return () => {
+      socket.off('access:changed', handleAccessUpdate);
+      socket.off('access_request:resolved', handleAccessUpdate);
+      socket.off('role:assigned', handleAccessUpdate);
+      socket.off('role:revoked', handleAccessUpdate);
+      socket.off('team:permissions_updated', handleAccessUpdate);
+    };
+  }, [activeWorkspace?._id, activeWorkspace?.id, refreshPermissions]);
+
+  const hasPermission = useCallback((permKey) => {
+    if (!permKey) return false;
+    if (isSuperAdmin) return true;
+    if (activeWorkspace?.isTeamAdmin || activeWorkspace?.role === 'Team Admin') return true;
+    return workspacePermissions.includes(permKey) || workspacePermissions.includes('*');
+  }, [isSuperAdmin, activeWorkspace, workspacePermissions]);
+
   return (
     <AppContext.Provider
       value={{
         authUser,
         activeWorkspace,
         isSuperAdmin,
+        workspacePermissions,
+        hasPermission,
+        refreshPermissions,
         login,
         logout,
         updateAuthUser,
