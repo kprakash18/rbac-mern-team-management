@@ -106,7 +106,7 @@ export async function runMigrationV2({
       stats.membershipsUpdated++;
     }
   }
-  log(`✅ Memberships: ${stats.membershipsExamined} examined, ${stats.membershipsUpdated} updated.`);
+  log(`Memberships: ${stats.membershipsExamined} examined, ${stats.membershipsUpdated} updated.`);
 
   // 3. Backfill AccessGrant.permissionKey
   const allGrants = await AccessGrant.find(grantFilter);
@@ -124,14 +124,14 @@ export async function runMigrationV2({
       }
     }
   }
-  log(`✅ AccessGrants: ${stats.grantsExamined} examined, ${stats.grantsUpdated} updated.`);
+  log(`AccessGrants: ${stats.grantsExamined} examined, ${stats.grantsUpdated} updated.`);
 
   // 4. Ensure Indexes
   await Role.syncIndexes();
   await Membership.syncIndexes();
   await AccessGrant.syncIndexes();
   stats.indexesCreated = ["Role(teamId, name)", "Membership(userId, teamId)", "AccessGrant(userId, teamId, status, permissionKey, resource, expiresAt)"];
-  log("✅ Indexes synchronized successfully.");
+  log("Indexes synchronized successfully.");
 
   log("🎉 Migration V2 Completed with Stats:", stats);
   return stats;
@@ -145,7 +145,7 @@ if (process.argv[1] && process.argv[1].endsWith("migrate-v2.js")) {
     await disconnectDatabase();
     process.exit(0);
   } catch (err) {
-    console.error("❌ Migration V2 failed:", err);
+    console.error("Migration V2 failed:", err);
     process.exit(1);
   }
 }
