@@ -3,7 +3,8 @@ import api from '@/lib/api';
 import { getStorage, setStorage } from '@/lib/storage';
 import { getSocket } from '@/lib/socket';
 import { useApp } from '@/context/useApp';
-import { Modal, Button, Badge, Avatar, SearchInput, ConfirmModal } from '@/shared/components';
+import { Modal, Button, Badge, Avatar, SearchInput, ConfirmModal, SanitizedText } from '@/shared/components';
+
 
 const FALLBACK_GENERAL = {
   id: 'grp-general',
@@ -558,7 +559,9 @@ export default function ChatView({ currentUser, workspace }) {
                         </span>
                         <span className="text-[11px] text-amber-800 font-mono">{msg.timestamp}</span>
                       </div>
-                      <p className="text-[14px] font-bold text-amber-950">{msg.text}</p>
+                      <p className="text-[14px] font-bold text-amber-950">
+                        <SanitizedText text={msg.text} />
+                      </p>
                     </div>
                   </div>
                 );
@@ -591,8 +594,9 @@ export default function ChatView({ currentUser, workspace }) {
                     ) : (
                       <div className="relative">
                         <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${isMe ? 'bg-primary text-on-primary rounded-tr-xs' : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'}`}>
-                          {msg.text}
+                          <SanitizedText text={msg.text} />
                         </div>
+
 
                         {(isMe || isTeamAdmin) && (
                           <div className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-opacity bg-surface-container-lowest border border-border-subtle rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 z-10 ${isMe ? 'right-full mr-1.5' : 'left-full ml-1.5'}`}>
