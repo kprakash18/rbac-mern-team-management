@@ -6,22 +6,16 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
   const { authUser, updateAuthUser, isSuperAdmin, logout } = useApp();
   const [activeTab, setActiveTab] = useState('profile'); // 'profile' | 'security' | 'sessions'
 
+  const INITIAL_PASSWORD_FORM = { currentPassword: '', newPassword: '', confirmPassword: '', loading: false, success: '', error: '' };
+
   // Profile Form State
-  const [name, setName] = useState(authUser?.name || '');
-  const [profileLoading, setProfileLoading] = useState(false);
-  const [profileSuccess, setProfileSuccess] = useState('');
-  const [profileError, setProfileError] = useState('');
+  const [profileForm, setProfileForm] = useState({ name: authUser?.name || '', loading: false, success: '', error: '' });
 
   // Password Change Form State
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
+  const [passwordForm, setPasswordForm] = useState(INITIAL_PASSWORD_FORM);
   const [showCurrentPass, setShowCurrentPass] = useState(false);
   const [showNewPass, setShowNewPass] = useState(false);
   const [showConfirmPass, setShowConfirmPass] = useState(false);
-  const [passwordLoading, setPasswordLoading] = useState(false);
-  const [passwordSuccess, setPasswordSuccess] = useState('');
-  const [passwordError, setPasswordError] = useState('');
 
   useEffect(() => {
     if (!isOpen) return;
@@ -36,15 +30,10 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
 
   useEffect(() => {
     if (isOpen && authUser) {
-      setName(authUser.name || '');
-      setProfileSuccess('');
-      setProfileError('');
-      setPasswordSuccess('');
-      setPasswordError('');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      setProfileForm({ name: authUser.name || '', loading: false, success: '', error: '' });
+      setPasswordForm(INITIAL_PASSWORD_FORM);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen, authUser]);
 
   if (!isOpen || !authUser) return null;
@@ -57,6 +46,8 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
     .toUpperCase();
 
   // Password strength validation helpers
+  const { currentPassword, newPassword, confirmPassword } = passwordForm;
+  const { name } = profileForm;
   const hasMinLength = newPassword.length >= 8;
   const hasLetter = /[a-zA-Z]/.test(newPassword);
   const hasNumber = /[0-9]/.test(newPassword);
@@ -65,14 +56,12 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     if (!name.trim()) {
-      setProfileError('Name cannot be empty.');
+      setProfileForm((prev) => ({ ...prev, error: 'Name cannot be empty.' }));
       return;
     }
 
     try {
-      setProfileLoading(true);
-      setProfileError('');
-      setProfileSuccess('');
+      setProfileForm((prev) => ({ ...prev, loading: true, error: '', success: '' }));
 
       const userId = authUser.id || authUser._id;
       const res = await api.put(`/api/users/${userId}`, {
@@ -80,45 +69,39 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
       });
 
       const updatedData = res.data?.data || {};
-      const updatedUser = {
-        ...authUser,
-        name: updatedData.name || name.trim(),
-      };
-
-      updateAuthUser(updatedUser);
-      setProfileSuccess('Profile updated successfully.');
+      updateAuthUser({ ...authUser, name: updatedData.name || name.trim() });
+      setProfileForm((prev) => ({ ...prev, success: 'Profile updated successfully.' }));
     } catch (err) {
-      setProfileError(
-        err.response?.data?.message || err.message || 'Failed to update profile.'
-      );
+      setProfileForm((prev) => ({
+        ...prev,
+        error: err.response?.data?.message || err.message || 'Failed to update profile.',
+      }));
     } finally {
-      setProfileLoading(false);
+      setProfileForm((prev) => ({ ...prev, loading: false }));
     }
   };
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
     if (!currentPassword) {
-      setPasswordError('Please enter your current password.');
+      setPasswordForm((prev) => ({ ...prev, error: 'Please enter your current password.' }));
       return;
     }
     if (!hasMinLength || !hasLetter || !hasNumber) {
-      setPasswordError('New password does not meet security requirements.');
+      setPasswordForm((prev) => ({ ...prev, error: 'New password does not meet security requirements.' }));
       return;
     }
     if (currentPassword === newPassword) {
-      setPasswordError('New password must be different from current password.');
+      setPasswordForm((prev) => ({ ...prev, error: 'New password must be different from current password.' }));
       return;
     }
     if (newPassword !== confirmPassword) {
-      setPasswordError('New password and confirmation do not match.');
+      setPasswordForm((prev) => ({ ...prev, error: 'New password and confirmation do not match.' }));
       return;
     }
 
     try {
-      setPasswordLoading(true);
-      setPasswordError('');
-      setPasswordSuccess('');
+      setPasswordForm((prev) => ({ ...prev, loading: true, error: '', success: '' }));
 
       const res = await api.post('/api/auth/change-password', {
         currentPassword,
@@ -126,10 +109,7 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
       });
 
       const newAccessToken = res.data?.data?.accessToken || res.data?.accessToken;
-      setPasswordSuccess(res.data?.message || 'Password changed successfully!');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      setPasswordForm({ ...INITIAL_PASSWORD_FORM, success: res.data?.message || 'Password changed successfully!' });
 
       // Refresh current session state with new token
       if (authUser) {
@@ -140,11 +120,12 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
         });
       }
     } catch (err) {
-      setPasswordError(
-        err.response?.data?.message || err.message || 'Failed to change password.'
-      );
+      setPasswordForm((prev) => ({
+        ...prev,
+        error: err.response?.data?.message || err.message || 'Failed to change password.',
+      }));
     } finally {
-      setPasswordLoading(false);
+      setPasswordForm((prev) => ({ ...prev, loading: false }));
     }
   };
 
@@ -225,16 +206,16 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
           {/* TAB 1: Profile Details */}
           {activeTab === 'profile' && (
             <form onSubmit={handleUpdateProfile} className="space-y-lg">
-              {profileSuccess && (
+              {profileForm.success && (
                 <div className="p-3 bg-success-bg border border-success-text/20 text-success-text rounded-xl text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                  <span>{profileSuccess}</span>
+                  <span>{profileForm.success}</span>
                 </div>
               )}
-              {profileError && (
+              {profileForm.error && (
                 <div className="p-3 bg-error-bg border border-error/20 text-error-text rounded-xl text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">error</span>
-                  <span>{profileError}</span>
+                  <span>{profileForm.error}</span>
                 </div>
               )}
 
@@ -274,8 +255,8 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
                   </label>
                   <input
                     type="text"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
+                    value={profileForm.name}
+                    onChange={(e) => setProfileForm((prev) => ({ ...prev, name: e.target.value }))}
                     required
                     placeholder="Your Full Name"
                     className="w-full px-md py-2 bg-surface-container-lowest border border-border-subtle rounded-xl text-sm font-body-base text-on-surface outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
@@ -325,10 +306,10 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={profileLoading}
+                  disabled={profileForm.loading}
                   className="px-lg py-2 bg-primary text-on-primary font-label-bold rounded-xl shadow-sm hover:bg-on-primary-container transition-all flex items-center gap-1.5 cursor-pointer text-sm disabled:opacity-50"
                 >
-                  {profileLoading ? (
+                  {profileForm.loading ? (
                     <span className="material-symbols-outlined text-[18px] animate-spin">
                       progress_activity
                     </span>
@@ -344,16 +325,16 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
           {/* TAB 2: Change Password */}
           {activeTab === 'security' && (
             <form onSubmit={handleChangePassword} className="space-y-lg">
-              {passwordSuccess && (
+              {passwordForm.success && (
                 <div className="p-3 bg-success-bg border border-success-text/20 text-success-text rounded-xl text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">check_circle</span>
-                  <span>{passwordSuccess}</span>
+                  <span>{passwordForm.success}</span>
                 </div>
               )}
-              {passwordError && (
+              {passwordForm.error && (
                 <div className="p-3 bg-error-bg border border-error/20 text-error-text rounded-xl text-sm flex items-center gap-2">
                   <span className="material-symbols-outlined text-[18px]">error</span>
-                  <span>{passwordError}</span>
+                  <span>{passwordForm.error}</span>
                 </div>
               )}
 
@@ -375,8 +356,8 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
                 <div className="relative">
                   <input
                     type={showCurrentPass ? 'text' : 'password'}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
+                    value={passwordForm.currentPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
                     required
                     placeholder="Enter current password"
                     className="w-full px-md py-2 pr-10 bg-surface-container-lowest border border-border-subtle rounded-xl text-sm font-body-base text-on-surface outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
@@ -401,8 +382,8 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
                 <div className="relative">
                   <input
                     type={showNewPass ? 'text' : 'password'}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
+                    value={passwordForm.newPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
                     required
                     placeholder="Enter new password"
                     className="w-full px-md py-2 pr-10 bg-surface-container-lowest border border-border-subtle rounded-xl text-sm font-body-base text-on-surface outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
@@ -451,8 +432,8 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
                 <div className="relative">
                   <input
                     type={showConfirmPass ? 'text' : 'password'}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    value={passwordForm.confirmPassword}
+                    onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
                     required
                     placeholder="Repeat new password"
                     className="w-full px-md py-2 pr-10 bg-surface-container-lowest border border-border-subtle rounded-xl text-sm font-body-base text-on-surface outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
@@ -481,10 +462,10 @@ export default function UserProfileSettingsModal({ isOpen, onClose, onLogout }) 
               <div className="flex justify-end pt-2">
                 <button
                   type="submit"
-                  disabled={passwordLoading || !passwordsMatch || !hasMinLength || !hasLetter || !hasNumber}
+                  disabled={passwordForm.loading || !passwordsMatch || !hasMinLength || !hasLetter || !hasNumber}
                   className="px-lg py-2 bg-primary text-on-primary font-label-bold rounded-xl shadow-sm hover:bg-on-primary-container transition-all flex items-center gap-1.5 cursor-pointer text-sm disabled:opacity-50"
                 >
-                  {passwordLoading ? (
+                  {passwordForm.loading ? (
                     <span className="material-symbols-outlined text-[18px] animate-spin">
                       progress_activity
                     </span>

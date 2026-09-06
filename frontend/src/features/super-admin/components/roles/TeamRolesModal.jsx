@@ -13,10 +13,10 @@ export default function TeamRolesModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [fetchedRoles, setFetchedRoles] = useState([]);
 
-  // Fetch all custom and platform roles from backend API when modal opens
+  // Fetch all custom and platform roles from backend API when modal opens only if not already provided
   useEffect(() => {
     let isMounted = true;
-    if (isOpen) {
+    if (isOpen && (!availableRoles || availableRoles.length === 0)) {
       api
         .get('/api/roles?status=all')
         .then((res) => {
@@ -31,7 +31,7 @@ export default function TeamRolesModal({
     return () => {
       isMounted = false;
     };
-  }, [isOpen]);
+  }, [isOpen, availableRoles]);
 
   // Derive all available platform roles directly from the database API
   const allPlatformRoles = useMemo(() => {

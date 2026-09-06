@@ -486,6 +486,144 @@ export function useChatEngine(teamId, currentUser) {
     [teamId, activeGroupId]
   );
 
+  const handleOpenCreateModal = useCallback(() => {
+    setNewGroupName('');
+    setNewGroupTopic('');
+    setSelectedMemberIds([currentUserId]);
+    setIsCreateModalOpen(true);
+  }, [currentUserId]);
+
+  const handleToggleMember = useCallback((memberId) => {
+    if (memberId === currentUserId) return;
+    setSelectedMemberIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  }, [currentUserId]);
+
+  const handleCreateGroup = useCallback(
+    async (e) => {
+      e?.preventDefault();
+      if (!newGroupName.trim() || !teamId) return;
+
+      const memberIds = Array.from(new Set([currentUserId, ...selectedMemberIds]));
+
+      try {
+        const res = await api.post(`/api/teams/${teamId}/channels`, {
+          name: newGroupName.trim(),
+          topic: newGroupTopic.trim() || 'Team collaboration channel',
+          memberIds,
+        });
+        const newGroup = {
+          ...res.data.data,
+          id: String(res.data.data._id || res.data.data.id),
+          memberIds: (res.data.data.memberIds || []).map(String),
+        };
+
+        setGroups((prev) => [...prev, newGroup]);
+        setActiveGroupId(newGroup.id);
+        setIsCreateModalOpen(false);
+
+        const socket = getSocket();
+        if (socket?.connected && teamId) {
+          socket.emit('chat:group_create', { teamId, group: newGroup });
+        }
+      } catch (err) {
+        const msg = err.response?.data?.message || 'Failed to create channel.';
+        console.error('Create channel error:', msg);
+        alert(msg);
+      }
+    },
+    [newGroupName, newGroupTopic, selectedMemberIds, currentUserId, teamId]
+  );
+
+  const handleOpenInviteModal = useCallback(() => {
+    setInviteSelectedIds([]);
+    setIsInviteModalOpen(true);
+  }, []);
+
+  const handleToggleInviteMember = useCallback((memberId) => {
+    setInviteSelectedIds((prev) =>
+      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
+    );
+  }, []);
+
+  const handleInviteMembers = useCallback(
+    async (e) => {
+      e?.preventDefault();
+      if (inviteSelectedIds.length === 0 || !teamId) return;
+
+      try {
+        const res = await api.post(`/api/teams/${teamId}/channels/${activeGroupId}/members`, {
+          memberIds: inviteSelectedIds,
+        });
+        const updated = {
+          ...res.data.data,
+          id: String(res.data.data._id || res.data.data.id),
+          memberIds: (res.data.data.memberIds || []).map(String),
+        };
+        setGroups((prev) => prev.map((g) => (g.id === activeGroupId ? updated : g)));
+        setIsInviteModalOpen(false);
+
+        const socket = getSocket();
+        if (socket?.connected && teamId) {
+          socket.emit('chat:group_members_add', {
+            teamId,
+            groupId: activeGroupId,
+            groupName: activeGroup?.name,
+            addedUserIds: inviteSelectedIds,
+          });
+        }
+      } catch (err) {
+        console.error('Failed to add members:', err);
+        alert(err.response?.data?.message || 'Failed to add members.');
+      }
+    },
+    [inviteSelectedIds, teamId, activeGroupId, activeGroup]
+  );
+
+  const handleConfirmDeleteGroup = useCallback(async () => {
+    if (!confirmDeleteGroup || confirmDeleteGroup.isDefault || !teamId) return;
+    const targetId = confirmDeleteGroup.id;
+
+    try {
+      await api.delete(`/api/teams/${teamId}/channels/${targetId}`);
+      setGroups((prev) => prev.filter((g) => g.id !== targetId));
+      setMessages((prev) => {
+        const nextMessages = { ...prev };
+        delete nextMessages[targetId];
+        if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
+        return nextMessages;
+      });
+      if (activeGroupId === targetId) {
+        const general = groups.find((g) => g.isDefault);
+        setActiveGroupId(general?.id || 'grp-general');
+      }
+    } catch (err) {
+      console.error('Failed to delete channel:', err);
+      alert(err.response?.data?.message || 'Failed to delete channel.');
+    } finally {
+      setConfirmDeleteGroup(null);
+    }
+  }, [confirmDeleteGroup, teamId, activeGroupId, groups]);
+
+  const handleConfirmLeaveGroup = useCallback(() => {
+    if (!confirmLeaveGroup || confirmLeaveGroup.isDefault) return;
+    const targetId = confirmLeaveGroup.id;
+    setGroups((prev) =>
+      prev.map((g) =>
+        g.id === targetId
+          ? { ...g, memberIds: g.memberIds.filter((id) => id !== currentUserId) }
+          : g
+      )
+    );
+
+    if (activeGroupId === targetId) {
+      const general = groups.find((g) => g.isDefault);
+      setActiveGroupId(general?.id || 'grp-general');
+    }
+    setConfirmLeaveGroup(null);
+  }, [confirmLeaveGroup, currentUserId, activeGroupId, groups]);
+
   return {
     teamMembers,
     groups,
@@ -530,6 +668,14 @@ export function useChatEngine(teamId, currentUser) {
     handleTyping,
     handleEditMessage,
     handleDeleteMessage,
+    handleOpenCreateModal,
+    handleToggleMember,
+    handleCreateGroup,
+    handleOpenInviteModal,
+    handleToggleInviteMember,
+    handleInviteMembers,
+    handleConfirmDeleteGroup,
+    handleConfirmLeaveGroup,
     fetchChannels,
   };
 }

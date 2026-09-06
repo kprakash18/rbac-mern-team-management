@@ -1,440 +1,67 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import api from '@/lib/api';
-import { getStorage, setStorage } from '../../../../lib/storage';
-import { getSocket } from '../../../../lib/socket';
+import { useState } from 'react';
 import { useApp } from '@/context/useApp';
-import ConfirmModal from '../../../../components/shared/ConfirmModal';
-
-const FALLBACK_GENERAL = {
-  id: 'grp-general',
-  name: 'general',
-  topic: 'Workspace general chat channel',
-  memberIds: [],
-  isDefault: true,
-};
-
-const INITIAL_MESSAGES = {};
+import ConfirmModal from '@/components/shared/ConfirmModal';
+import { useChatEngine } from './useChatEngine';
 
 export default function ChatView({ currentUser, workspace }) {
   const { activeWorkspace } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const currentUserId = currentUser?._id || currentUser?.id || 'usr-current';
-  const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
-
-  const [teamMembers, setTeamMembers] = useState([]);
-
-  useEffect(() => {
-    if (!teamId) return;
-    api.get(`/api/teams/${teamId}/members`)
-      .then((res) => {
-        const raw = res.data?.data?.members || res.data?.data || [];
-        const formatted = raw.map((m) => {
-          const u = m.user || m.userId || {};
-          const name = u.name || m.name || 'Member';
-          const userId = String(u._id || u.id || (typeof m.userId === 'string' ? m.userId : null) || m._id || m.id);
-          return {
-            id: userId,
-            userId,
-            membershipId: m._id || m.id,
-            name,
-            email: u.email || m.email || '',
-            role: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
-            teamRole: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
-            initials: name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
-          };
-        });
-        setTeamMembers(formatted);
-      })
-      .catch((err) => console.error('Failed to load chat team members:', err));
-  }, [teamId]);
-
-  const [groups, setGroups] = useState([FALLBACK_GENERAL]);
-  const [, setChannelsLoading] = useState(false);
-
-  const [activeGroupId, setActiveGroupId] = useState('grp-general');
-  const [messages, setMessages] = useState(() =>
-    teamId ? getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES) : INITIAL_MESSAGES
-  );
-
-  // Load channels from backend whenever teamId changes
-  const fetchChannels = useCallback(async () => {
-    if (!teamId) return;
-    setChannelsLoading(true);
-    try {
-      const res = await api.get(`/api/teams/${teamId}/channels`);
-      const fetched = res.data?.data || [];
-      const normalized = fetched.map((ch) => ({
-        ...ch,
-        id: String(ch._id || ch.id),
-        memberIds: (ch.memberIds || []).map(String),
-      }));
-      setGroups(normalized.length > 0 ? normalized : [FALLBACK_GENERAL]);
-      // Keep active channel if still exists, otherwise fall back to first
-      setActiveGroupId((prev) => {
-        const stillExists = normalized.some((ch) => String(ch._id || ch.id) === prev || ch.id === prev);
-        if (stillExists) return prev;
-        const general = normalized.find((ch) => ch.isDefault);
-        return general ? String(general._id || general.id) : (normalized[0]?.id || 'grp-general');
-      });
-    } catch (err) {
-      console.error('Failed to load channels:', err);
-      setGroups([FALLBACK_GENERAL]);
-    } finally {
-      setChannelsLoading(false);
-    }
-  }, [teamId]);
-
-  useEffect(() => {
-    fetchChannels();
-    const storedMessages = teamId ? getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES) : INITIAL_MESSAGES;
-    setMessages(storedMessages);
-  }, [fetchChannels, teamId]);
-
-  const [inputText, setInputText] = useState('');
-  const [searchChannel, setSearchChannel] = useState('');
-  const [isSocketLive, setIsSocketLive] = useState(false);
-  const [typingUsers, setTypingUsers] = useState({});
-
-  // Editing & Deleting Messages State
-  const [editingMessageId, setEditingMessageId] = useState(null);
-  const [editingText, setEditingText] = useState('');
-  const [deletingMessage, setDeletingMessage] = useState(null);
-
-  // Channel deletion & leaving confirmation state
-  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null);
-  const [confirmLeaveGroup, setConfirmLeaveGroup] = useState(null);
-
-  // Modals
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-
-  // New Group Form State
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupTopic, setNewGroupTopic] = useState('');
-  const [selectedMemberIds, setSelectedMemberIds] = useState([currentUserId]);
-
-  // Invite Members to Active Group State
-  const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
-
-  const messagesEndRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
-
-  const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
-  const rawActiveMessages = messages[activeGroupId] || [];
-
-  // Deduplicate active messages by ID and collapse temporary local messages
-  const activeMessages = (() => {
-    const seen = new Set();
-    const serverMsgKeys = new Set(
-      rawActiveMessages
-        .filter((m) => m._id && !String(m.id).startsWith('msg-'))
-        .map((m) => `${m.senderId}_${m.text}`)
-    );
-
-    return rawActiveMessages.filter((m) => {
-      const key = m._id || m.id;
-      if (seen.has(key)) return false;
-      seen.add(key);
-
-      // If this is a stale local temporary message whose text already exists from server, skip it
-      if (String(m.id).startsWith('msg-') && serverMsgKeys.has(`${m.senderId}_${m.text}`)) {
-        return false;
-      }
-      return true;
-    });
-  })();
-
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
-  useEffect(() => {
-    scrollToBottom();
-  }, [activeGroupId, messages]);
-
-  // Real-time WebSocket connection & room subscription
-  useEffect(() => {
-    const socket = getSocket();
-    if (!socket) {
-      setIsSocketLive(false);
-      return;
-    }
-
-    if (socket.connected) {
-      setIsSocketLive(true);
-    }
-
-    const onConnect = () => setIsSocketLive(true);
-    const onDisconnect = () => setIsSocketLive(false);
-
-    socket.on('connect', onConnect);
-    socket.on('disconnect', onDisconnect);
-
-    if (teamId) {
-      // 1. Join room
-      socket.emit('team:join', { teamId }, (res) => {
-        if (res?.ok) {
-          // 2. Fetch history from backend specifically for this group
-          socket.emit('chat:history', { teamId, groupId: activeGroupId, limit: 50 }, (histRes) => {
-            if (histRes?.ok && histRes.messages) {
-              const formattedMsgs = histRes.messages.map((m) => ({
-                id: m._id || m.id,
-                _id: m._id || m.id,
-                groupId: m.groupId || activeGroupId,
-                senderId: m.sender?.id || m.sender?._id || m.senderId || 'member',
-                senderName: m.sender?.name || m.senderName || 'Team Member',
-                senderRole: m.sender?.role || 'Member',
-                senderInitials: (m.sender?.name || 'M')
-                  .split(' ')
-                  .map((n) => n[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase(),
-                text: m.content || m.text,
-                isEdited: Boolean(m.isEdited),
-                timestamp: m.createdAt
-                  ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : 'Recent',
-                createdAt: m.createdAt,
-              }));
-
-              setMessages((prev) => {
-                const existing = prev[activeGroupId] || [];
-                const serverMsgKeys = new Set(formattedMsgs.map((f) => `${f.senderId}_${f.text}`));
-                const cleanedExisting = existing.filter(
-                  (e) => !String(e.id).startsWith('msg-') || !serverMsgKeys.has(`${e.senderId}_${e.text}`)
-                );
-                const existingIds = new Set(cleanedExisting.map((e) => e._id || e.id));
-                const newOnly = formattedMsgs.filter((n) => !existingIds.has(n._id || n.id));
-                const merged = [...cleanedExisting, ...newOnly];
-                const next = { ...prev, [activeGroupId]: merged };
-                if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-                return next;
-              });
-            }
-          });
-        }
-      });
-
-      // 3. Listen for real-time messages scoped to group
-      const onChatMessage = (incomingMsg) => {
-        if (!incomingMsg || (incomingMsg.teamId && incomingMsg.teamId !== teamId)) return;
-        const msgId = incomingMsg._id || incomingMsg.id;
-        const targetGroupId = incomingMsg.groupId || activeGroupId;
-        const senderId = incomingMsg.sender?.id || incomingMsg.sender?._id || incomingMsg.senderId;
-        const content = incomingMsg.content || incomingMsg.text;
-
-        const normalized = {
-          id: msgId,
-          _id: msgId,
-          groupId: targetGroupId,
-          senderId,
-          senderName: incomingMsg.sender?.name || incomingMsg.senderName || 'Team Member',
-          senderRole: incomingMsg.sender?.role || 'Member',
-          senderInitials: (incomingMsg.sender?.name || 'M')
-            .split(' ')
-            .map((n) => n[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase(),
-          text: content,
-          isEdited: Boolean(incomingMsg.isEdited),
-          timestamp: incomingMsg.createdAt
-            ? new Date(incomingMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : 'Just now',
-          createdAt: incomingMsg.createdAt || new Date().toISOString(),
-        };
-
-        setMessages((prev) => {
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          // If message already exists by real DB ID, ignore
-          if (currentGroupMsgs.some((m) => m._id === msgId || m.id === msgId)) {
-            return prev;
-          }
-
-          // If current user sent this and there's a temporary local message matching text, replace it
-          const tempIdx = currentGroupMsgs.findIndex(
-            (m) =>
-              (!m._id || String(m.id).startsWith('msg-')) &&
-              String(m.senderId) === String(senderId) &&
-              m.text === content
-          );
-
-          let updated;
-          if (tempIdx !== -1) {
-            updated = [...currentGroupMsgs];
-            updated[tempIdx] = normalized;
-          } else {
-            updated = [...currentGroupMsgs, normalized];
-          }
-
-          const next = { ...prev, [targetGroupId]: updated };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
-        });
-      };
-
-      // 4. Listen for message edits
-      const onMessageUpdated = (data) => {
-        if (!data?.messageId) return;
-        setMessages((prev) => {
-          const targetGroupId = data.groupId || activeGroupId;
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          const nextGroupMsgs = currentGroupMsgs.map((m) =>
-            m.id === data.messageId || m._id === data.messageId
-              ? { ...m, text: data.content, isEdited: true }
-              : m
-          );
-          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
-        });
-      };
-
-      // 5. Listen for message deletions
-      const onMessageDeleted = (data) => {
-        if (!data?.messageId) return;
-        setMessages((prev) => {
-          const targetGroupId = data.groupId || activeGroupId;
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          const nextGroupMsgs = currentGroupMsgs.filter(
-            (m) => m.id !== data.messageId && m._id !== data.messageId
-          );
-          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
-        });
-      };
-
-      // 6. Listen for typing indicators
-      const onTyping = (data) => {
-        if (!data || data.userId === currentUserId || (data.groupId && data.groupId !== activeGroupId)) return;
-        setTypingUsers((prev) => {
-          const next = { ...prev };
-          if (data.isTyping) {
-            next[data.userId] = data.name || 'A teammate';
-          } else {
-            delete next[data.userId];
-          }
-          return next;
-        });
-      };
-
-      // 7. Listen for real-time group creations & invitations — refresh from API so all users get the same state
-      const onGroupCreated = (data) => {
-        if (!data?.group || data.teamId !== teamId) return;
-        fetchChannels();
-      };
-
-      const onGroupMembersAdded = (data) => {
-        if (!data?.groupId || data.teamId !== teamId) return;
-        fetchChannels();
-      };
-
-      socket.on('chat:message', onChatMessage);
-      socket.on('chat:message_updated', onMessageUpdated);
-      socket.on('chat:message_deleted', onMessageDeleted);
-      socket.on('chat:typing', onTyping);
-      socket.on('chat:group_created', onGroupCreated);
-      socket.on('chat:group_members_added', onGroupMembersAdded);
-
-      return () => {
-        socket.off('connect', onConnect);
-        socket.off('disconnect', onDisconnect);
-        socket.off('chat:message', onChatMessage);
-        socket.off('chat:message_updated', onMessageUpdated);
-        socket.off('chat:message_deleted', onMessageDeleted);
-        socket.off('chat:typing', onTyping);
-        socket.off('chat:group_created', onGroupCreated);
-        socket.off('chat:group_members_added', onGroupMembersAdded);
-        socket.emit('team:leave', { teamId });
-      };
-    }
-  }, [teamId, activeGroupId, currentUserId, fetchChannels]);
 
   const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    if (!inputText.trim()) return;
-
-    const content = inputText.trim();
-    const isBroadcast = isTeamAdmin && isSystemBroadcastMode;
-    const tempId = `msg-${Date.now()}`;
-    const userInitials = (currentUser?.name || 'Alice Vance')
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
-
-    const localMsg = {
-      id: tempId,
-      groupId: activeGroupId,
-      senderId: currentUserId,
-      senderName: currentUser?.name || 'Alice Vance',
-      senderRole: currentUser?.role || 'Team Admin',
-      senderInitials: userInitials,
-      text: content,
-      isSystemBroadcast: isBroadcast,
-      timestamp: 'Just now',
-      createdAt: new Date().toISOString(),
-    };
-
-    // Optimistically add message
-    setMessages((prev) => {
-      const nextMessages = {
-        ...prev,
-        [activeGroupId]: [...(prev[activeGroupId] || []), localMsg],
-      };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
-    });
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:send', { teamId, groupId: activeGroupId, content }, (res) => {
-        if (res?.ok && res.message?._id) {
-          const realId = res.message._id;
-          setMessages((prev) => {
-            const groupMsgs = prev[activeGroupId] || [];
-            // Replace temporary message with confirmed real message ID
-            const mapped = groupMsgs.map((m) =>
-              m.id === tempId ? { ...m, id: realId, _id: realId } : m
-            );
-            // Ensure no duplicate IDs exist
-            const seen = new Set();
-            const deduped = mapped.filter((m) => {
-              const k = m._id || m.id;
-              if (seen.has(k)) return false;
-              seen.add(k);
-              return true;
-            });
-            const next = { ...prev, [activeGroupId]: deduped };
-            if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-            return next;
-          });
-        }
-      });
-      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
-    }
-
-    setInputText('');
-    setIsSystemBroadcastMode(false);
-  };
+  const {
+    teamMembers,
+    groups,
+    activeGroupId,
+    setActiveGroupId,
+    activeGroup,
+    activeMessages,
+    inputText,
+    setInputText,
+    searchChannel,
+    setSearchChannel,
+    isSocketLive,
+    typingUsers,
+    editingMessageId,
+    setEditingMessageId,
+    editingText,
+    setEditingText,
+    deletingMessage,
+    setDeletingMessage,
+    confirmDeleteGroup,
+    setConfirmDeleteGroup,
+    confirmLeaveGroup,
+    setConfirmLeaveGroup,
+    isCreateModalOpen,
+    setIsCreateModalOpen,
+    isInviteModalOpen,
+    setIsInviteModalOpen,
+    newGroupName,
+    setNewGroupName,
+    newGroupTopic,
+    setNewGroupTopic,
+    selectedMemberIds,
+    inviteSelectedIds,
+    messagesEndRef,
+    isTeamAdmin,
+    currentUserId,
+    handleSendMessage,
+    handleTyping,
+    handleEditMessage,
+    handleDeleteMessage,
+    handleOpenCreateModal,
+    handleToggleMember,
+    handleCreateGroup,
+    handleOpenInviteModal,
+    handleToggleInviteMember,
+    handleInviteMembers,
+    handleConfirmDeleteGroup,
+    handleConfirmLeaveGroup,
+  } = useChatEngine(teamId, currentUser);
 
   const handleInputChange = (e) => {
-    const val = e.target.value;
-    setInputText(val);
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: true });
-      if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = setTimeout(() => {
-        socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
-      }, 2500);
-    }
+    setInputText(e.target.value);
+    handleTyping();
   };
 
   const handleStartEdit = (msg) => {
@@ -448,182 +75,11 @@ export default function ChatView({ currentUser, workspace }) {
   };
 
   const handleSaveEdit = (msgId) => {
-    if (!editingText.trim()) return;
-    const content = editingText.trim();
-
-    setMessages((prev) => {
-      const currentGroupMsgs = prev[activeGroupId] || [];
-      const nextGroupMsgs = currentGroupMsgs.map((m) =>
-        m.id === msgId ? { ...m, text: content, isEdited: true } : m
-      );
-      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
-    });
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:edit', { teamId, messageId: msgId, content });
-    }
-
-    setEditingMessageId(null);
-    setEditingText('');
-  };
-
-  const handleDeleteMessage = (msgId) => {
-    setMessages((prev) => {
-      const currentGroupMsgs = prev[activeGroupId] || [];
-      const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId && m._id !== msgId);
-      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
-    });
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:delete', { teamId, messageId: msgId });
-    }
-
-    setDeletingMessage(null);
-  };
-
-  const handleOpenCreateModal = () => {
-    setNewGroupName('');
-    setNewGroupTopic('');
-    setSelectedMemberIds([currentUserId]);
-    setIsCreateModalOpen(true);
-  };
-
-  const handleToggleMember = (memberId) => {
-    if (memberId === currentUserId) return; // Creator is always included
-    setSelectedMemberIds((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
-    );
-  };
-
-  const handleCreateGroup = async (e) => {
-    e.preventDefault();
-    if (!newGroupName.trim()) return;
-
-    const memberIds = Array.from(new Set([currentUserId, ...selectedMemberIds]));
-
-    try {
-      const res = await api.post(`/api/teams/${teamId}/channels`, {
-        name: newGroupName.trim(),
-        topic: newGroupTopic.trim() || 'Team collaboration channel',
-        memberIds,
-      });
-      const newGroup = {
-        ...res.data.data,
-        id: String(res.data.data._id || res.data.data.id),
-        memberIds: (res.data.data.memberIds || []).map(String),
-      };
-
-      setGroups((prev) => [...prev, newGroup]);
-      setActiveGroupId(newGroup.id);
-      setIsCreateModalOpen(false);
-
-      // Broadcast to other team members via socket
-      const socket = getSocket();
-      if (socket?.connected && teamId) {
-        socket.emit('chat:group_create', { teamId, group: newGroup });
-      }
-    } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to create channel.';
-      console.error('Create channel error:', msg);
-      alert(msg);
-    }
-  };
-
-  const handleOpenInviteModal = () => {
-    setInviteSelectedIds([]);
-    setIsInviteModalOpen(true);
-  };
-
-  const handleToggleInviteMember = (memberId) => {
-    setInviteSelectedIds((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
-    );
-  };
-
-  const handleInviteMembers = async (e) => {
-    e.preventDefault();
-    if (inviteSelectedIds.length === 0) return;
-
-    try {
-      const res = await api.post(`/api/teams/${teamId}/channels/${activeGroupId}/members`, {
-        memberIds: inviteSelectedIds,
-      });
-      const updated = {
-        ...res.data.data,
-        id: String(res.data.data._id || res.data.data.id),
-        memberIds: (res.data.data.memberIds || []).map(String),
-      };
-      setGroups((prev) => prev.map((g) => g.id === activeGroupId ? updated : g));
-      setIsInviteModalOpen(false);
-
-      const socket = getSocket();
-      if (socket?.connected && teamId) {
-        socket.emit('chat:group_members_add', {
-          teamId,
-          groupId: activeGroupId,
-          groupName: activeGroup.name,
-          addedUserIds: inviteSelectedIds,
-        });
-      }
-    } catch (err) {
-      console.error('Failed to add members:', err);
-      alert(err.response?.data?.message || 'Failed to add members.');
-    }
-  };
-
-  const handleConfirmDeleteGroup = async () => {
-    if (!confirmDeleteGroup || confirmDeleteGroup.isDefault) return;
-    const targetId = confirmDeleteGroup.id;
-
-    try {
-      await api.delete(`/api/teams/${teamId}/channels/${targetId}`);
-      setGroups((prev) => prev.filter((g) => g.id !== targetId));
-      setMessages((prev) => {
-        const nextMessages = { ...prev };
-        delete nextMessages[targetId];
-        if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-        return nextMessages;
-      });
-      if (activeGroupId === targetId) {
-        const general = groups.find((g) => g.isDefault);
-        setActiveGroupId(general?.id || 'grp-general');
-      }
-    } catch (err) {
-      console.error('Failed to delete channel:', err);
-      alert(err.response?.data?.message || 'Failed to delete channel.');
-    } finally {
-      setConfirmDeleteGroup(null);
-    }
-  };
-
-  const handleConfirmLeaveGroup = () => {
-    if (!confirmLeaveGroup || confirmLeaveGroup.isDefault) return;
-    const targetId = confirmLeaveGroup.id;
-    // Update local state (membership removal is cosmetic on the frontend — no dedicated leave endpoint)
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === targetId
-          ? { ...g, memberIds: g.memberIds.filter((id) => id !== currentUserId) }
-          : g
-      )
-    );
-
-    if (activeGroupId === targetId) {
-      const general = groups.find((g) => g.isDefault);
-      setActiveGroupId(general?.id || 'grp-general');
-    }
-    setConfirmLeaveGroup(null);
+    handleEditMessage(msgId, editingText);
   };
 
   // Filter channels the user has access to
   const visibleGroups = groups.filter((g) => {
-    // If admin, see all. If member, see groups where member or default.
     const hasMembership = isTeamAdmin || g.isDefault || g.memberIds.includes(currentUserId);
     const matchesSearch = !searchChannel || g.name.toLowerCase().includes(searchChannel.toLowerCase());
     return hasMembership && matchesSearch;
