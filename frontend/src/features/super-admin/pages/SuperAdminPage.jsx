@@ -128,7 +128,7 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [onJumpIntoWorkspace]);
 
   useEffect(() => {
     fetchDashboardData();

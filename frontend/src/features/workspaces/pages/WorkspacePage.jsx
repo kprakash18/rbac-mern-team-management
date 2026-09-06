@@ -59,7 +59,7 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
     }
 
     fetchWorkspaces();
-  }, [isSuperAdmin]);
+  }, [isSuperAdmin, onWorkspaceSelected]);
 
   const handleSelect = (workspace) => {
     console.log('Selected workspace:', workspace, { rememberChoice });

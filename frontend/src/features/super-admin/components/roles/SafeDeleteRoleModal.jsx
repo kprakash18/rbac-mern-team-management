@@ -20,7 +20,7 @@ export default function SafeDeleteRoleModal({
     } else {
       setTargetRoleId('');
     }
-  }, [role, roles]);
+  }, [role?.id, roles]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!isOpen || !role) return null;
 
