@@ -29,7 +29,11 @@ const teamSchema = new mongoose.Schema({
 }
 );
 
-teamSchema.index({ name : 1}) ;
-const Team = mongoose.model("Team", teamSchema) ;
+teamSchema.index(
+  { name: 1 },
+  { unique: true, partialFilterExpression: { status: "ACTIVE" } }
+);
 
-export default Team ;
+const Team = mongoose.model("Team", teamSchema);
+
+export default Team;
