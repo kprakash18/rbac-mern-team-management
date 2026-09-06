@@ -258,12 +258,14 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
   }, [isOpen]);
 
   const persistNotifications = (nextList) => {
-    setNotifications(nextList);
-    setUnreadCount(nextList.filter((n) => !n.readAt).length);
+    const clamped = nextList.slice(0, 100);
+    setNotifications(clamped);
+    setUnreadCount(clamped.filter((n) => !n.readAt).length);
     try {
-      localStorage.setItem(storageKey, JSON.stringify(nextList));
+      localStorage.setItem(storageKey, JSON.stringify(clamped));
     } catch {}
   };
+
 
   const handleMarkAllAsRead = async () => {
     try {
