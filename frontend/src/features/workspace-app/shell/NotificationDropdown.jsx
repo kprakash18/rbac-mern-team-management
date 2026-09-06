@@ -210,8 +210,7 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
       setUnreadCount(0);
     }
     fetchNotifications();
-    fetchUnreadCount();
-  }, [userId, storageKey, fetchNotifications, fetchUnreadCount]);
+  }, [userId, storageKey, fetchNotifications]);
 
   useEffect(() => {
     if (isOpen) {
@@ -225,7 +224,6 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
 
     const onNewNotif = () => {
       fetchNotifications();
-      fetchUnreadCount();
     };
 
     const onCountUpdate = (data) => {
