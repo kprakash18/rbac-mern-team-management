@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import api from '@/lib/api';
-import { getStorage, setStorage } from '../../../../lib/storage';
-import { getSocket } from '../../../../lib/socket';
+import { getStorage, setStorage } from '@/lib/storage';
+import { getSocket } from '@/lib/socket';
 import { useApp } from '@/context/useApp';
-import { ConfirmModal } from '@/shared/components';
+import { Modal, Button, Badge, Avatar, SearchInput, ConfirmModal } from '@/shared/components';
 
 const FALLBACK_GENERAL = {
   id: 'grp-general',
@@ -13,8 +13,6 @@ const FALLBACK_GENERAL = {
   isDefault: true,
 };
 
-const INITIAL_MESSAGES = {};
-
 export default function ChatView({ currentUser, workspace }) {
   const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
@@ -22,11 +20,11 @@ export default function ChatView({ currentUser, workspace }) {
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
 
   const hasPermission = useCallback(
-    (permKey) => {
+    (perm) => {
       if (isTeamAdmin || currentUser?.isSuperAdmin) return true;
-      if (typeof currentUser?.hasPermission === 'function') return currentUser.hasPermission(permKey);
-      if (typeof hasPermissionContext === 'function') return hasPermissionContext(permKey);
-      return (currentUser?.permissions || []).includes(permKey);
+      if (typeof currentUser?.hasPermission === 'function') return currentUser.hasPermission(perm);
+      if (typeof hasPermissionContext === 'function') return hasPermissionContext(perm);
+      return (currentUser?.permissions || []).includes(perm);
     },
     [currentUser, hasPermissionContext, isTeamAdmin]
   );
@@ -37,44 +35,61 @@ export default function ChatView({ currentUser, workspace }) {
   const canBroadcast = isTeamAdmin || hasPermission('notification.create') || hasPermission('broadcast.create');
 
   const [teamMembers, setTeamMembers] = useState([]);
+  const [groups, setGroups] = useState([FALLBACK_GENERAL]);
+  const [activeGroupId, setActiveGroupId] = useState('grp-general');
+  const [messages, setMessages] = useState(() =>
+    teamId ? getStorage(`workspace_chat_messages_${teamId}`, {}) : {}
+  );
+  const [inputText, setInputText] = useState('');
+  const [searchChannel, setSearchChannel] = useState('');
+  const [isSocketLive, setIsSocketLive] = useState(false);
+  const [typingUsers, setTypingUsers] = useState({});
+
+  // Edit / Modals
+  const [editingMessageId, setEditingMessageId] = useState(null);
+  const [editingText, setEditingText] = useState('');
+  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null);
+  const [confirmLeaveGroup, setConfirmLeaveGroup] = useState(null);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
+  const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
+
+  // Forms
+  const [newGroupName, setNewGroupName] = useState('');
+  const [newGroupTopic, setNewGroupTopic] = useState('');
+  const [selectedMemberIds, setSelectedMemberIds] = useState([currentUserId]);
+  const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
+
+  const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (!teamId) return;
     api.get(`/api/teams/${teamId}/members`)
       .then((res) => {
         const raw = res.data?.data?.members || res.data?.data || [];
-        const formatted = raw.map((m) => {
-          const u = m.user || m.userId || {};
-          const name = u.name || m.name || 'Member';
-          const userId = String(u._id || u.id || (typeof m.userId === 'string' ? m.userId : null) || m._id || m.id);
-          return {
-            id: userId,
-            userId,
-            membershipId: m._id || m.id,
-            name,
-            email: u.email || m.email || '',
-            role: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
-            teamRole: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
-            initials: name.split(' ').map((n) => n[0]).join('').toUpperCase().slice(0, 2),
-          };
-        });
-        setTeamMembers(formatted);
+        setTeamMembers(
+          raw.map((m) => {
+            const u = m.user || m.userId || {};
+            const name = u.name || m.name || 'Member';
+            const userId = String(u._id || u.id || (typeof m.userId === 'string' ? m.userId : null) || m._id || m.id);
+            return {
+              id: userId,
+              userId,
+              membershipId: m._id || m.id,
+              name,
+              email: u.email || m.email || '',
+              role: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
+              teamRole: m.roles?.[0]?.name || m.role?.name || m.role || 'Member',
+            };
+          })
+        );
       })
       .catch((err) => console.error('Failed to load chat team members:', err));
   }, [teamId]);
 
-  const [groups, setGroups] = useState([FALLBACK_GENERAL]);
-  const [, setChannelsLoading] = useState(false);
-
-  const [activeGroupId, setActiveGroupId] = useState('grp-general');
-  const [messages, setMessages] = useState(() =>
-    teamId ? getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES) : INITIAL_MESSAGES
-  );
-
-  // Load channels from backend whenever teamId changes
   const fetchChannels = useCallback(async () => {
     if (!teamId) return;
-    setChannelsLoading(true);
     try {
       const res = await api.get(`/api/teams/${teamId}/channels`);
       const fetched = res.data?.data || [];
@@ -84,60 +99,25 @@ export default function ChatView({ currentUser, workspace }) {
         memberIds: (ch.memberIds || []).map(String),
       }));
       setGroups(normalized.length > 0 ? normalized : [FALLBACK_GENERAL]);
-      // Keep active channel if still exists, otherwise fall back to first
       setActiveGroupId((prev) => {
-        const stillExists = normalized.some((ch) => String(ch._id || ch.id) === prev || ch.id === prev);
-        if (stillExists) return prev;
+        if (normalized.some((ch) => String(ch._id || ch.id) === prev || ch.id === prev)) return prev;
         const general = normalized.find((ch) => ch.isDefault);
         return general ? String(general._id || general.id) : (normalized[0]?.id || 'grp-general');
       });
-    } catch (err) {
-      console.error('Failed to load channels:', err);
+    } catch {
       setGroups([FALLBACK_GENERAL]);
-    } finally {
-      setChannelsLoading(false);
     }
   }, [teamId]);
 
   useEffect(() => {
     fetchChannels();
-    const storedMessages = teamId ? getStorage(`workspace_chat_messages_${teamId}`, INITIAL_MESSAGES) : INITIAL_MESSAGES;
-    setMessages(storedMessages);
+    const stored = teamId ? getStorage(`workspace_chat_messages_${teamId}`, {}) : {};
+    setMessages(stored);
   }, [fetchChannels, teamId]);
-
-  const [inputText, setInputText] = useState('');
-  const [searchChannel, setSearchChannel] = useState('');
-  const [isSocketLive, setIsSocketLive] = useState(false);
-  const [typingUsers, setTypingUsers] = useState({});
-
-  // Editing & Deleting Messages State
-  const [editingMessageId, setEditingMessageId] = useState(null);
-  const [editingText, setEditingText] = useState('');
-  const [deletingMessage, setDeletingMessage] = useState(null);
-
-  // Channel deletion & leaving confirmation state
-  const [confirmDeleteGroup, setConfirmDeleteGroup] = useState(null);
-  const [confirmLeaveGroup, setConfirmLeaveGroup] = useState(null);
-
-  // Modals
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
-  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
-
-  // New Group Form State
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupTopic, setNewGroupTopic] = useState('');
-  const [selectedMemberIds, setSelectedMemberIds] = useState([currentUserId]);
-
-  // Invite Members to Active Group State
-  const [inviteSelectedIds, setInviteSelectedIds] = useState([]);
-
-  const messagesEndRef = useRef(null);
-  const typingTimeoutRef = useRef(null);
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
   const rawActiveMessages = messages[activeGroupId] || [];
 
-  // Deduplicate active messages by ID and collapse temporary local messages
   const activeMessages = (() => {
     const seen = new Set();
     const serverMsgKeys = new Set(
@@ -145,29 +125,20 @@ export default function ChatView({ currentUser, workspace }) {
         .filter((m) => m._id && !String(m.id).startsWith('msg-'))
         .map((m) => `${m.senderId}_${m.text}`)
     );
-
     return rawActiveMessages.filter((m) => {
       const key = m._id || m.id;
       if (seen.has(key)) return false;
       seen.add(key);
-
-      // If this is a stale local temporary message whose text already exists from server, skip it
-      if (String(m.id).startsWith('msg-') && serverMsgKeys.has(`${m.senderId}_${m.text}`)) {
-        return false;
-      }
+      if (String(m.id).startsWith('msg-') && serverMsgKeys.has(`${m.senderId}_${m.text}`)) return false;
       return true;
     });
   })();
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
   useEffect(() => {
-    scrollToBottom();
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [activeGroupId, messages]);
 
-  // Real-time WebSocket connection & room subscription
+  // Socket Connection
   useEffect(() => {
     const socket = getSocket();
     if (!socket) {
@@ -175,21 +146,15 @@ export default function ChatView({ currentUser, workspace }) {
       return;
     }
 
-    if (socket.connected) {
-      setIsSocketLive(true);
-    }
-
+    if (socket.connected) setIsSocketLive(true);
     const onConnect = () => setIsSocketLive(true);
     const onDisconnect = () => setIsSocketLive(false);
-
     socket.on('connect', onConnect);
     socket.on('disconnect', onDisconnect);
 
     if (teamId) {
-      // 1. Join room
       socket.emit('team:join', { teamId }, (res) => {
         if (res?.ok) {
-          // 2. Fetch history from backend specifically for this group
           socket.emit('chat:history', { teamId, groupId: activeGroupId, limit: 50 }, (histRes) => {
             if (histRes?.ok && histRes.messages) {
               const formattedMsgs = histRes.messages.map((m) => ({
@@ -199,30 +164,18 @@ export default function ChatView({ currentUser, workspace }) {
                 senderId: m.sender?.id || m.sender?._id || m.senderId || 'member',
                 senderName: m.sender?.name || m.senderName || 'Team Member',
                 senderRole: m.sender?.role || 'Member',
-                senderInitials: (m.sender?.name || 'M')
-                  .split(' ')
-                  .map((n) => n[0])
-                  .join('')
-                  .slice(0, 2)
-                  .toUpperCase(),
                 text: m.content || m.text,
                 isEdited: Boolean(m.isEdited),
-                timestamp: m.createdAt
-                  ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-                  : 'Recent',
+                timestamp: m.createdAt ? new Date(m.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recent',
                 createdAt: m.createdAt,
               }));
 
               setMessages((prev) => {
                 const existing = prev[activeGroupId] || [];
                 const serverMsgKeys = new Set(formattedMsgs.map((f) => `${f.senderId}_${f.text}`));
-                const cleanedExisting = existing.filter(
-                  (e) => !String(e.id).startsWith('msg-') || !serverMsgKeys.has(`${e.senderId}_${e.text}`)
-                );
-                const existingIds = new Set(cleanedExisting.map((e) => e._id || e.id));
-                const newOnly = formattedMsgs.filter((n) => !existingIds.has(n._id || n.id));
-                const merged = [...cleanedExisting, ...newOnly];
-                const next = { ...prev, [activeGroupId]: merged };
+                const cleaned = existing.filter((e) => !String(e.id).startsWith('msg-') || !serverMsgKeys.has(`${e.senderId}_${e.text}`));
+                const existingIds = new Set(cleaned.map((e) => e._id || e.id));
+                const next = { ...prev, [activeGroupId]: [...cleaned, ...formattedMsgs.filter((n) => !existingIds.has(n._id || n.id))] };
                 if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
                 return next;
               });
@@ -231,127 +184,77 @@ export default function ChatView({ currentUser, workspace }) {
         }
       });
 
-      // 3. Listen for real-time messages scoped to group
-      const onChatMessage = (incomingMsg) => {
-        if (!incomingMsg || (incomingMsg.teamId && incomingMsg.teamId !== teamId)) return;
-        const msgId = incomingMsg._id || incomingMsg.id;
-        const targetGroupId = incomingMsg.groupId || activeGroupId;
-        const senderId = incomingMsg.sender?.id || incomingMsg.sender?._id || incomingMsg.senderId;
-        const content = incomingMsg.content || incomingMsg.text;
+      const onChatMessage = (incoming) => {
+        if (!incoming || (incoming.teamId && incoming.teamId !== teamId)) return;
+        const msgId = incoming._id || incoming.id;
+        const targetGroup = incoming.groupId || activeGroupId;
+        const senderId = incoming.sender?.id || incoming.sender?._id || incoming.senderId;
+        const content = incoming.content || incoming.text;
 
         const normalized = {
           id: msgId,
           _id: msgId,
-          groupId: targetGroupId,
+          groupId: targetGroup,
           senderId,
-          senderName: incomingMsg.sender?.name || incomingMsg.senderName || 'Team Member',
-          senderRole: incomingMsg.sender?.role || 'Member',
-          senderInitials: (incomingMsg.sender?.name || 'M')
-            .split(' ')
-            .map((n) => n[0])
-            .join('')
-            .slice(0, 2)
-            .toUpperCase(),
+          senderName: incoming.sender?.name || incoming.senderName || 'Team Member',
+          senderRole: incoming.sender?.role || 'Member',
           text: content,
-          isEdited: Boolean(incomingMsg.isEdited),
-          timestamp: incomingMsg.createdAt
-            ? new Date(incomingMsg.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-            : 'Just now',
-          createdAt: incomingMsg.createdAt || new Date().toISOString(),
+          isEdited: Boolean(incoming.isEdited),
+          timestamp: incoming.createdAt ? new Date(incoming.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Just now',
+          createdAt: incoming.createdAt || new Date().toISOString(),
         };
 
         setMessages((prev) => {
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          // If message already exists by real DB ID, ignore
-          if (currentGroupMsgs.some((m) => m._id === msgId || m.id === msgId)) {
-            return prev;
-          }
-
-          // If current user sent this and there's a temporary local message matching text, replace it
-          const tempIdx = currentGroupMsgs.findIndex(
-            (m) =>
-              (!m._id || String(m.id).startsWith('msg-')) &&
-              String(m.senderId) === String(senderId) &&
-              m.text === content
-          );
-
-          let updated;
-          if (tempIdx !== -1) {
-            updated = [...currentGroupMsgs];
-            updated[tempIdx] = normalized;
-          } else {
-            updated = [...currentGroupMsgs, normalized];
-          }
-
-          const next = { ...prev, [targetGroupId]: updated };
+          const current = prev[targetGroup] || [];
+          if (current.some((m) => m._id === msgId || m.id === msgId)) return prev;
+          const tempIdx = current.findIndex((m) => (!m._id || String(m.id).startsWith('msg-')) && String(m.senderId) === String(senderId) && m.text === content);
+          const updated = tempIdx !== -1 ? current.map((m, idx) => (idx === tempIdx ? normalized : m)) : [...current, normalized];
+          const next = { ...prev, [targetGroup]: updated };
           if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
 
-      // 4. Listen for message edits
       const onMessageUpdated = (data) => {
         if (!data?.messageId) return;
         setMessages((prev) => {
-          const targetGroupId = data.groupId || activeGroupId;
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          const nextGroupMsgs = currentGroupMsgs.map((m) =>
-            m.id === data.messageId || m._id === data.messageId
-              ? { ...m, text: data.content, isEdited: true }
-              : m
+          const targetGroup = data.groupId || activeGroupId;
+          const updated = (prev[targetGroup] || []).map((m) =>
+            m.id === data.messageId || m._id === data.messageId ? { ...m, text: data.content, isEdited: true } : m
           );
-          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
+          const next = { ...prev, [targetGroup]: updated };
           if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
 
-      // 5. Listen for message deletions
       const onMessageDeleted = (data) => {
         if (!data?.messageId) return;
         setMessages((prev) => {
-          const targetGroupId = data.groupId || activeGroupId;
-          const currentGroupMsgs = prev[targetGroupId] || [];
-          const nextGroupMsgs = currentGroupMsgs.filter(
-            (m) => m.id !== data.messageId && m._id !== data.messageId
-          );
-          const next = { ...prev, [targetGroupId]: nextGroupMsgs };
+          const targetGroup = data.groupId || activeGroupId;
+          const updated = (prev[targetGroup] || []).filter((m) => m.id !== data.messageId && m._id !== data.messageId);
+          const next = { ...prev, [targetGroup]: updated };
           if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
           return next;
         });
       };
 
-      // 6. Listen for typing indicators
       const onTyping = (data) => {
         if (!data || data.userId === currentUserId || (data.groupId && data.groupId !== activeGroupId)) return;
         setTypingUsers((prev) => {
           const next = { ...prev };
-          if (data.isTyping) {
-            next[data.userId] = data.name || 'A teammate';
-          } else {
-            delete next[data.userId];
-          }
+          if (data.isTyping) next[data.userId] = data.name || 'A teammate';
+          else delete next[data.userId];
           return next;
         });
-      };
-
-      // 7. Listen for real-time group creations & invitations — refresh from API so all users get the same state
-      const onGroupCreated = (data) => {
-        if (!data?.group || data.teamId !== teamId) return;
-        fetchChannels();
-      };
-
-      const onGroupMembersAdded = (data) => {
-        if (!data?.groupId || data.teamId !== teamId) return;
-        fetchChannels();
       };
 
       socket.on('chat:message', onChatMessage);
       socket.on('chat:message_updated', onMessageUpdated);
       socket.on('chat:message_deleted', onMessageDeleted);
       socket.on('chat:typing', onTyping);
-      socket.on('chat:group_created', onGroupCreated);
-      socket.on('chat:group_members_added', onGroupMembersAdded);
+      socket.on('chat:group_created', fetchChannels);
+      socket.on('chat:group_members_added', fetchChannels);
 
       return () => {
         socket.off('connect', onConnect);
@@ -360,14 +263,12 @@ export default function ChatView({ currentUser, workspace }) {
         socket.off('chat:message_updated', onMessageUpdated);
         socket.off('chat:message_deleted', onMessageDeleted);
         socket.off('chat:typing', onTyping);
-        socket.off('chat:group_created', onGroupCreated);
-        socket.off('chat:group_members_added', onGroupMembersAdded);
+        socket.off('chat:group_created', fetchChannels);
+        socket.off('chat:group_members_added', fetchChannels);
         socket.emit('team:leave', { teamId });
       };
     }
   }, [teamId, activeGroupId, currentUserId, fetchChannels]);
-
-  const [isSystemBroadcastMode, setIsSystemBroadcastMode] = useState(false);
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -376,632 +277,340 @@ export default function ChatView({ currentUser, workspace }) {
     const content = inputText.trim();
     const isBroadcast = canBroadcast && isSystemBroadcastMode;
     const tempId = `msg-${Date.now()}`;
-    const userInitials = (currentUser?.name || 'Alice Vance')
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .slice(0, 2)
-      .toUpperCase();
 
     const localMsg = {
       id: tempId,
       groupId: activeGroupId,
       senderId: currentUserId,
-      senderName: currentUser?.name || 'Alice Vance',
-      senderRole: currentUser?.role || 'Team Admin',
-      senderInitials: userInitials,
+      senderName: currentUser?.name || 'User',
+      senderRole: currentUser?.role || 'Member',
       text: content,
       isSystemBroadcast: isBroadcast,
       timestamp: 'Just now',
       createdAt: new Date().toISOString(),
     };
 
-    // Optimistically add message
     setMessages((prev) => {
-      const nextMessages = {
-        ...prev,
-        [activeGroupId]: [...(prev[activeGroupId] || []), localMsg],
-      };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
+      const next = { ...prev, [activeGroupId]: [...(prev[activeGroupId] || []), localMsg] };
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
+      return next;
     });
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:send', { teamId, groupId: activeGroupId, content }, (res) => {
-        if (res?.ok && res.message?._id) {
-          const realId = res.message._id;
-          setMessages((prev) => {
-            const groupMsgs = prev[activeGroupId] || [];
-            // Replace temporary message with confirmed real message ID
-            const mapped = groupMsgs.map((m) =>
-              m.id === tempId ? { ...m, id: realId, _id: realId } : m
-            );
-            // Ensure no duplicate IDs exist
-            const seen = new Set();
-            const deduped = mapped.filter((m) => {
-              const k = m._id || m.id;
-              if (seen.has(k)) return false;
-              seen.add(k);
-              return true;
-            });
-            const next = { ...prev, [activeGroupId]: deduped };
-            if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-            return next;
-          });
-        }
-      });
-      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
-    }
 
     setInputText('');
     setIsSystemBroadcastMode(false);
+
+    const socket = getSocket();
+    if (socket && socket.connected && teamId) {
+      socket.emit('chat:send', {
+        teamId,
+        groupId: activeGroupId,
+        content,
+        isSystemBroadcast: isBroadcast,
+      });
+      socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
+    }
   };
 
   const handleInputChange = (e) => {
-    const val = e.target.value;
-    setInputText(val);
-
+    setInputText(e.target.value);
     const socket = getSocket();
-    if (socket?.connected && teamId) {
+    if (socket && socket.connected && teamId) {
       socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: true });
       if (typingTimeoutRef.current) clearTimeout(typingTimeoutRef.current);
       typingTimeoutRef.current = setTimeout(() => {
         socket.emit('chat:typing', { teamId, groupId: activeGroupId, isTyping: false });
-      }, 2500);
+      }, 1500);
     }
   };
 
-  const handleStartEdit = (msg) => {
-    setEditingMessageId(msg.id);
-    setEditingText(msg.text);
-  };
-
-  const handleCancelEdit = () => {
-    setEditingMessageId(null);
-    setEditingText('');
-  };
-
-  const handleSaveEdit = (msgId) => {
+  const handleSaveEdit = (messageId) => {
     if (!editingText.trim()) return;
-    const content = editingText.trim();
-
+    const text = editingText.trim();
     setMessages((prev) => {
-      const currentGroupMsgs = prev[activeGroupId] || [];
-      const nextGroupMsgs = currentGroupMsgs.map((m) =>
-        m.id === msgId ? { ...m, text: content, isEdited: true } : m
+      const updated = (prev[activeGroupId] || []).map((m) =>
+        m.id === messageId || m._id === messageId ? { ...m, text, isEdited: true } : m
       );
-      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
+      const next = { ...prev, [activeGroupId]: updated };
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
+      return next;
     });
-
-    const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:edit', { teamId, messageId: msgId, content });
-    }
-
     setEditingMessageId(null);
     setEditingText('');
+
+    const socket = getSocket();
+    if (socket && socket.connected && teamId) {
+      socket.emit('chat:edit', { teamId, groupId: activeGroupId, messageId, content: text });
+    }
   };
 
-  const handleDeleteMessage = (msgId) => {
+  const handleDeleteMessage = (msg) => {
     setMessages((prev) => {
-      const currentGroupMsgs = prev[activeGroupId] || [];
-      const nextGroupMsgs = currentGroupMsgs.filter((m) => m.id !== msgId && m._id !== msgId);
-      const nextMessages = { ...prev, [activeGroupId]: nextGroupMsgs };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-      return nextMessages;
+      const updated = (prev[activeGroupId] || []).filter((m) => m.id !== msg.id && m._id !== msg.id);
+      const next = { ...prev, [activeGroupId]: updated };
+      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
+      return next;
     });
 
     const socket = getSocket();
-    if (socket?.connected && teamId) {
-      socket.emit('chat:delete', { teamId, messageId: msgId });
+    if (socket && socket.connected && teamId) {
+      socket.emit('chat:delete', { teamId, groupId: activeGroupId, messageId: msg._id || msg.id });
     }
-
-    setDeletingMessage(null);
-  };
-
-  const handleOpenCreateModal = () => {
-    setNewGroupName('');
-    setNewGroupTopic('');
-    setSelectedMemberIds([currentUserId]);
-    setIsCreateModalOpen(true);
-  };
-
-  const handleToggleMember = (memberId) => {
-    if (memberId === currentUserId) return; // Creator is always included
-    setSelectedMemberIds((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
-    );
   };
 
   const handleCreateGroup = async (e) => {
     e.preventDefault();
-    if (!newGroupName.trim()) return;
-
-    const memberIds = Array.from(new Set([currentUserId, ...selectedMemberIds]));
-
+    if (!newGroupName.trim() || !teamId) return;
     try {
-      const res = await api.post(`/api/teams/${teamId}/channels`, {
-        name: newGroupName.trim(),
-        topic: newGroupTopic.trim() || 'Team collaboration channel',
-        memberIds,
-      });
-      const newGroup = {
-        ...res.data.data,
-        id: String(res.data.data._id || res.data.data.id),
-        memberIds: (res.data.data.memberIds || []).map(String),
+      const payload = {
+        name: newGroupName.trim().toLowerCase().replace(/\s+/g, '-'),
+        topic: newGroupTopic.trim() || undefined,
+        memberIds: Array.from(new Set([currentUserId, ...selectedMemberIds])),
       };
-
-      setGroups((prev) => [...prev, newGroup]);
-      setActiveGroupId(newGroup.id);
-      setIsCreateModalOpen(false);
-
-      // Broadcast to other team members via socket
-      const socket = getSocket();
-      if (socket?.connected && teamId) {
-        socket.emit('chat:group_create', { teamId, group: newGroup });
+      const res = await api.post(`/api/teams/${teamId}/channels`, payload);
+      const created = res.data?.data;
+      if (created) {
+        setGroups((prev) => [...prev, { ...created, id: String(created._id || created.id), memberIds: (created.memberIds || []).map(String) }]);
+        setActiveGroupId(String(created._id || created.id));
       }
+      setIsCreateModalOpen(false);
+      setNewGroupName('');
+      setNewGroupTopic('');
     } catch (err) {
-      const msg = err.response?.data?.message || 'Failed to create channel.';
-      console.error('Create channel error:', msg);
-      alert(msg);
+      console.error('Failed to create channel:', err);
     }
-  };
-
-  const handleOpenInviteModal = () => {
-    setInviteSelectedIds([]);
-    setIsInviteModalOpen(true);
-  };
-
-  const handleToggleInviteMember = (memberId) => {
-    setInviteSelectedIds((prev) =>
-      prev.includes(memberId) ? prev.filter((id) => id !== memberId) : [...prev, memberId]
-    );
   };
 
   const handleInviteMembers = async (e) => {
     e.preventDefault();
-    if (inviteSelectedIds.length === 0) return;
-
+    if (!inviteSelectedIds.length || !teamId) return;
     try {
-      const res = await api.post(`/api/teams/${teamId}/channels/${activeGroupId}/members`, {
-        memberIds: inviteSelectedIds,
-      });
-      const updated = {
-        ...res.data.data,
-        id: String(res.data.data._id || res.data.data.id),
-        memberIds: (res.data.data.memberIds || []).map(String),
-      };
-      setGroups((prev) => prev.map((g) => g.id === activeGroupId ? updated : g));
-      setIsInviteModalOpen(false);
-
-      const socket = getSocket();
-      if (socket?.connected && teamId) {
-        socket.emit('chat:group_members_add', {
-          teamId,
-          groupId: activeGroupId,
-          groupName: activeGroup.name,
-          addedUserIds: inviteSelectedIds,
-        });
+      const res = await api.post(`/api/teams/${teamId}/channels/${activeGroupId}/members`, { memberIds: inviteSelectedIds });
+      const updated = res.data?.data;
+      if (updated) {
+        setGroups((prev) =>
+          prev.map((g) => (g.id === activeGroupId ? { ...g, memberIds: (updated.memberIds || []).map(String) } : g))
+        );
       }
+      setIsInviteModalOpen(false);
+      setInviteSelectedIds([]);
     } catch (err) {
-      console.error('Failed to add members:', err);
-      alert(err.response?.data?.message || 'Failed to add members.');
+      console.error('Failed to invite members:', err);
     }
   };
 
-  const handleConfirmDeleteGroup = async () => {
-    if (!confirmDeleteGroup || confirmDeleteGroup.isDefault) return;
-    const targetId = confirmDeleteGroup.id;
-
+  const handleDeleteGroup = async (group) => {
+    if (!teamId || group.isDefault) return;
     try {
-      await api.delete(`/api/teams/${teamId}/channels/${targetId}`);
-      setGroups((prev) => prev.filter((g) => g.id !== targetId));
-      setMessages((prev) => {
-        const nextMessages = { ...prev };
-        delete nextMessages[targetId];
-        if (teamId) setStorage(`workspace_chat_messages_${teamId}`, nextMessages);
-        return nextMessages;
-      });
-      if (activeGroupId === targetId) {
-        const general = groups.find((g) => g.isDefault);
-        setActiveGroupId(general?.id || 'grp-general');
-      }
+      await api.delete(`/api/teams/${teamId}/channels/${group.id}`);
+      setGroups((prev) => prev.filter((g) => g.id !== group.id));
+      setActiveGroupId('grp-general');
+      setConfirmDeleteGroup(null);
     } catch (err) {
       console.error('Failed to delete channel:', err);
-      alert(err.response?.data?.message || 'Failed to delete channel.');
-    } finally {
-      setConfirmDeleteGroup(null);
     }
   };
 
-  const handleConfirmLeaveGroup = () => {
-    if (!confirmLeaveGroup || confirmLeaveGroup.isDefault) return;
-    const targetId = confirmLeaveGroup.id;
-    // Update local state (membership removal is cosmetic on the frontend — no dedicated leave endpoint)
-    setGroups((prev) =>
-      prev.map((g) =>
-        g.id === targetId
-          ? { ...g, memberIds: g.memberIds.filter((id) => id !== currentUserId) }
-          : g
-      )
-    );
-
-    if (activeGroupId === targetId) {
-      const general = groups.find((g) => g.isDefault);
-      setActiveGroupId(general?.id || 'grp-general');
+  const handleLeaveGroup = async (group) => {
+    if (!teamId || group.isDefault) return;
+    try {
+      await api.post(`/api/teams/${teamId}/channels/${group.id}/leave`);
+      setGroups((prev) =>
+        prev.map((g) => (g.id === group.id ? { ...g, memberIds: g.memberIds.filter((id) => id !== currentUserId) } : g))
+      );
+      setActiveGroupId('grp-general');
+      setConfirmLeaveGroup(null);
+    } catch (err) {
+      console.error('Failed to leave channel:', err);
     }
-    setConfirmLeaveGroup(null);
   };
 
-  // Filter channels the user has access to
   const visibleGroups = groups.filter((g) => {
-    // If admin or permitted, see all. If member, see groups where member or default.
-    const hasMembership = isTeamAdmin || hasPermission('team.read') || g.isDefault || g.memberIds.includes(currentUserId);
+    const isMember = isTeamAdmin || g.isDefault || (g.memberIds || []).includes(currentUserId);
     const matchesSearch = !searchChannel || g.name.toLowerCase().includes(searchChannel.toLowerCase());
-    return hasMembership && matchesSearch;
+    return isMember && matchesSearch;
   });
 
-  const activeGroupMembers = teamMembers.filter((m) => activeGroup?.memberIds?.includes(m.id));
-  const availableToInvite = teamMembers.filter((m) => !activeGroup?.memberIds?.includes(m.id));
+  const activeGroupMembers = teamMembers.filter((m) =>
+    activeGroup?.isDefault ? true : (activeGroup?.memberIds || []).includes(m.id) || (activeGroup?.memberIds || []).includes(m.userId)
+  );
 
   return (
-    <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-md flex flex-col flex-1 h-[calc(100vh-80px)]">
-      {/* Main Split Layout */}
-      <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-sm flex flex-1 overflow-hidden">
-        {/* Left Panel: Channels & Groups */}
-        <aside className="w-64 sm:w-72 border-r border-border-subtle bg-surface-container-low/50 flex flex-col justify-between shrink-0">
+    <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col flex-1 h-[calc(100vh-140px)]">
+      <div className="flex-1 flex flex-col md:flex-row rounded-2xl bg-surface-container-lowest border border-border-subtle shadow-sm overflow-hidden">
+        {/* Left Sidebar */}
+        <aside className="w-full md:w-64 bg-surface-container-low border-r border-border-subtle flex flex-col justify-between shrink-0">
           <div>
-            {/* Header & New Group Button */}
-            <div className="p-3.5 border-b border-border-subtle flex items-center justify-between">
-              <div className="flex items-center gap-1.5">
-                <span className="material-symbols-outlined text-[20px] text-primary">forum</span>
-                <h2 className="font-headline-md text-[15px] font-bold text-on-surface">Team Chat</h2>
+            <div className="p-3 border-b border-border-subtle flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-primary">forum</span>
+                <h2 className="font-label-bold text-on-surface">Channels</h2>
               </div>
-
-              {canCreateGroup ? (
+              {canCreateGroup && (
                 <button
                   type="button"
-                  onClick={handleOpenCreateModal}
-                  className="p-1 rounded-md text-primary hover:bg-surface-container font-label-bold text-[12px] inline-flex items-center gap-0.5 cursor-pointer"
-                  title="Create new chat group"
+                  onClick={() => setIsCreateModalOpen(true)}
+                  className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container cursor-pointer"
+                  title="Create Channel"
                 >
                   <span className="material-symbols-outlined text-[18px]">add</span>
-                  <span>Group</span>
                 </button>
-              ) : (
-                <span
-                  className="p-1 text-on-surface-variant/50 cursor-not-allowed"
-                  title="Only Team Admins or authorized members can create chat groups"
-                >
-                  <span className="material-symbols-outlined text-[18px]">lock</span>
-                </span>
               )}
             </div>
 
-            {/* Channel Search */}
-            <div className="p-2.5 border-b border-border-subtle/70">
-              <div className="relative flex items-center">
-                <span className="material-symbols-outlined absolute left-2.5 text-on-surface-variant text-[16px]">
-                  search
-                </span>
-                <input
-                  type="text"
-                  value={searchChannel}
-                  onChange={(e) => setSearchChannel(e.target.value)}
-                  placeholder="Filter groups..."
-                  className="w-full pl-8 pr-2.5 py-1 text-[12px] bg-surface-container-lowest border border-border-subtle rounded-lg text-on-surface outline-none focus:border-primary"
-                />
-              </div>
+            <div className="p-2 border-b border-border-subtle">
+              <SearchInput
+                value={searchChannel}
+                onChange={(e) => setSearchChannel(e.target.value)}
+                onClear={() => setSearchChannel('')}
+                placeholder="Search channels..."
+                className="w-full"
+              />
             </div>
 
-            {/* Channels List */}
             <div className="p-2 flex flex-col gap-1 overflow-y-auto max-h-[calc(100vh-320px)]">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant px-2.5 py-1 block">
-                Channels &amp; Groups ({visibleGroups.length})
-              </span>
-
-              {visibleGroups.map((group) => {
-                const isActive = group.id === activeGroupId;
-
+              {visibleGroups.map((g) => {
+                const isActive = g.id === activeGroupId;
                 return (
                   <button
-                    key={group.id}
+                    key={g.id}
                     type="button"
-                    onClick={() => setActiveGroupId(group.id)}
+                    onClick={() => setActiveGroupId(g.id)}
                     className={`w-full px-2.5 py-2 rounded-xl text-left flex items-center justify-between transition-colors cursor-pointer ${
-                      isActive
-                        ? 'bg-primary text-on-primary font-semibold shadow-xs'
-                        : 'text-on-surface hover:bg-surface-container-low'
+                      isActive ? 'bg-primary text-on-primary font-semibold shadow-xs' : 'text-on-surface hover:bg-surface-container'
                     }`}
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <span className={`text-[15px] font-mono ${isActive ? 'text-on-primary' : 'text-on-surface-variant'}`}>
-                        #
-                      </span>
-                      <span className="text-[13px] truncate">{group.name}</span>
+                      <span className={`text-[15px] font-mono ${isActive ? 'text-on-primary' : 'text-on-surface-variant'}`}>#</span>
+                      <span className="text-[13px] truncate">{g.name}</span>
                     </div>
-
-                    <span
-                      className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono shrink-0 ${
-                        isActive ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container-high text-on-surface-variant'
-                      }`}
-                    >
-                      {group.memberIds.length}
-                    </span>
+                    <Badge variant={isActive ? 'primary' : 'neutral'} size="sm">
+                      {(g.memberIds || []).length}
+                    </Badge>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {/* User Profile Pill at Sidebar Bottom */}
-          <div className="p-3 border-t border-border-subtle bg-surface-container-lowest flex items-center justify-between">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className="w-7 h-7 rounded-full bg-primary text-on-primary flex items-center justify-center font-bold text-[11px] shrink-0">
-                {currentUser?.initials || 'DM'}
-              </div>
-              <div className="min-w-0">
-                <span className="text-[12px] font-semibold text-on-surface block truncate">
-                  {currentUser?.name || 'Diana Morales'}
-                </span>
-                <span className="text-[10px] text-on-surface-variant block truncate">
-                  {isTeamAdmin ? '👑 Team Admin' : currentUser?.role || 'Developer'}
-                </span>
-              </div>
+          <div className="p-3 border-t border-border-subtle flex items-center gap-2">
+            <Avatar name={currentUser?.name || 'User'} size="sm" />
+            <div className="min-w-0 flex-1">
+              <span className="text-[12px] font-semibold text-on-surface block truncate">{currentUser?.name}</span>
+              <span className="text-[10px] text-on-surface-variant block truncate">{isTeamAdmin ? '👑 Team Admin' : currentUser?.role}</span>
             </div>
           </div>
         </aside>
 
-        {/* Right Panel: Active Chat Stream */}
+        {/* Right Active Chat Panel */}
         <main className="flex-1 flex flex-col justify-between bg-surface-container-lowest overflow-hidden">
-          {/* Chat Header */}
-          <div className="p-3.5 border-b border-border-subtle flex items-center justify-between bg-surface-container-lowest/90 backdrop-blur z-10 shrink-0">
+          {/* Header */}
+          <div className="p-3.5 border-b border-border-subtle flex items-center justify-between bg-surface-container-lowest shrink-0">
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h3 className="font-label-bold text-[16px] text-on-surface font-semibold flex items-center gap-1">
-                  <span className="font-mono text-on-surface-variant text-[16px]">#</span>
+                <h3 className="font-label-bold text-on-surface font-semibold flex items-center gap-1">
+                  <span className="font-mono text-on-surface-variant">#</span>
                   <span>{activeGroup.name}</span>
                 </h3>
-
-                {activeGroup.isDefault && (
-                  <span className="px-1.5 py-0.2 rounded text-[10px] bg-surface-container-high text-on-surface-variant font-medium">
-                    Default
-                  </span>
-                )}
-
-                <span
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold border ${
-                    isSocketLive
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                      : 'bg-slate-100 text-slate-600 border-slate-200'
-                  }`}
-                >
-                  <span
-                    className={`w-1.5 h-1.5 rounded-full ${
-                      isSocketLive ? 'bg-emerald-500 animate-pulse' : 'bg-slate-400'
-                    }`}
-                  ></span>
-                  <span>{isSocketLive ? 'Live WebSocket' : 'Connecting...'}</span>
-                </span>
+                {activeGroup.isDefault && <Badge variant="outline">Default</Badge>}
+                <Badge variant={isSocketLive ? 'success' : 'neutral'}>
+                  {isSocketLive ? 'Live' : 'Connecting...'}
+                </Badge>
               </div>
               <p className="text-[12px] text-on-surface-variant truncate mt-0.5">{activeGroup.topic}</p>
             </div>
 
-            {/* Member List & Admin Invite Button */}
             <div className="flex items-center gap-2 shrink-0">
-              {/* Member Avatars Stack */}
-              <div className="flex items-center -space-x-1.5 mr-1" title={`${activeGroupMembers.length} members in this channel`}>
-                {activeGroupMembers.slice(0, 4).map((member) => (
-                  <div
-                    key={member.id}
-                    className="w-6 h-6 rounded-full bg-surface-container-high border-2 border-surface-container-lowest flex items-center justify-center font-bold text-[9px] text-on-surface"
-                    title={`${member.name} (${member.teamRole})`}
-                  >
-                    {member.initials}
-                  </div>
+              <div className="flex items-center -space-x-1.5 mr-1">
+                {activeGroupMembers.slice(0, 4).map((m) => (
+                  <Avatar key={m.id} name={m.name} size="sm" />
                 ))}
-                {activeGroupMembers.length > 4 && (
-                  <div className="w-6 h-6 rounded-full bg-surface-container border-2 border-surface-container-lowest flex items-center justify-center text-[9px] text-on-surface-variant font-medium">
-                    +{activeGroupMembers.length - 4}
-                  </div>
-                )}
               </div>
 
-              {/* Invite Member Button (Admin or Permitted) */}
-              {canInviteMembers ? (
-                <button
-                  type="button"
-                  onClick={handleOpenInviteModal}
-                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-border-subtle text-[12px] font-semibold text-on-surface transition-colors cursor-pointer"
-                  title="Invite teammates to this group"
-                >
-                  <span className="material-symbols-outlined text-[16px] text-primary">person_add</span>
-                  <span>Invite</span>
-                </button>
-              ) : (
-                <div
-                  className="px-2.5 py-1 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant opacity-60 border border-border-subtle cursor-not-allowed"
-                  title="Invite restricted to team admins or authorized members"
-                >
-                  <span className="material-symbols-outlined text-[14px] align-middle mr-1">lock</span>
-                  <span>{activeGroupMembers.length} Members</span>
-                </div>
+              {canInviteMembers && (
+                <Button size="sm" variant="outline" icon="person_add" onClick={() => setIsInviteModalOpen(true)}>
+                  Invite
+                </Button>
               )}
 
-              {/* Channel Actions: Delete (Admin/Authorized) or Leave (Member) if not default channel */}
               {!activeGroup.isDefault && (
-                <>
-                  {canDeleteGroup ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmDeleteGroup(activeGroup)}
-                      className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-error-container/40 hover:text-error border border-border-subtle text-[12px] font-semibold text-on-surface-variant transition-colors cursor-pointer"
-                      title="Delete this channel and all its messages"
-                    >
-                      <span className="material-symbols-outlined text-[16px]">delete</span>
-                      <span className="hidden sm:inline">Delete Channel</span>
-                    </button>
-                  ) : (
-                    activeGroup.memberIds.includes(currentUserId) && (
-                      <button
-                        type="button"
-                        onClick={() => setConfirmLeaveGroup(activeGroup)}
-                        className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-surface-container-low hover:bg-surface-container border border-border-subtle text-[12px] font-semibold text-on-surface-variant hover:text-on-surface transition-colors cursor-pointer"
-                        title="Leave this channel"
-                      >
-                        <span className="material-symbols-outlined text-[16px]">logout</span>
-                        <span className="hidden sm:inline">Leave</span>
-                      </button>
-                    )
-                  )}
-                </>
+                canDeleteGroup ? (
+                  <Button size="sm" variant="danger" icon="delete" onClick={() => setConfirmDeleteGroup(activeGroup)}>
+                    Delete
+                  </Button>
+                ) : (
+                  (activeGroup.memberIds || []).includes(currentUserId) && (
+                    <Button size="sm" variant="outline" icon="logout" onClick={() => setConfirmLeaveGroup(activeGroup)}>
+                      Leave
+                    </Button>
+                  )
+                )
               )}
             </div>
           </div>
 
-          {/* Message Stream */}
+          {/* Messages Feed */}
           <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-4">
             {activeMessages.map((msg) => {
               const isMe = msg.senderId === currentUserId;
+              const isEditing = editingMessageId === msg.id;
 
               if (msg.isSystemBroadcast) {
                 return (
-                  <div
-                    key={msg.id}
-                    className="w-full my-2 p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-sm flex items-start gap-3 animate-in fade-in"
-                  >
-                    <div className="w-9 h-9 rounded-xl bg-amber-200 text-amber-950 flex items-center justify-center shrink-0">
-                      <span className="material-symbols-outlined text-[20px]">campaign</span>
-                    </div>
+                  <div key={msg.id} className="w-full my-2 p-3.5 rounded-2xl bg-amber-50 border-2 border-amber-300 shadow-sm flex items-start gap-3">
+                    <span className="material-symbols-outlined text-[20px] text-amber-950">campaign</span>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-2 mb-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2 py-0.5 rounded">
-                          SYSTEM BROADCAST • ALL USERS
+                        <span className="text-[10px] font-bold uppercase text-amber-900 bg-amber-200 px-2 py-0.5 rounded">
+                          SYSTEM BROADCAST
                         </span>
                         <span className="text-[11px] text-amber-800 font-mono">{msg.timestamp}</span>
                       </div>
-                      <p className="text-[14px] font-bold text-amber-950 leading-snug">{msg.text}</p>
-                      <span className="text-[11px] text-amber-800 mt-1 block">
-                        Broadcast by {msg.senderName} ({msg.senderRole})
-                      </span>
+                      <p className="text-[14px] font-bold text-amber-950">{msg.text}</p>
                     </div>
                   </div>
                 );
               }
 
-              const canEdit = isMe && !msg.isSystemBroadcast;
-              const canDelete = (isMe || canDeleteGroup || hasPermission('chat.delete')) && !msg.isSystemBroadcast;
-              const isEditing = editingMessageId === msg.id;
-
               return (
-                <div
-                  key={msg.id}
-                  className={`relative group/msg flex items-start gap-2.5 max-w-2xl ${
-                    isMe ? 'self-end flex-row-reverse' : 'self-start'
-                  }`}
-                >
-                  <div
-                    className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-[11px] shrink-0 ${
-                      isMe ? 'bg-primary text-on-primary' : 'bg-surface-container-high text-on-surface'
-                    }`}
-                  >
-                    {msg.senderInitials}
-                  </div>
-
+                <div key={msg.id} className={`relative group/msg flex items-start gap-2.5 max-w-2xl ${isMe ? 'self-end flex-row-reverse' : 'self-start'}`}>
+                  <Avatar name={msg.senderName} size="sm" />
                   <div className={`flex flex-col ${isMe ? 'items-end' : 'items-start'} max-w-lg`}>
-                    <div className="flex items-center gap-1.5 mb-1">
-                      <span className="font-label-bold text-[12px] text-on-surface">
-                        {msg.senderName} {isMe && '(You)'}
-                      </span>
+                    <div className="flex items-center gap-1.5 mb-1 text-[12px]">
+                      <span className="font-label-bold text-on-surface">{msg.senderName}</span>
                       <span className="text-[10px] text-on-surface-variant font-mono">{msg.timestamp}</span>
-                      {msg.isEdited && (
-                        <span className="text-[10px] text-on-surface-variant/70 italic font-mono">
-                          (edited)
-                        </span>
-                      )}
+                      {msg.isEdited && <span className="text-[10px] text-on-surface-variant/70 italic">(edited)</span>}
                     </div>
 
                     {isEditing ? (
-                      <div className="w-full min-w-70 p-2.5 rounded-xl bg-surface-container-lowest border-2 border-primary shadow-md flex flex-col gap-2 animate-in zoom-in-95 duration-100">
+                      <div className="w-full min-w-70 p-2.5 rounded-xl bg-surface-container-lowest border-2 border-primary shadow-md flex flex-col gap-2">
                         <textarea
                           value={editingText}
                           onChange={(e) => setEditingText(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              handleSaveEdit(msg.id);
-                            } else if (e.key === 'Escape') {
-                              handleCancelEdit();
-                            }
-                          }}
                           rows={2}
                           className="w-full bg-transparent text-[13px] text-on-surface outline-none resize-none"
                           autoFocus
                         />
-                        <div className="flex items-center justify-between text-[11px] text-on-surface-variant pt-1 border-t border-border-subtle">
-                          <span className="text-[10px]">
-                            esc to <button type="button" onClick={handleCancelEdit} className="text-primary hover:underline">cancel</button> • enter to <button type="button" onClick={() => handleSaveEdit(msg.id)} className="text-primary hover:underline font-bold">save</button>
-                          </span>
-                          <div className="flex items-center gap-1.5">
-                            <button
-                              type="button"
-                              onClick={handleCancelEdit}
-                              className="px-2 py-0.5 rounded border border-border-subtle hover:bg-surface-container text-on-surface text-[11px] font-medium cursor-pointer"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSaveEdit(msg.id)}
-                              className="px-2.5 py-0.5 rounded bg-primary text-on-primary hover:opacity-90 text-[11px] font-bold cursor-pointer shadow-xs"
-                            >
-                              Save
-                            </button>
-                          </div>
+                        <div className="flex items-center justify-end gap-1.5">
+                          <Button size="sm" variant="outline" onClick={() => setEditingMessageId(null)}>Cancel</Button>
+                          <Button size="sm" onClick={() => handleSaveEdit(msg.id)}>Save</Button>
                         </div>
                       </div>
                     ) : (
                       <div className="relative">
-                        <div
-                          className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${
-                            isMe
-                              ? 'bg-primary text-on-primary rounded-tr-xs'
-                              : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'
-                          }`}
-                        >
+                        <div className={`px-3.5 py-2.5 rounded-2xl text-[13px] leading-relaxed shadow-2xs ${isMe ? 'bg-primary text-on-primary rounded-tr-xs' : 'bg-surface-container-low text-on-surface border border-border-subtle rounded-tl-xs'}`}>
                           {msg.text}
                         </div>
 
-                        {/* Hover Action Menu */}
-                        {(canEdit || canDelete) && (
-                          <div
-                            className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-opacity bg-surface-container-lowest border border-border-subtle rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 z-10 ${
-                              isMe ? 'right-full mr-1.5' : 'left-full ml-1.5'
-                            }`}
-                          >
-                            {canEdit && (
-                              <button
-                                type="button"
-                                onClick={() => handleStartEdit(msg)}
-                                className="p-1 rounded text-on-surface-variant hover:text-primary hover:bg-surface-container transition-colors cursor-pointer"
-                                title="Edit message"
-                              >
+                        {(isMe || isTeamAdmin) && (
+                          <div className={`absolute top-0 opacity-0 group-hover/msg:opacity-100 transition-opacity bg-surface-container-lowest border border-border-subtle rounded-lg shadow-sm flex items-center p-0.5 gap-0.5 z-10 ${isMe ? 'right-full mr-1.5' : 'left-full ml-1.5'}`}>
+                            {isMe && (
+                              <button type="button" onClick={() => { setEditingMessageId(msg.id); setEditingText(msg.text); }} className="p-1 text-on-surface-variant hover:text-primary">
                                 <span className="material-symbols-outlined text-[15px]">edit</span>
                               </button>
                             )}
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={() => setDeletingMessage(msg)}
-                                className="p-1 rounded text-on-surface-variant hover:text-error hover:bg-error-container/30 transition-colors cursor-pointer"
-                                title={isMe ? 'Delete message' : 'Delete message (Team Admin)'}
-                              >
-                                <span className="material-symbols-outlined text-[15px]">delete</span>
-                              </button>
-                            )}
+                            <button type="button" onClick={() => handleDeleteMessage(msg)} className="p-1 text-on-surface-variant hover:text-error">
+                              <span className="material-symbols-outlined text-[15px]">delete</span>
+                            </button>
                           </div>
                         )}
                       </div>
@@ -1013,345 +622,139 @@ export default function ChatView({ currentUser, workspace }) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Typing Indicator */}
+          {/* Typing */}
           {Object.keys(typingUsers).length > 0 && (
-            <div className="px-4 py-1 flex items-center gap-1.5 text-[11px] text-primary font-medium animate-pulse bg-primary/5 border-t border-border-subtle/50">
-              <span className="w-1.5 h-1.5 rounded-full bg-primary animate-ping"></span>
-              <span>
-                {Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length === 1 ? 'is' : 'are'} typing...
-              </span>
+            <div className="px-4 py-1 text-[11px] text-primary font-medium animate-pulse bg-primary/5">
+              {Object.values(typingUsers).join(', ')} typing...
             </div>
           )}
 
-          {/* Message Input Bar */}
+          {/* Input */}
           <form onSubmit={handleSendMessage} className="p-3 border-t border-border-subtle bg-surface-container-lowest shrink-0">
-            {isSystemBroadcastMode && (
-              <div className="mb-2 px-3 py-1 rounded-lg bg-amber-100 border border-amber-300 flex items-center justify-between text-[11px] text-amber-900 font-semibold animate-in fade-in">
-                <span className="flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[14px]">campaign</span>
-                  <span>BROADCASTING SYSTEM MESSAGE TO ALL USERS ON THE GO</span>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsSystemBroadcastMode(false)}
-                  className="text-amber-800 hover:text-amber-950 underline cursor-pointer"
-                >
-                  Cancel
-                </button>
-              </div>
-            )}
-
-            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 transition-colors ${
-              isSystemBroadcastMode
-                ? 'bg-amber-50 border-2 border-amber-400'
-                : 'bg-surface-container-low border border-border-subtle focus-within:border-primary focus-within:bg-surface-container-lowest'
-            }`}>
+            <div className={`flex items-center gap-2 rounded-xl px-3 py-1.5 border ${isSystemBroadcastMode ? 'bg-amber-50 border-amber-400' : 'bg-surface-container-low border-border-subtle'}`}>
               <input
                 type="text"
                 value={inputText}
                 onChange={handleInputChange}
-                placeholder={
-                  isSystemBroadcastMode
-                    ? 'Type system broadcast to all users (e.g. "Today is deployment day hope everyone is ready")...'
-                    : `Message #${activeGroup.name}...`
-                }
-                className="flex-1 bg-transparent text-[13px] text-on-surface outline-none placeholder:text-on-surface-variant"
+                placeholder={isSystemBroadcastMode ? 'Type system broadcast...' : `Message #${activeGroup.name}...`}
+                className="flex-1 bg-transparent text-[13px] text-on-surface outline-none"
               />
 
               {canBroadcast && (
                 <button
                   type="button"
                   onClick={() => setIsSystemBroadcastMode((prev) => !prev)}
-                  className={`p-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 transition-colors cursor-pointer shrink-0 ${
-                    isSystemBroadcastMode
-                      ? 'bg-amber-300 text-amber-950 shadow-xs'
-                      : 'text-on-surface-variant hover:text-primary hover:bg-surface-container'
-                  }`}
-                  title={isSystemBroadcastMode ? 'Exit broadcast mode' : 'Broadcast system message to all users on the go'}
+                  className={`p-1.5 rounded-lg text-[12px] font-semibold flex items-center gap-1 cursor-pointer ${isSystemBroadcastMode ? 'bg-amber-300 text-amber-950' : 'text-on-surface-variant hover:text-primary'}`}
                 >
                   <span className="material-symbols-outlined text-[18px]">campaign</span>
-                  <span className="hidden sm:inline">Broadcast</span>
                 </button>
               )}
 
-              <button
-                type="submit"
-                disabled={!inputText.trim()}
-                className={`p-1.5 rounded-lg text-on-primary hover:opacity-90 disabled:opacity-40 transition-opacity cursor-pointer flex items-center justify-center shrink-0 ${
-                  isSystemBroadcastMode ? 'bg-amber-600 hover:bg-amber-700' : 'bg-primary'
-                }`}
-                title="Send Message (Enter)"
-              >
-                <span className="material-symbols-outlined text-[18px]">send</span>
-              </button>
+              <Button size="sm" type="submit" disabled={!inputText.trim()} icon="send" />
             </div>
           </form>
         </main>
       </div>
 
-      {/* Modal 1: Create New Chat Group (Team Admin Only) */}
-      {isCreateModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
-          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-md border-b border-border-subtle flex items-center justify-between">
-              <div>
-                <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
-                  Create Chat Group
-                </h3>
-                <p className="text-[12px] text-on-surface-variant">
-                  Create a dedicated channel and invite members from Acme Engineering
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsCreateModalOpen(false)}
-                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateGroup} className="p-md flex flex-col gap-3.5">
-              {/* Group Name */}
-              <div>
-                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
-                  Channel Name *
-                </label>
-                <div className="relative flex items-center">
-                  <span className="absolute left-3 text-on-surface-variant font-mono text-[14px]">#</span>
+      {/* Create Channel Modal */}
+      <Modal isOpen={isCreateModalOpen} onClose={() => setIsCreateModalOpen(false)} title="Create Channel" subtitle="Create a dedicated channel for team communication">
+        <form onSubmit={handleCreateGroup} className="flex flex-col gap-4">
+          <div>
+            <label className="text-label-sm font-label-bold text-on-surface block mb-1">Channel Name *</label>
+            <input
+              type="text"
+              required
+              placeholder="e.g. api-architecture"
+              value={newGroupName}
+              onChange={(e) => setNewGroupName(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-label-sm font-label-bold text-on-surface block mb-1">Topic</label>
+            <input
+              type="text"
+              placeholder="What is this channel for?"
+              value={newGroupTopic}
+              onChange={(e) => setNewGroupTopic(e.target.value)}
+              className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none"
+            />
+          </div>
+          <div>
+            <label className="text-label-sm font-label-bold text-on-surface block mb-1">Select Members</label>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {teamMembers.map((m) => (
+                <label key={m.id} className="flex items-center gap-2 p-1.5 rounded hover:bg-surface-container cursor-pointer">
                   <input
-                    type="text"
-                    required
-                    placeholder="e.g. api-architecture, client-onboarding"
-                    value={newGroupName}
-                    onChange={(e) => setNewGroupName(e.target.value)}
-                    className="w-full pl-8 pr-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
+                    type="checkbox"
+                    checked={selectedMemberIds.includes(m.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedMemberIds((prev) => [...prev, m.id]);
+                      else setSelectedMemberIds((prev) => prev.filter((id) => id !== m.id));
+                    }}
+                    className="rounded text-primary"
                   />
-                </div>
-              </div>
-
-              {/* Topic / Description */}
-              <div>
-                <label className="text-label-sm font-label-bold text-on-surface block mb-1">
-                  Topic &amp; Purpose
+                  <Avatar name={m.name} size="sm" />
+                  <span className="text-body-sm text-on-surface">{m.name}</span>
                 </label>
-                <input
-                  type="text"
-                  placeholder="What is this channel for?"
-                  value={newGroupTopic}
-                  onChange={(e) => setNewGroupTopic(e.target.value)}
-                  className="w-full px-3 py-2 bg-surface-container-low border border-border-subtle rounded-lg text-body-sm text-on-surface outline-none focus:border-primary"
-                />
-              </div>
-
-              {/* Invite Members Multi-select Checklist */}
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-label-sm font-label-bold text-on-surface">
-                    Invite Team Members ({selectedMemberIds.length} selected)
-                  </label>
-                  <span className="text-[11px] text-primary font-medium">Team Admin privilege</span>
-                </div>
-
-                <div className="max-h-48 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
-                  {teamMembers.map((member) => {
-                    const isSelected = selectedMemberIds.includes(member.id);
-                    const isCreator = member.id === currentUserId;
-
-                    return (
-                      <div
-                        key={member.id}
-                        onClick={() => !isCreator && handleToggleMember(member.id)}
-                        className={`p-2.5 flex items-center justify-between transition-colors ${
-                          isCreator ? 'bg-surface-container/60 cursor-default' : 'hover:bg-surface-container cursor-pointer'
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            disabled={isCreator}
-                            onChange={() => !isCreator && handleToggleMember(member.id)}
-                            className="w-4 h-4 rounded text-primary accent-primary cursor-pointer"
-                          />
-                          <div className="w-7 h-7 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface shrink-0">
-                            {member.initials}
-                          </div>
-                          <div>
-                            <span className="text-[12px] font-semibold text-on-surface block">
-                              {member.name} {isCreator && '(You - Admin)'}
-                            </span>
-                            <span className="text-[10px] text-on-surface-variant block">
-                              {member.role} • {member.teamRole}
-                            </span>
-                          </div>
-                        </div>
-
-                        {isSelected && (
-                          <span className="text-[10px] font-medium text-primary px-2 py-0.5 rounded-full bg-primary/10">
-                            Invited
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCreateModalOpen(false)}
-                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer"
-                >
-                  Create &amp; Invite
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Modal 2: Invite Teammates to Existing Channel (Team Admin Only) */}
-      {isInviteModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
-          <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95 duration-150">
-            <div className="p-md border-b border-border-subtle flex items-center justify-between">
-              <div>
-                <h3 className="font-headline-md text-headline-md text-on-surface font-semibold">
-                  Invite to #{activeGroup.name}
-                </h3>
-                <p className="text-[12px] text-on-surface-variant">
-                  Add available team members to this conversation
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsInviteModalOpen(false)}
-                className="p-1 rounded-lg text-on-surface-variant hover:text-on-surface hover:bg-surface-container transition-colors cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
+              ))}
             </div>
-
-            <form onSubmit={handleInviteMembers} className="p-md flex flex-col gap-3.5">
-              {availableToInvite.length === 0 ? (
-                <div className="py-6 text-center text-on-surface-variant text-[13px]">
-                  All team members have already been added to #{activeGroup.name}!
-                </div>
-              ) : (
-                <div className="max-h-60 overflow-y-auto border border-border-subtle rounded-xl divide-y divide-border-subtle bg-surface-container-low">
-                  {availableToInvite.map((member) => {
-                    const isChecked = inviteSelectedIds.includes(member.id);
-
-                    return (
-                      <div
-                        key={member.id}
-                        onClick={() => handleToggleInviteMember(member.id)}
-                        className="p-2.5 flex items-center justify-between hover:bg-surface-container transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-2.5">
-                          <input
-                            type="checkbox"
-                            checked={isChecked}
-                            onChange={() => handleToggleInviteMember(member.id)}
-                            className="w-4 h-4 rounded text-primary accent-primary cursor-pointer"
-                          />
-                          <div className="w-7 h-7 rounded-full bg-surface-container-high flex items-center justify-center text-[10px] font-bold text-on-surface shrink-0">
-                            {member.initials}
-                          </div>
-                          <div>
-                            <span className="text-[12px] font-semibold text-on-surface block">
-                              {member.name}
-                            </span>
-                            <span className="text-[10px] text-on-surface-variant block">
-                              {member.role}
-                            </span>
-                          </div>
-                        </div>
-
-                        {isChecked && (
-                          <span className="text-[10px] font-medium text-primary px-2 py-0.5 rounded-full bg-primary/10">
-                            Selected
-                          </span>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              {/* Modal Footer */}
-              <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsInviteModalOpen(false)}
-                  className="px-md py-1.5 rounded-lg border border-border-subtle text-on-surface hover:bg-surface-container text-label-sm font-label-bold transition-colors cursor-pointer"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={inviteSelectedIds.length === 0}
-                  className="px-md py-1.5 rounded-lg bg-primary text-on-primary hover:opacity-90 text-label-sm font-label-bold transition-opacity shadow-sm cursor-pointer disabled:opacity-40"
-                >
-                  Add Members ({inviteSelectedIds.length})
-                </button>
-              </div>
-            </form>
           </div>
-        </div>
-      )}
-
-      {/* Delete Message Confirmation Modal */}
-      <ConfirmModal
-        isOpen={Boolean(deletingMessage)}
-        title="Delete Message?"
-        description="Are you sure you want to delete this message? This action cannot be undone."
-        confirmText="Yes, Delete"
-        cancelText="Cancel"
-        confirmVariant="danger"
-        icon="delete"
-        onConfirm={() => handleDeleteMessage(deletingMessage.id)}
-        onClose={() => setDeletingMessage(null)}
-      >
-        {deletingMessage && (
-          <div className="p-2 rounded-lg bg-surface-container-low text-[12px] text-on-surface-variant italic truncate max-w-60 mt-1">
-            "{deletingMessage.text}"
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
+            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>Cancel</Button>
+            <Button type="submit">Create Channel</Button>
           </div>
-        )}
-      </ConfirmModal>
+        </form>
+      </Modal>
 
-      {/* Delete Channel Confirmation Modal */}
+      {/* Invite Modal */}
+      <Modal isOpen={isInviteModalOpen} onClose={() => setIsInviteModalOpen(false)} title="Invite to Channel" subtitle={`Add members to #${activeGroup.name}`}>
+        <form onSubmit={handleInviteMembers} className="flex flex-col gap-4">
+          <div className="max-h-60 overflow-y-auto space-y-1">
+            {teamMembers.map((m) => (
+              <label key={m.id} className="flex items-center gap-2 p-2 rounded hover:bg-surface-container cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={inviteSelectedIds.includes(m.id)}
+                  onChange={(e) => {
+                    if (e.target.checked) setInviteSelectedIds((prev) => [...prev, m.id]);
+                    else setInviteSelectedIds((prev) => prev.filter((id) => id !== m.id));
+                  }}
+                  className="rounded text-primary"
+                />
+                <Avatar name={m.name} size="sm" />
+                <span className="text-body-sm text-on-surface">{m.name}</span>
+              </label>
+            ))}
+          </div>
+          <div className="flex justify-end gap-2 pt-2 border-t border-border-subtle">
+            <Button variant="outline" onClick={() => setIsInviteModalOpen(false)}>Cancel</Button>
+            <Button type="submit" disabled={!inviteSelectedIds.length}>Add Selected</Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Confirm Delete Channel */}
       <ConfirmModal
         isOpen={Boolean(confirmDeleteGroup)}
         title={`Delete #${confirmDeleteGroup?.name}?`}
-        description="Are you sure you want to delete this channel? All chat history and messages in this channel will be permanently removed for all members."
+        description="Are you sure you want to delete this channel and its messages?"
         confirmText="Delete Channel"
-        cancelText="Cancel"
         confirmVariant="danger"
-        icon="delete_forever"
-        onConfirm={handleConfirmDeleteGroup}
+        icon="delete"
+        onConfirm={() => handleDeleteGroup(confirmDeleteGroup)}
         onClose={() => setConfirmDeleteGroup(null)}
       />
 
-      {/* Leave Channel Confirmation Modal */}
+      {/* Confirm Leave Channel */}
       <ConfirmModal
         isOpen={Boolean(confirmLeaveGroup)}
         title={`Leave #${confirmLeaveGroup?.name}?`}
-        description="You will no longer receive updates or have access to messages in this channel unless invited back by an admin."
+        description="Are you sure you want to leave this channel?"
         confirmText="Leave Channel"
-        cancelText="Cancel"
-        confirmVariant="primary"
+        confirmVariant="warning"
         icon="logout"
-        onConfirm={handleConfirmLeaveGroup}
+        onConfirm={() => handleLeaveGroup(confirmLeaveGroup)}
         onClose={() => setConfirmLeaveGroup(null)}
       />
     </div>

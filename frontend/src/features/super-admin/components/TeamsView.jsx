@@ -173,7 +173,7 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   };
 
   // Modal Handlers
-  const handleOpenCreateModal = () => {
+  const handleOpenCreateModal = useCallback(() => {
     setEditingTeam(null);
     setModalTab('general');
     setTeamForm({ name: '', description: '', icon: 'engineering', status: 'ACTIVE' });
@@ -185,13 +185,13 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     setCreateSelectedRoles(new Set(availableRoles.map((r) => r.name || r.id)));
     setIsCreateModalOpen(true);
     fetchActivePlatformUsers();
-  };
+  }, [availableRoles]);
 
   useEffect(() => {
     if (createTrigger && createTrigger > 0) {
       handleOpenCreateModal();
     }
-  }, [createTrigger]);
+  }, [createTrigger, handleOpenCreateModal]);
 
   const handleOpenEditModal = (team) => {
     setEditingTeam(team);
