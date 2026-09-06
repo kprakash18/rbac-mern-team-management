@@ -1,10 +1,15 @@
 export default function ChangeWorkspaceModal({
   data,
+  workspaces = [],
   onClose,
   onChangeWorkspace,
   onConfirm,
 }) {
   if (!data) return null;
+
+  const workspaceList = workspaces.length > 0
+    ? workspaces.map((w) => (typeof w === 'string' ? w : w.name))
+    : [data.currentWorkspace || 'Default Workspace'];
 
   return (
     <div className="fixed inset-0 z-[1050] flex items-center justify-center p-md" id="modal-edit-workspace">
@@ -54,11 +59,11 @@ export default function ChangeWorkspaceModal({
               onChange={(e) => onChangeWorkspace(e.target.value)}
               className="w-full h-10 px-sm bg-surface-container-low rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none cursor-pointer"
             >
-              <option value="Engineering Core">Engineering Core</option>
-              <option value="Finance Secure">Finance Secure</option>
-              <option value="Marketing Global">Marketing Global</option>
-              <option value="Research & Dev">Research & Dev</option>
-              <option value="Global Platform">Global Platform</option>
+              {workspaceList.map((ws) => (
+                <option key={ws} value={ws}>
+                  {ws}
+                </option>
+              ))}
             </select>
           </div>
 

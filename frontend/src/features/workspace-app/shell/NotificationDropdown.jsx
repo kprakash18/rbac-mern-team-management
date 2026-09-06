@@ -130,7 +130,7 @@ function resolveTargetTab(notif) {
 }
 
 export default function NotificationDropdown({ currentUser, onSelectTab }) {
-  const userId = currentUser?._id || currentUser?.id || 'usr-current';
+  const userId = currentUser?._id || currentUser?.id || '';
   const [isOpen, setIsOpen] = useState(false);
   const [filterTab, setFilterTab] = useState('all');
   const [unreadCount, setUnreadCount] = useState(0);
