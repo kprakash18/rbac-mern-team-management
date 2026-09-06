@@ -9,10 +9,11 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   const [fullName, setFullName] = useState('');
   const [email, setEmail] = useState('');
   const [teams, setTeams] = useState([]);
+  const [roles, setRoles] = useState([]);
   const [assignments, setAssignments] = useState([
     {
       workspace: DEFAULT_WORKSPACE,
-      role: WORKSPACE_ROLES_MAP[DEFAULT_WORKSPACE][0],
+      role: 'Developer',
       isTeamAdmin: false,
     },
   ]);
@@ -20,19 +21,32 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
 
   useEffect(() => {
     if (!isOpen) return;
-    api.get('/api/teams')
-      .then((res) => {
-        const list = res.data?.data?.teams || res.data?.data || [];
+    Promise.allSettled([
+      api.get('/api/teams?status=all'),
+      api.get('/api/roles?status=all'),
+    ]).then(([teamsRes, rolesRes]) => {
+      if (teamsRes.status === 'fulfilled') {
+        const list = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
         if (Array.isArray(list) && list.length > 0) {
           setTeams(list);
         }
-      })
-      .catch(() => {});
+      }
+      if (rolesRes.status === 'fulfilled') {
+        const roleList = rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || [];
+        if (Array.isArray(roleList) && roleList.length > 0) {
+          setRoles(roleList);
+        }
+      }
+    });
   }, [isOpen]);
 
   const workspaceOptions = teams.length > 0
     ? Array.from(new Set([...teams.map((t) => t.name), ...Object.keys(WORKSPACE_ROLES_MAP)]))
     : Object.keys(WORKSPACE_ROLES_MAP);
+
+  const availableRoleNames = roles.length > 0
+    ? Array.from(new Set(roles.map((r) => r.name)))
+    : ['Admin', 'Developer', 'Viewer', 'Editor', 'Manager'];
 
   const resetForm = () => {
     setFullName('');
@@ -207,7 +221,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
 
             <div className="flex flex-col gap-md">
               {assignments.map((item, index) => {
-                const availableRoles = WORKSPACE_ROLES_MAP[item.workspace] || ['Viewer'];
                 return (
                   <div
                     key={index}
@@ -246,7 +259,10 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
                             onChange={(e) => handleRoleChange(index, e.target.value)}
                             className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
                           >
-                            {availableRoles.map((r) => (
+                            {!availableRoleNames.includes(item.role) && item.role && (
+                              <option value={item.role}>{item.role}</option>
+                            )}
+                            {availableRoleNames.map((r) => (
                               <option key={r} value={r}>
                                 {r}
                               </option>

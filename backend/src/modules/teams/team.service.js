@@ -197,6 +197,7 @@ export async function listTeams({
       }
       memberList.push({
         id: m.userId._id,
+        membershipId: m._id,
         name: m.userId.name,
         email: m.userId.email,
         roles: rolesForMem,
