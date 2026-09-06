@@ -160,6 +160,9 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     roleIds: invitation.roleIds,
     status: invitation.status,
     expiresAt: invitation.expiresAt,
+    rawToken,
+    token: rawToken,
+    inviteLink: `${env.clientUrl}/invite?token=${rawToken}`,
   };
 }
 
