@@ -22,9 +22,30 @@ import auditRouter, { globalAuditRouter } from "./modules/audit/audit.routes.js"
 import notificationRouter from "./modules/notifications/notification.routes.js";
 import chatChannelRouter from "./modules/chat/chat-channel.routes.js";
 
+import { env } from "./config/env.js";
+
 const app = express();
 
-app.use(cors());
+const allowedOrigins = [
+  env.clientUrl,
+  "http://localhost:5173",
+  "http://localhost:3000",
+  "http://127.0.0.1:5173",
+].filter(Boolean);
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      if (!origin || allowedOrigins.includes(origin) || env.nodeEnv === "development") {
+        return callback(null, true);
+      }
+      return callback(new Error(`CORS policy violation: origin ${origin} not allowed`));
+    },
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-team-id"],
+  })
+);
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 

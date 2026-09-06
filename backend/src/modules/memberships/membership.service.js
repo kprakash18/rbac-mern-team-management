@@ -73,6 +73,10 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
           { assignedBy: addedBy || userId, assignedAt: new Date(), revokedAt: null },
           { upsert: true }
         );
+        await Membership.updateOne(
+          { _id: existingMembership._id },
+          { $addToSet: { roleIds: targetRole._id } }
+        );
       }
 
       emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
@@ -106,6 +110,10 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
       assignedBy: addedBy || userId,
       assignedAt: new Date(),
     });
+    await Membership.updateOne(
+      { _id: newMembership._id },
+      { $addToSet: { roleIds: targetRole._id } }
+    );
   }
 
   emitToUser(userId, "access:changed", { teamId, reason: "MEMBERSHIP_ADDED" });
