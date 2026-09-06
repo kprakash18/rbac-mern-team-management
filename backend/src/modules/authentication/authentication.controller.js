@@ -54,7 +54,10 @@ export async function changePasswordController(req, res, next) {
     return res.status(200).json({
       success: true,
       message: result.message,
-      data: { user: result.user },
+      data: {
+        user: result.user,
+        accessToken: result.accessToken,
+      },
     });
   } catch (error) {
     next(error);

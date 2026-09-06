@@ -62,31 +62,39 @@ export async function updateUser(userId, data = {}, actorId = null) {
   }
 
   const isActorSuperAdmin = actorId ? await isSuperAdmin(actorId) : false;
+  const isSelf = actorId && String(actorId) === String(userId);
+
+  if (!isActorSuperAdmin && !isSelf) {
+    throw new ForbiddenError("You are not authorized to update this user account.", "UNAUTHORIZED_USER_UPDATE");
+  }
 
   // 1. Update basic fields if provided
   if (data.name && typeof data.name === "string") {
     user.name = data.name.trim();
   }
 
-  if (data.accountStatus || data.status || data.statusType) {
-    const rawStatus = (data.accountStatus || data.status || data.statusType).toUpperCase();
-    if (["ACTIVE", "SUSPENDED", "DISABLED", "INVITED"].includes(rawStatus)) {
-      user.accountStatus = rawStatus;
+  // Privileged fields (Super Admin only)
+  if (isActorSuperAdmin) {
+    if (data.accountStatus || data.status || data.statusType) {
+      const rawStatus = (data.accountStatus || data.status || data.statusType).toUpperCase();
+      if (["ACTIVE", "SUSPENDED", "DISABLED", "INVITED"].includes(rawStatus)) {
+        user.accountStatus = rawStatus;
+      }
     }
-  }
 
-  if (typeof data.mustChangePassword === "boolean") {
-    user.mustChangePassword = data.mustChangePassword;
-  }
+    if (typeof data.mustChangePassword === "boolean") {
+      user.mustChangePassword = data.mustChangePassword;
+    }
 
-  if (data.lastLogoutAt) {
-    user.lastLogoutAt = new Date(data.lastLogoutAt);
+    if (data.lastLogoutAt) {
+      user.lastLogoutAt = new Date(data.lastLogoutAt);
+    }
   }
 
   await user.save();
 
-  // 2. Update Workspaces / Roles if provided
-  if (Array.isArray(data.workspaces)) {
+  // 2. Update Workspaces / Roles if provided (Super Admin only)
+  if (isActorSuperAdmin && Array.isArray(data.workspaces)) {
     const targetTeamIds = new Set();
 
     for (const ws of data.workspaces) {

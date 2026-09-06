@@ -6,9 +6,10 @@ const LOGO_URL =
   'https://lh3.googleusercontent.com/aida/AEtjO1WLIu2LRhEp60WPBOijAnaRzKBTf6_iGJW5f7YjKdP4j5AkV5ph5c6SGH5kSkBQrLEUAXS45mO8ubfByXHXeO2diwg7HJFE0G6blLrN4_AlWrhkJpz4_jJxaoy-1w8GLSLpQwmST0KeRyihgg8Q4-3jjEXkmZ7l8lZhc8B64Ytsk6GMdVwbgnBRFJ1gE1Tkc8o3qiLad7T0iBiWGW8XkaRqXcMiRlf3VcvAE-oAlih3NTl3Hsb1MpJDCGZi';
 
 export default function ForceChangePasswordPage({ user, onPasswordChanged, onCancel }) {
-  const currentPassword = user?.initialPassword || 'Password123!';
+  const [currentPassword, setCurrentPassword] = useState(user?.initialPassword || '');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
@@ -36,8 +37,18 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
     if (loading) return;
     setErrorMessage('');
 
+    if (!currentPassword.trim()) {
+      setErrorMessage('Current password is required.');
+      return;
+    }
+
     if (!newPassword || newPassword.length < 8) {
       setErrorMessage('Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (currentPassword === newPassword) {
+      setErrorMessage('New password must be different from current password.');
       return;
     }
 
@@ -49,14 +60,16 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
     setLoading(true);
     try {
       const response = await api.post('/api/auth/change-password', {
-        currentPassword: currentPassword || user?.initialPassword || 'Password123!',
+        currentPassword: currentPassword.trim(),
         newPassword,
       });
 
       const returnedUser = response.data?.data?.user;
+      const newAccessToken = response.data?.data?.accessToken || response.data?.accessToken;
       const updatedUser = {
         ...user,
         ...(returnedUser || {}),
+        token: newAccessToken || user?.token,
         mustChangePassword: false,
         accountStatus: 'ACTIVE',
       };
@@ -152,6 +165,43 @@ export default function ForceChangePasswordPage({ user, onPasswordChanged, onCan
 
             {/* Form Section */}
             <form className="flex flex-col gap-stack-lg" onSubmit={handleSubmit}>
+              {/* Current / Temporary Password */}
+              <div className="flex flex-col gap-stack-sm">
+                <label
+                  className="font-label-md text-label-md text-on-surface"
+                  htmlFor="current-password"
+                  style={{ color: 'rgb(71, 85, 105)' }}
+                >
+                  Current / Temporary Password
+                </label>
+                <div className="relative w-full">
+                  <input
+                    className="w-full h-10 px-3 bg-surface-container-lowest border border-outline-variant rounded-md font-body-md text-on-surface placeholder:text-outline focus:border-primary focus:ring-2 focus:ring-primary focus:outline-none transition-colors pr-10 disabled:opacity-60"
+                    id="current-password"
+                    placeholder="Enter current or initial password"
+                    type={showCurrentPassword ? 'text' : 'password'}
+                    value={currentPassword}
+                    disabled={loading}
+                    onChange={(e) => {
+                      setCurrentPassword(e.target.value);
+                      if (errorMessage) setErrorMessage('');
+                    }}
+                    required
+                  />
+                  <button
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center text-outline-variant hover:text-on-surface transition-colors cursor-pointer disabled:opacity-50"
+                    onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                    type="button"
+                    disabled={loading}
+                    aria-label="Toggle current password visibility"
+                  >
+                    <span className="material-symbols-outlined text-[20px]" id="icon-current-password">
+                      {showCurrentPassword ? 'visibility' : 'visibility_off'}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
               {/* New Password */}
               <div className="flex flex-col gap-stack-sm">
                 <label
