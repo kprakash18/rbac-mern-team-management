@@ -260,11 +260,9 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     <div className="bg-surface font-body-base text-on-surface antialiased flex min-h-screen w-full overflow-x-hidden">
       {/* Sidebar with Toggle */}
       <WorkspaceAppSidebar
-        workspace={currentWorkspace}
         currentUser={user}
         activeView={activeView}
         onSelectView={setActiveView}
-        onOpenTeamSettings={() => setIsTeamSettingsOpen(true)}
         unreadAnnouncementsCount={unreadAnnouncementsCount}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}

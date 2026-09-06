@@ -164,7 +164,6 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
   user.hashedPassword = await hashPassword(newPassword);
   user.mustChangePassword = false;
   user.passwordChangedAt = new Date();
-  user.lastLogoutAt = new Date();
 
   // If user was INVITED, transition to ACTIVE upon first password change
   if (user.accountStatus === "INVITED") {
@@ -173,8 +172,11 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
 
   await user.save();
 
-  // Invalidate all active WebSockets across all tabs
-  disconnectUserSockets(userId);
+  // Generate a fresh JWT access token
+  const tokenPayload = {
+    sub: user._id.toString(),
+  };
+  const accessToken = signAccessToken(tokenPayload);
 
   logAuditEvent({
     actorId: user._id,
@@ -184,9 +186,9 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
     result: "SUCCESS",
   });
 
-
   return {
     message: "Password changed successfully.",
+    accessToken,
     user: {
       id: user._id,
       name: user.name,
