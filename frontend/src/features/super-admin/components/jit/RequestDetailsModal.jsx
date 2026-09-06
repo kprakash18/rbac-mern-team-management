@@ -8,13 +8,11 @@ export default function RequestDetailsModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-md" id="modal-request-details">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div
         className="relative bg-card-bg rounded-xl w-[560px] max-w-[94vw] shadow-2xl overflow-hidden border border-border-subtle z-[1000] animate-in zoom-in-95 duration-150 mx-auto max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="p-lg bg-surface-container-lowest flex items-center justify-between border-b border-border-subtle shrink-0">
           <div className="flex items-center gap-sm">
             <div
@@ -42,9 +40,7 @@ export default function RequestDetailsModal({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-lg space-y-md overflow-y-auto flex-1">
-          {/* Elevation Parameters Grid */}
           <div className="grid grid-cols-2 gap-sm p-md bg-surface-container-low rounded-xl border border-border-subtle/50 text-[12px]">
             <div>
               <span className="text-on-surface-variant font-label-bold block text-[11px] mb-0.5">Target Workspace:</span>
@@ -88,7 +84,6 @@ export default function RequestDetailsModal({
             </div>
           </div>
 
-          {/* Business Justification Card */}
           <div className="space-y-xs">
             <div className="flex items-center justify-between">
               <label className="font-label-bold text-label-sm text-on-surface flex items-center gap-1">
@@ -102,7 +97,6 @@ export default function RequestDetailsModal({
             </div>
           </div>
 
-          {/* Scope Boundary Notice */}
           {request.scopeBoundary && (
             <div className="p-sm bg-surface-container-low rounded-lg text-[11px] text-on-surface-variant flex items-center gap-sm border border-border-subtle">
               <span className="material-symbols-outlined text-primary text-[16px]">verified_user</span>
@@ -113,7 +107,6 @@ export default function RequestDetailsModal({
           )}
         </div>
 
-        {/* Modal Actions */}
         <div className="p-md bg-surface-container-low flex items-center justify-between border-t border-border-subtle shrink-0">
           <button
             type="button"

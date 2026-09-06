@@ -11,7 +11,6 @@ export default function JitFilterModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-md" id="modal-jit-filter">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div
         className="relative bg-card-bg rounded-xl w-[420px] max-w-[92vw] shadow-2xl overflow-hidden border border-border-subtle z-[1000] animate-in zoom-in-95 duration-150 mx-auto"

@@ -4,7 +4,6 @@ export const systemRolesData = [
     description: "Platform super administrator with unrestricted access to all resources and management capabilities.",
     isSystemRole: true,
     status: "ACTIVE",
-    // All system permissions
     permissionKeys: "*",
   },
   {

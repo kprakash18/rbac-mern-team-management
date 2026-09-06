@@ -13,7 +13,6 @@ export default function TeamRolesModal({
   const [searchQuery, setSearchQuery] = useState('');
   const [fetchedRoles, setFetchedRoles] = useState([]);
 
-  // Fetch all custom and platform roles from backend API when modal opens
   useEffect(() => {
     let isMounted = true;
     if (isOpen) {
@@ -33,12 +32,10 @@ export default function TeamRolesModal({
     };
   }, [isOpen]);
 
-  // Derive all available platform roles directly from the database API
   const allPlatformRoles = useMemo(() => {
     const rawList = fetchedRoles.length > 0 ? fetchedRoles : availableRoles;
     const map = new Map();
 
-    // Add all real database roles
     (rawList || []).forEach((r) => {
       if (!r || !r.name) return;
       const key = r.name.toLowerCase();
@@ -69,22 +66,20 @@ export default function TeamRolesModal({
     });
   }, [availableRoles, fetchedRoles]);
 
-  // Sub-modal states
   const [isAddRoleModalOpen, setIsAddRoleModalOpen] = useState(false);
   const [newRoleSelection, setNewRoleSelection] = useState('');
   const [selectedMemberIdsForNewRole, setSelectedMemberIdsForNewRole] = useState(new Set());
   const [memberSearchInAddModal, setMemberSearchInAddModal] = useState('');
 
-  const [editingRoleMembers, setEditingRoleMembers] = useState(null); // roleName string
+  const [editingRoleMembers, setEditingRoleMembers] = useState(null);
   const [memberIdsInRole, setMemberIdsInRole] = useState(new Set());
   const [memberSearchInEditModal, setMemberSearchInEditModal] = useState('');
 
-  const [viewMode, setViewMode] = useState('roles'); // 'roles' | 'members'
+  const [viewMode, setViewMode] = useState('roles');
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
-  const [deletingRoleData, setDeletingRoleData] = useState(null); // { roleName, affectedMembers, replacementRole }
+  const [deletingRoleData, setDeletingRoleData] = useState(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
-  // Derive all active roles in this team
   const teamMembers = useMemo(() => {
     return Array.isArray(team?.members) ? team.members : [];
   }, [team]);
@@ -126,7 +121,6 @@ export default function TeamRolesModal({
     });
   }, [team, teamMembers, allPlatformRoles]);
 
-  // Filtered Team Roles
   const filteredTeamRoles = useMemo(() => {
     return teamRolesList.filter((r) => {
       const q = searchQuery.toLowerCase().trim();
@@ -139,7 +133,6 @@ export default function TeamRolesModal({
     });
   }, [teamRolesList, searchQuery]);
 
-  // Filtered Team Members for Member View
   const filteredTeamMembers = useMemo(() => {
     return teamMembers.filter((m) => {
       const q = searchQuery.toLowerCase().trim();
@@ -152,13 +145,11 @@ export default function TeamRolesModal({
     });
   }, [teamMembers, searchQuery]);
 
-  // Selected Role details preview in Add Modal
   const selectedRoleDetails = useMemo(() => {
     if (!newRoleSelection) return null;
     return allPlatformRoles.find((r) => r.name.toLowerCase() === newRoleSelection.toLowerCase()) || null;
   }, [newRoleSelection, allPlatformRoles]);
 
-  // Replacement role options for Safe Delete Modal
   const replacementRoleOptions = useMemo(() => {
     if (!deletingRoleData) return [];
     const currentRoleName = deletingRoleData.roleName.toLowerCase();
@@ -178,9 +169,6 @@ export default function TeamRolesModal({
 
   if (!isOpen || !team) return null;
 
-  // --- Handlers ---
-
-  // Add role directly to a member
   const handleAddRoleToMember = (member, roleName) => {
     if (!roleName) return;
     const currentRoles = member.roles || ['Member'];
@@ -193,7 +181,6 @@ export default function TeamRolesModal({
     showToast?.(`Added role "${roleName}" to ${member.name}.`);
   };
 
-  // Remove role directly from a member
   const handleRemoveRoleFromMember = (member, roleName) => {
     const currentRoles = member.roles || ['Member'];
     if (currentRoles.length <= 1) {
@@ -218,7 +205,6 @@ export default function TeamRolesModal({
     showToast?.(`Removed role "${roleName}" from ${member.name}.`);
   };
 
-  // Open Add Role Modal
   const handleOpenAddRoleModal = () => {
     const existingRoleNames = new Set(teamRolesList.map((r) => r.name.toLowerCase()));
     const candidate = allPlatformRoles.find((r) => !existingRoleNames.has(r.name.toLowerCase())) || allPlatformRoles[0];
@@ -228,7 +214,6 @@ export default function TeamRolesModal({
     setIsAddRoleModalOpen(true);
   };
 
-  // Submit Add Role to Team
   const handleConfirmAddRole = (e) => {
     e.preventDefault();
     if (!newRoleSelection.trim()) return;
@@ -249,7 +234,6 @@ export default function TeamRolesModal({
     setIsAddRoleModalOpen(false);
   };
 
-  // Open Edit Role Members Modal
   const handleOpenEditRoleMembers = (role) => {
     setEditingRoleMembers(role.name);
     const memberIds = new Set(role.members.map((m) => m.id));
@@ -257,7 +241,6 @@ export default function TeamRolesModal({
     setMemberSearchInEditModal('');
   };
 
-  // Submit Edit Role Members
   const handleSaveRoleMembers = (e) => {
     e.preventDefault();
     if (!editingRoleMembers) return;
@@ -282,10 +265,8 @@ export default function TeamRolesModal({
     setEditingRoleMembers(null);
   };
 
-  // Initiate Delete Role from Team
   const handleInitiateDeleteRole = (role) => {
     if (role.membersCount > 0) {
-      // Find other active roles in team for replacement
       const otherRoles = teamRolesList.filter((r) => r.name !== role.name);
       const defaultReplacement = otherRoles.length > 0 ? otherRoles[0].name : 'Developer';
 
@@ -298,7 +279,6 @@ export default function TeamRolesModal({
     }
 
     if (window.confirm(`Are you sure you want to remove role "${role.name}" from team "${team.name}"?`)) {
-      // Role has 0 members, remove from team
       const updatedMembers = teamMembers.map((m) => ({
         ...m,
         roles: (m.roles || ['Member']).filter((r) => r !== role.name),
@@ -308,7 +288,6 @@ export default function TeamRolesModal({
     }
   };
 
-  // Confirm Safe Delete with Member Reassignment
   const handleConfirmSafeDeleteRole = async (e) => {
     e.preventDefault();
     if (!deletingRoleData) return;
@@ -344,14 +323,12 @@ export default function TeamRolesModal({
 
   return (
     <div className="fixed inset-0 z-[1000] flex items-center justify-center p-md animate-in fade-in duration-150" id="modal-team-roles">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
       <div
         className="relative bg-card-bg rounded-2xl w-full max-w-4xl shadow-2xl overflow-hidden border border-border-subtle z-[1050] animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
         <div className="p-lg bg-surface-container-low border-b border-border-subtle flex items-center justify-between gap-md shrink-0">
           <div className="flex items-center gap-md">
             <div className="w-11 h-11 rounded-xl bg-primary text-on-primary font-label-bold flex items-center justify-center shadow-xs shrink-0">
@@ -400,7 +377,6 @@ export default function TeamRolesModal({
           </div>
         </div>
 
-        {/* View Mode Tabs & Search Toolbar */}
         <div className="p-md bg-surface-container-lowest border-b border-border-subtle flex flex-col sm:flex-row items-center justify-between gap-md shrink-0">
           <div className="flex items-center gap-2 w-full sm:w-auto">
             <div className="inline-flex rounded-lg bg-surface-container p-1 border border-border-subtle">
@@ -443,10 +419,8 @@ export default function TeamRolesModal({
           </div>
         </div>
 
-        {/* Content Area */}
         <div className="p-lg overflow-y-auto flex-1 space-y-md bg-surface">
           {viewMode === 'roles' ? (
-            /* --- BY ROLES VIEW --- */
             filteredTeamRoles.length === 0 ? (
               <div className="p-xl text-center flex flex-col items-center gap-2 bg-card-bg rounded-xl border border-dashed border-border-subtle text-on-surface-variant">
                 <span className="material-symbols-outlined text-[36px] text-outline">badge</span>
@@ -467,7 +441,6 @@ export default function TeamRolesModal({
                     className="bg-card-bg rounded-xl p-md border border-border-subtle shadow-2xs hover:shadow-sm transition-all flex flex-col justify-between gap-md"
                   >
                     <div className="space-y-sm">
-                      {/* Card Top */}
                       <div className="flex items-start justify-between gap-sm">
                         <div className="flex items-center gap-sm">
                           <div className="w-9 h-9 rounded-lg bg-surface-container-high text-on-surface flex items-center justify-center font-bold shrink-0">
@@ -492,7 +465,6 @@ export default function TeamRolesModal({
                           </div>
                         </div>
 
-                        {/* Actions */}
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
@@ -518,7 +490,6 @@ export default function TeamRolesModal({
                       </p>
                     </div>
 
-                    {/* Assigned Members Chips */}
                     <div className="pt-2 border-t border-border-subtle/50 flex flex-col gap-1.5">
                       <div className="flex items-center justify-between text-[11px] font-label-bold text-on-surface-variant">
                         <span>Assigned Members ({role.membersCount})</span>
@@ -558,7 +529,6 @@ export default function TeamRolesModal({
               </div>
             )
           ) : (
-            /* --- BY MEMBERS VIEW --- */
             filteredTeamMembers.length === 0 ? (
               <div className="p-xl text-center flex flex-col items-center gap-2 bg-card-bg rounded-xl border border-dashed border-border-subtle text-on-surface-variant">
                 <span className="material-symbols-outlined text-[36px] text-outline">group</span>
@@ -576,7 +546,6 @@ export default function TeamRolesModal({
                       key={m.id || m._id || m.email}
                       className="p-md rounded-xl bg-card-bg border border-border-subtle shadow-2xs flex flex-col sm:flex-row sm:items-center justify-between gap-md"
                     >
-                      {/* Member Info */}
                       <div className="flex items-center gap-md">
                         <div className="w-10 h-10 rounded-full bg-primary-container text-on-primary font-bold flex items-center justify-center text-[13px] shrink-0">
                           {initials}
@@ -589,7 +558,6 @@ export default function TeamRolesModal({
                         </div>
                       </div>
 
-                      {/* Role Pills & Quick Add */}
                       <div className="flex flex-wrap items-center gap-2">
                         {memberRoles.map((roleName) => {
                           const isTeamAdmin = roleName.toLowerCase().includes('admin');
@@ -618,7 +586,6 @@ export default function TeamRolesModal({
                           );
                         })}
 
-                        {/* Quick Add Role Selector */}
                         {unassignedRoles.length > 0 && (
                           <select
                             value=""
@@ -646,7 +613,6 @@ export default function TeamRolesModal({
           )}
         </div>
 
-        {/* Modal Footer */}
         <div className="p-md bg-surface-container-low border-t border-border-subtle flex items-center justify-end shrink-0">
           <button
             type="button"
@@ -658,7 +624,6 @@ export default function TeamRolesModal({
         </div>
       </div>
 
-      {/* --- SUB-MODAL 1: ADD ROLE TO TEAM --- */}
       {isAddRoleModalOpen && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md animate-in fade-in duration-150">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={() => setIsAddRoleModalOpen(false)} />
@@ -686,7 +651,6 @@ export default function TeamRolesModal({
             </div>
 
             <form onSubmit={handleConfirmAddRole} className="p-lg flex flex-col gap-md overflow-y-auto flex-1">
-              {/* Role Picker */}
               <div className="space-y-xs">
                 <div className="flex items-center justify-between">
                   <label className="block font-label-bold text-label-sm text-on-surface">
@@ -712,7 +676,6 @@ export default function TeamRolesModal({
                   })}
                 </select>
 
-                {/* Role Details Preview Card */}
                 {selectedRoleDetails && (
                   <div className="p-3 mt-1.5 bg-surface-container-low rounded-xl border border-border-subtle flex items-start gap-2.5">
                     <span className="material-symbols-outlined text-primary text-[20px] mt-0.5 shrink-0">
@@ -738,7 +701,6 @@ export default function TeamRolesModal({
                 )}
               </div>
 
-              {/* Members Checklist */}
               <div className="space-y-xs">
                 <div className="flex items-center justify-between">
                   <label className="font-label-bold text-label-sm text-on-surface">
@@ -837,7 +799,6 @@ export default function TeamRolesModal({
         </div>
       )}
 
-      {/* --- SUB-MODAL 2: EDIT ROLE MEMBERS --- */}
       {editingRoleMembers && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md animate-in fade-in duration-150">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={() => setEditingRoleMembers(null)} />
@@ -961,7 +922,6 @@ export default function TeamRolesModal({
         </div>
       )}
 
-      {/* --- SUB-MODAL 3: SAFE DELETE TEAM ROLE WITH ACTIVE MEMBERS --- */}
       {deletingRoleData && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md animate-in fade-in duration-150">
           <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={() => setDeletingRoleData(null)} />
@@ -1000,7 +960,6 @@ export default function TeamRolesModal({
                 </p>
               </div>
 
-              {/* Affected Members Preview */}
               <div className="space-y-xs">
                 <span className="font-label-bold text-[12px] text-on-surface-variant">Affected Members:</span>
                 <div className="max-h-32 overflow-y-auto bg-surface-container-low rounded-xl p-xs space-y-1 border border-border-subtle">
@@ -1013,7 +972,6 @@ export default function TeamRolesModal({
                 </div>
               </div>
 
-              {/* Replacement Role Selector */}
               <div className="space-y-xs">
                 <label className="block font-label-bold text-label-sm text-on-surface">
                   Select Replacement Role <span className="text-error">*</span>
@@ -1062,7 +1020,6 @@ export default function TeamRolesModal({
           </div>
         </div>
       )}
-      {/* Member Onboarding Modal */}
       {isOnboardingOpen && (
         <TeamMemberOnboardingModal
           isOpen={isOnboardingOpen}

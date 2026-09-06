@@ -5,24 +5,21 @@ import api from '@/lib/api';
 import TeamRolesModal from './roles/TeamRolesModal.jsx';
 import TeamMemberOnboardingModal from './roles/TeamMemberOnboardingModal.jsx';
 
-
 export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   const [teams, setTeams] = useState([]);
   const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('table'); // 'table' | 'grid'
+  const [viewMode, setViewMode] = useState('table');
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 10;
 
-  // Modals & Drawer state
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [editingTeam, setEditingTeam] = useState(null);
-  const [modalTab, setModalTab] = useState('general'); // 'general' | 'roles' | 'members'
+  const [modalTab, setModalTab] = useState('general');
   const [teamForm, setTeamForm] = useState({ name: '', description: '', icon: 'engineering', status: 'ACTIVE' });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
-  // Creation-specific roles & members state
   const [activePlatformUsers, setActivePlatformUsers] = useState([]);
   const [loadingPlatformUsers, setLoadingPlatformUsers] = useState(false);
   const [createSelectedUsers, setCreateSelectedUsers] = useState(new Set());
@@ -37,13 +34,11 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   const [teamForOnboarding, setTeamForOnboarding] = useState(null);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
 
-  // Role Removal Safeguard State
-  const [roleRemovalData, setRoleRemovalData] = useState(null); // { team, member, roleToRemove, replacementRoleId }
+  const [roleRemovalData, setRoleRemovalData] = useState(null);
   const [roleRemovalLoading, setRoleRemovalLoading] = useState(false);
 
   const [toast, showToast] = useToast(3500);
 
-  // Fetch teams & available roles from backend API
   const fetchTeams = useCallback(async () => {
     try {
       setLoading(true);
@@ -128,7 +123,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     setCurrentPage(1);
   };
 
-  // Filter & Sort Logic
   const filteredTeams = useMemo(() => {
     return teams.filter((team) => {
       const q = searchQuery.toLowerCase().trim();
@@ -155,7 +149,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     safeCurrentPage * pageSize
   );
 
-  // Fetch active platform users for member onboarding
   const fetchActivePlatformUsers = async () => {
     try {
       setLoadingPlatformUsers(true);
@@ -172,7 +165,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     }
   };
 
-  // Modal Handlers
   const handleOpenCreateModal = useCallback(() => {
     setEditingTeam(null);
     setModalTab('general');
@@ -181,7 +173,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     setCreateRoleOverrides({});
     setCreateDefaultRole('Developer');
     setCreateMemberSearch('');
-    // Pre-select all available standard roles for the team workspace
     setCreateSelectedRoles(new Set(availableRoles.map((r) => r.name || r.id)));
     setIsCreateModalOpen(true);
     fetchActivePlatformUsers();
@@ -231,7 +222,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     }
   };
 
-  // Filtered available roles for this new team
   const enabledRolesForCreate = useMemo(() => {
     const list = availableRoles.filter((r) =>
       createSelectedRoles.has(r.name) || createSelectedRoles.has(r.id) || createSelectedRoles.has(r._id)
@@ -285,7 +275,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         const newTeam = createRes.data?.data || createRes.data;
         const newTeamId = newTeam?._id || newTeam?.id;
 
-        // Board selected members if any
         if (newTeamId && createSelectedUsers.size > 0) {
           const selectedList = activePlatformUsers.filter((u) =>
             createSelectedUsers.has(u._id || u.id)
@@ -321,7 +310,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     }
   };
 
-  // Role Management Handlers
   const handleAddMemberRole = async (targetTeam, member, roleName) => {
     if (!roleName) return;
     const currentRoles = member.roles || [];
@@ -332,7 +320,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
 
     const updatedRoles = [...currentRoles, roleName];
 
-    // Update state
     setTeams((prev) =>
       prev.map((t) => {
         if (t.id === targetTeam.id) {
@@ -368,8 +355,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
 
   const handleInitiateRemoveMemberRole = (targetTeam, member, roleToRemove) => {
     const currentRoles = member.roles || [];
-    // If this is the user's ONLY role, removing it would leave them role-less!
-    // Trigger the safeguard modal with reassignment requirement
     if (currentRoles.length <= 1) {
       const defaultReplacement =
         availableRoles.find((r) => r.name !== roleToRemove)?.name || 'Developer';
@@ -382,7 +367,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
       return;
     }
 
-    // Otherwise, remove directly
     handleRemoveMemberRoleDirectly(targetTeam, member, roleToRemove);
   };
 
@@ -535,12 +519,10 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
 
   return (
     <div className="flex flex-col w-full h-full max-w-7xl mx-auto px-lg py-xl space-y-xl">
-      {/* Toast Notification */}
       <div className="fixed top-6 right-6 z-1200">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 
-      {/* Page Title & Subtitle */}
       <div className="flex flex-col space-y-xs">
         <h1 className="font-display-title text-display-title text-on-surface">Teams &amp; Workspaces</h1>
         <p className="font-body-base text-body-base text-on-surface-variant">
@@ -548,7 +530,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </p>
       </div>
 
-      {/* Toolbar: Search, Filters, View Switcher & Create Action */}
       <div className="flex items-center justify-between w-full p-md bg-surface-container rounded-xl shadow-sm gap-md flex-wrap">
         <div className="relative w-80">
           <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">
@@ -564,7 +545,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
 
         <div className="flex items-center gap-xs flex-wrap">
-          {/* Status Tabs */}
           {filterTabs.map((tab) => (
             <button
               key={tab}
@@ -579,7 +559,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             </button>
           ))}
 
-          {/* View Mode Toggle */}
           <div className="flex items-center bg-surface p-1 rounded-lg shadow-sm gap-0.5 ml-xs">
             <button
               type="button"
@@ -603,7 +582,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             </button>
           </div>
 
-          {/* Create Button */}
           <button
             onClick={handleOpenCreateModal}
             className="ml-md px-md py-xs bg-primary text-on-primary font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-on-primary-container transition-colors flex items-center gap-xs cursor-pointer"
@@ -614,7 +592,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
       </div>
 
-      {/* Main Content */}
       {viewMode === 'table' ? (
         <div className="w-full bg-surface-container-lowest rounded-xl shadow-sm border border-border-subtle overflow-hidden">
           <div className="w-full overflow-x-auto">
@@ -649,7 +626,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                     const isArchived = team.status === 'Archived';
                     return (
                       <tr key={team.id} className="hover:bg-surface-container-low/50 transition-colors border-b border-border-subtle group">
-                        {/* Team Name & Icon */}
                         <td className="py-3.5 px-4">
                           <div className="flex items-center gap-3 min-w-0">
                             <div className="w-9 h-9 rounded-lg bg-primary-container text-on-primary font-label-bold flex items-center justify-center text-label-sm shrink-0">
@@ -666,7 +642,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                           </div>
                         </td>
 
-                        {/* Status */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           {team.status === 'Active' ? (
                             <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-success-bg text-success-text text-[11px] font-bold shadow-2xs">
@@ -679,7 +654,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                           )}
                         </td>
 
-                        {/* Members Count */}
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           <button
                             type="button"
@@ -693,10 +667,8 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                           </button>
                         </td>
 
-                        {/* Created */}
                         <td className="py-3.5 px-4 text-on-surface-variant text-[12px] whitespace-nowrap">{team.createdAt}</td>
 
-                        {/* Actions */}
                         <td className="py-3.5 px-4 text-right whitespace-nowrap">
                           <div className="flex items-center justify-end gap-1.5">
                             <button
@@ -756,7 +728,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             </table>
           </div>
 
-          {/* Pagination Footer */}
           <div className="w-full flex items-center justify-between p-3.5 px-4 bg-surface-container-low border-t border-border-subtle">
             <span className="font-body-sm text-body-sm text-on-surface-variant text-[12px]">
               Showing {startIndex} to {endIndex} of {totalItems} entries
@@ -791,7 +762,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
           </div>
         </div>
       ) : (
-        /* Grid View */
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {paginatedTeams.map((team) => {
             const isArchived = team.status === 'Archived';
@@ -829,7 +799,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   </p>
                 </div>
 
-                {/* Structured 2-row footer so buttons never overflow */}
                 <div className="pt-3 border-t border-border-subtle flex flex-col gap-2.5">
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <button
@@ -872,7 +841,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                     </div>
                   </div>
 
-                  {/* Secondary Action Toolbar */}
                   <div className="grid grid-cols-3 gap-1.5">
                     <button
                       type="button"
@@ -909,11 +877,9 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
       )}
 
-      {/* Slide-over Members Modal */}
       {selectedTeamForMembers && (
         <div className="fixed inset-0 z-100 flex justify-end bg-on-primary-fixed/40 backdrop-blur-sm animate-in fade-in duration-150">
           <div className="w-full max-w-md bg-surface-container-lowest h-full shadow-2xl flex flex-col border-l border-border-subtle animate-in slide-in-from-right duration-200">
-            {/* Header */}
             <div className="p-lg border-b border-border-subtle bg-surface-container-low flex items-center justify-between">
               <div className="flex items-center gap-md">
                 <div className="w-10 h-10 rounded-xl bg-primary-container text-on-primary font-label-bold flex items-center justify-center shrink-0">
@@ -935,7 +901,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               </button>
             </div>
 
-            {/* Search & Onboard Action */}
             <div className="p-md border-b border-border-subtle bg-surface-container-lowest flex items-center justify-between gap-sm">
               <div className="relative flex-1">
                 <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant text-[16px]">
@@ -960,7 +925,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               </button>
             </div>
 
-            {/* List */}
             <div className="flex-1 overflow-y-auto p-md space-y-sm">
               {(!selectedTeamForMembers.members || selectedTeamForMembers.members.length === 0) ? (
                 <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
@@ -993,7 +957,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                             </div>
                           </div>
 
-                          {/* Quick Role Adder */}
                           <div className="relative shrink-0">
                             <select
                               value=""
@@ -1017,7 +980,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                           </div>
                         </div>
 
-                        {/* Role Pills */}
                         <div className="flex flex-wrap gap-1.5 pt-1">
                           {memberRoles.map((roleName) => {
                             const isTeamAdmin = roleName.toLowerCase().includes('admin');
@@ -1052,7 +1014,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               )}
             </div>
 
-            {/* Footer */}
             <div className="p-md border-t border-border-subtle bg-surface-container-low flex justify-end">
               <button
                 type="button"
@@ -1066,7 +1027,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
       )}
 
-      {/* Create / Edit Team Modal */}
       {isCreateModalOpen && (
         <div className="fixed inset-0 z-100 flex items-center justify-center bg-on-primary-fixed/40 backdrop-blur-sm p-md animate-in fade-in duration-150">
           <div className="w-full max-w-xl bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-border-subtle animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
@@ -1097,7 +1057,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               </button>
             </div>
 
-            {/* Modal Tabs */}
             <div className="flex items-center gap-md px-lg pt-sm bg-surface-container-low border-b border-border-subtle shrink-0">
               <button
                 type="button"
@@ -1156,7 +1115,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               )}
             </div>
 
-            {/* TAB: General Details */}
             {modalTab === 'general' && (
               <form onSubmit={(e) => { e.preventDefault(); setModalTab('roles'); }} className="p-lg flex flex-col gap-md flex-1 overflow-y-auto">
                 <div className="flex flex-col gap-xs">
@@ -1237,10 +1195,8 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               </form>
             )}
 
-            {/* TAB: Team Roles */}
             {modalTab === 'roles' && (
               editingTeam ? (
-                /* Edit Team: Member Roles */
                 <div className="p-lg flex flex-col gap-md flex-1 overflow-y-auto">
                   <div className="flex items-center justify-between pb-xs border-b border-border-subtle">
                     <div>
@@ -1277,7 +1233,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                                 </div>
                               </div>
 
-                              {/* Role Adder */}
                               <select
                                 value=""
                                 onChange={(e) => {
@@ -1298,7 +1253,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                               </select>
                             </div>
 
-                            {/* Member Role Chips */}
                             <div className="flex flex-wrap gap-1.5 pt-1">
                               {memberRoles.map((roleName) => (
                                 <span
@@ -1334,7 +1288,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   </div>
                 </div>
               ) : (
-                /* Create Team: Workspace Roles Selection */
                 <div className="p-lg flex flex-col gap-md flex-1 overflow-y-auto">
                   <div className="p-sm rounded-xl bg-primary/5 border border-primary/20 flex items-start gap-sm">
                     <span className="material-symbols-outlined text-primary text-[20px] shrink-0 mt-0.5">info</span>
@@ -1343,7 +1296,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                     </p>
                   </div>
 
-                  {/* Role Selection Toolbar */}
                   <div className="flex items-center justify-between px-1">
                     <div className="flex items-center gap-2">
                       <span className="font-label-bold text-label-sm text-on-surface uppercase tracking-wider">
@@ -1365,7 +1317,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                     </button>
                   </div>
 
-                  {/* Role Selectable Cards */}
                   <div className="grid grid-cols-1 gap-xs max-h-[300px] overflow-y-auto pr-1">
                     {availableRoles.map((role) => {
                       const roleIdentifier = role.name || role.id;
@@ -1475,10 +1426,8 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               )
             )}
 
-            {/* TAB: Add Members (Create Team Flow) */}
             {modalTab === 'members' && !editingTeam && (
               <div className="p-lg flex flex-col gap-md flex-1 overflow-y-auto">
-                {/* Search & Bulk Controls */}
                 <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-sm bg-surface-container-low p-sm rounded-xl border border-border-subtle">
                   <div className="relative flex-1">
                     <span className="material-symbols-outlined absolute left-2.5 top-1/2 -translate-y-1/2 text-outline text-[18px]">
@@ -1521,7 +1470,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   </div>
                 </div>
 
-                {/* Selected Count & Active Indicator */}
                 <div className="flex items-center justify-between px-1">
                   <span className="text-[12px] font-label-bold text-on-surface">
                     Active Users ({activePlatformUsers.length}) · <span className="text-primary font-normal">{enabledRolesForCreate.length} Enabled Team Roles</span>
@@ -1531,7 +1479,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   </span>
                 </div>
 
-                {/* Active Users List */}
                 <div className="space-y-xs max-h-[300px] overflow-y-auto pr-1">
                   {loadingPlatformUsers ? (
                     <div className="p-xl text-center text-on-surface-variant text-body-sm">
@@ -1599,7 +1546,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                               </div>
                             </div>
 
-                            {/* Assigned Role Selector from Enabled Roles */}
                             <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
                               <select
                                 value={assignedRole}
@@ -1627,7 +1573,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   )}
                 </div>
 
-                {/* Footer Buttons */}
                 <div className="flex items-center justify-between pt-md border-t border-border-subtle mt-auto">
                   <button
                     type="button"
@@ -1673,7 +1618,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
       )}
 
-      {/* Role Removal Safeguard Modal */}
       {roleRemovalData && (
         <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md animate-in fade-in duration-150">
           <div
@@ -1685,7 +1629,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             className="relative bg-card-bg rounded-2xl w-full max-w-md shadow-2xl overflow-hidden border border-border-subtle z-[1150] animate-in zoom-in-95 duration-150 flex flex-col"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* Warning Header */}
             <div className="p-lg bg-warning-bg/30 border-b border-warning-text/30 flex items-start gap-md">
               <div className="w-10 h-10 rounded-xl bg-warning-bg text-warning-text border border-warning-text/40 flex items-center justify-center shrink-0 shadow-xs">
                 <span className="material-symbols-outlined text-[22px]">warning</span>
@@ -1768,7 +1711,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </div>
       )}
 
-      {/* Team Roles Modal */}
       {selectedTeamForRoles && (
         <TeamRolesModal
           isOpen={Boolean(selectedTeamForRoles)}
@@ -1780,7 +1722,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         />
       )}
 
-      {/* Member Onboarding Modal */}
       {teamForOnboarding && (
         <TeamMemberOnboardingModal
           isOpen={Boolean(teamForOnboarding)}

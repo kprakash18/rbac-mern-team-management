@@ -1,9 +1,5 @@
 import { Component } from 'react';
 
-/**
- * Catches any unhandled JS errors in the React tree and shows a
- * friendly fallback instead of a blank white screen.
- */
 export default class ErrorBoundary extends Component {
   constructor(props) {
     super(props);
@@ -34,7 +30,7 @@ export default class ErrorBoundary extends Component {
             gap: '16px',
           }}
         >
-          <span style={{ fontSize: 48 }}>⚠️</span>
+          <span style={{ fontSize: 48 }}></span>
           <h1 style={{ fontSize: 22, fontWeight: 600, color: '#1b1b1d', margin: 0 }}>
             Something went wrong
           </h1>

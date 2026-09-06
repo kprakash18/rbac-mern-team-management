@@ -7,7 +7,6 @@ export const NOTIFICATION_TYPES = [
   "USER_STATUS_CHANGED",
   "USER_ACCESS_CHANGED",
   "GROUP_MEMBER_ADDED",
-  // Legacy / Domain-specific aliases
   "ROLE_ASSIGNED",
   "ROLE_REVOKED",
   "PERMISSION_CHANGED",
@@ -123,7 +122,6 @@ const notificationSchema = new mongoose.Schema(
   }
 );
 
-// High-speed compound queries for unread badges and user pagination
 notificationSchema.index({
   recipientId: 1,
   readAt: 1,

@@ -1,112 +1,69 @@
+import { asyncHandler } from "../../common/utils/async-handler.js";
 import roleService from "./role.service.js";
 import rolePermissionService from "./role-permission.service.js";
 
-export async function createRole (req,res,next){
-    try {
-        const {name, description, permissionIds } = req.body;
-        const role = await roleService.createRole({
-            name,
-            description,
-            permissionIds,
-            createdBy: req.user.id,
-        });
+export const createRole = asyncHandler(async (req, res) => {
+  const { name, description, permissionIds } = req.body;
+  const role = await roleService.createRole({
+    name,
+    description,
+    permissionIds,
+    createdBy: req.user.id,
+  });
+  res.status(200).json({ success: true, data: role });
+});
 
-        return res.status(200).json({
-            success: true,
-            data: role,
-        });
-    } catch (error) {
-        next(error)
-    }
-}
+export const getRoles = asyncHandler(async (req, res) => {
+  const roles = await roleService.listRoles({ status: req.query.status });
+  res.status(200).json({ success: true, data: roles, count: roles.length });
+});
 
-export async function getRoles(req,res,next){
-    try{
-        const {status} = req.query;
-        const roles = await roleService.listRoles({status});
-        return res.status(200).json({success: true, data: roles, count: roles.length});
-    }catch(error){
-        next(error);
-    }
-}
+export const getRoleById = asyncHandler(async (req, res) => {
+  const role = await roleService.getRoleById(req.params.roleId);
+  res.status(200).json({ success: true, data: role });
+});
 
-export async function getRoleById(req,res,next){
-    try{
-        const {roleId} = req.params ;
-        const role = await roleService.getRoleById(roleId);
-        return res.status(200).json({success: true, data: role});
-    }catch(error){
-        next(error);
-    }
-}
+export const updateRole = asyncHandler(async (req, res) => {
+  const { name, description, status, permissionIds } = req.body;
+  const updatedRole = await roleService.updateRole(
+    req.params.roleId,
+    { name, description, status, permissionIds },
+    req.user?.id
+  );
+  res.status(200).json({ success: true, data: updatedRole });
+});
 
-export async function updateRole(req, res, next) {
-  try {
-    const { roleId } = req.params;
-    const { name, description, status, permissionIds } = req.body;
-    const updatedRole = await roleService.updateRole(
-      roleId,
-      { name, description, status, permissionIds },
-      req.user?.id
-    );
-    return res.status(200).json({ success: true, data: updatedRole });
-  } catch (error) {
-    next(error);
-  }
-}
+export const deleteRole = asyncHandler(async (req, res) => {
+  const reassignToRoleId = req.body?.reassignToRoleId || req.query?.reassignToRoleId;
+  const result = await roleService.deleteRole(req.params.roleId, {
+    reassignToRoleId,
+    reassignedBy: req.user?.id,
+  });
+  res.status(200).json({ success: true, ...result });
+});
 
-export async function deleteRole(req, res, next) {
-  try {
-    const { roleId } = req.params;
-    const reassignToRoleId = req.body?.reassignToRoleId || req.query?.reassignToRoleId;
-    const result = await roleService.deleteRole(roleId, {
-      reassignToRoleId,
-      reassignedBy: req.user?.id,
-    });
-    return res.status(200).json({ success: true, ...result });
-  } catch (error) {
-    next(error);
-  }
-}
+export const addPermissionsToRole = asyncHandler(async (req, res) => {
+  const updatedPermissions = await rolePermissionService.assignPermissionsToRole(
+    req.params.roleId,
+    req.body.permissionIds,
+    req.user.id
+  );
+  res.status(200).json({ success: true, data: updatedPermissions });
+});
 
-export async function addPermissionsToRole(req, res, next) {
-  try {
-    const { roleId } = req.params;
-    const { permissionIds } = req.body;
-    const updatedPermissions = await rolePermissionService.assignPermissionsToRole(
-      roleId,
-      permissionIds,
-      req.user.id
-    );
-    return res.status(200).json({ success: true, data: updatedPermissions });
-  } catch (error) {
-    next(error);
-  }
-}
+export const removePermissionFromRole = asyncHandler(async (req, res) => {
+  const result = await rolePermissionService.removePermissionFromRole(
+    req.params.roleId,
+    req.params.permissionId
+  );
+  res.status(200).json(result);
+});
 
+export const getRolePermissions = asyncHandler(async (req, res) => {
+  const permissions = await rolePermissionService.getPermissionsForRole(req.params.roleId);
+  res.status(200).json({ success: true, data: permissions, count: permissions.length });
+});
 
-
-export async function removePermissionFromRole(req, res, next) {
-  try {
-    const { roleId, permissionId } = req.params;
-    const result = await rolePermissionService.removePermissionFromRole(
-      roleId,
-      permissionId
-    );
-    return res.status(200).json(result);
-  } catch (error) {
-    next(error);
-  }
-}
-export async function getRolePermissions(req, res, next) {
-  try {
-    const { roleId } = req.params;
-    const permissions = await rolePermissionService.getPermissionsForRole(roleId);
-    return res.status(200).json({ success: true, data: permissions, count: permissions.length });
-  } catch (error) {
-    next(error);
-  }
-}
 export const roleController = {
   createRole,
   getRoles,
@@ -117,6 +74,5 @@ export const roleController = {
   removePermissionFromRole,
   getRolePermissions,
 };
- 
 
-export default roleController ;
+export default roleController;

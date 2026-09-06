@@ -1,55 +1,39 @@
+import { asyncHandler } from "../../common/utils/async-handler.js";
 import { resolvePermissions, can, getAllUserPermissions } from "./authorization.service.js";
-
-
 import { BadRequestError } from "../../common/errors/index.js";
 
-/**
- * GET /api/authorization/permissions?teamId=...
- */
-export async function getMyPermissionsController(req, res, next) {
-  try {
-    const teamId = req.query.teamId || req.headers["x-team-id"] || req.params?.teamId;
-    if (teamId) {
-      const permissions = await resolvePermissions(req.user.id, teamId);
-      return res.status(200).json({
-        success: true,
-        data: {
-          teamId,
-          permissions,
-          effectivePermissions: permissions,
-        },
-      });
-    }
-    const teams = await getAllUserPermissions(req.user.id);
+export const getMyPermissionsController = asyncHandler(async (req, res) => {
+  const teamId = req.query.teamId || req.headers["x-team-id"] || req.params?.teamId;
+  if (teamId) {
+    const permissions = await resolvePermissions(req.user.id, teamId);
     return res.status(200).json({
       success: true,
       data: {
-        userId: req.user.id,
-        teams,
+        teamId,
+        permissions,
+        effectivePermissions: permissions,
       },
     });
-  } catch (error) {
-    next(error);
   }
-}
+  const teams = await getAllUserPermissions(req.user.id);
+  res.status(200).json({
+    success: true,
+    data: {
+      userId: req.user.id,
+      teams,
+    },
+  });
+});
 
-/**
- * POST /api/authorization/check
- */
-export async function checkPermissionController(req, res, next) {
-  try {
-    const { teamId, permission, resource } = req.body;
-    if (!teamId || !permission) {
-      throw new BadRequestError("Fields 'teamId' and 'permission' are required.");
-    }
-
-    const allowed = await can(req.user.id, teamId, permission, resource);
-
-    return res.status(200).json({
-      success: true,
-      data: { teamId, permission, resource: resource || null, allowed },
-    });
-  } catch (error) {
-    next(error);
+export const checkPermissionController = asyncHandler(async (req, res) => {
+  const { teamId, permission, resource } = req.body;
+  if (!teamId || !permission) {
+    throw new BadRequestError("Fields 'teamId' and 'permission' are required.");
   }
-}
+
+  const allowed = await can(req.user.id, teamId, permission, resource);
+  res.status(200).json({
+    success: true,
+    data: { teamId, permission, resource: resource || null, allowed },
+  });
+});

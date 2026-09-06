@@ -16,11 +16,11 @@ export default function SafeDeleteRoleModal({
 
   useEffect(() => {
     if (eligibleRoles.length > 0) {
-      setTargetRoleId(eligibleRoles[0].id);
+      setTargetRoleId((prev) => (prev && eligibleRoles.some((r) => r.id === prev) ? prev : eligibleRoles[0].id));
     } else {
       setTargetRoleId('');
     }
-  }, [role?.id, roles]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [role?.id, eligibleRoles]);
 
   if (!isOpen || !role) return null;
 
@@ -35,14 +35,12 @@ export default function SafeDeleteRoleModal({
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md" id="modal-safe-delete-role">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
       <div
         className="relative bg-card-bg rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden border border-border-subtle z-[1150] animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header with Warning Accent */}
         <div className="p-lg bg-error-bg/30 border-b border-error-container/40 flex items-start justify-between gap-md">
           <div className="flex items-center gap-md">
             <div className="w-11 h-11 rounded-xl bg-error-bg text-error-text border border-error-container flex items-center justify-center shrink-0 shadow-xs">
@@ -69,7 +67,6 @@ export default function SafeDeleteRoleModal({
         </div>
 
         <form onSubmit={handleConfirm} className="p-lg space-y-md overflow-y-auto flex-1">
-          {/* Warning Message Card */}
           <div className="p-md rounded-xl bg-warning-bg/40 border border-warning-text/30 flex items-start gap-sm text-body-sm text-on-surface">
             <span className="material-symbols-outlined text-warning-text text-[20px] shrink-0 mt-0.5">
               shield_person
@@ -84,7 +81,6 @@ export default function SafeDeleteRoleModal({
             </div>
           </div>
 
-          {/* Assigned Members Preview */}
           {assignedUsers.length > 0 && (
             <div className="space-y-xs">
               <div className="flex items-center justify-between text-label-sm font-label-bold text-on-surface-variant">
@@ -122,7 +118,6 @@ export default function SafeDeleteRoleModal({
             </div>
           )}
 
-          {/* Destination Role Selector */}
           <div className="space-y-xs">
             <label className="block font-label-bold text-label-sm text-on-surface">
               Select Replacement Role <span className="text-error">*</span>
@@ -150,7 +145,6 @@ export default function SafeDeleteRoleModal({
             </p>
           </div>
 
-          {/* Footer Actions */}
           <div className="pt-md border-t border-border-subtle flex items-center justify-end gap-sm">
             <button
               type="button"

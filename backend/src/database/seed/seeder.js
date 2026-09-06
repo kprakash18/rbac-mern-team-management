@@ -27,9 +27,6 @@ import { clearAllCollections } from "./helpers/clear.js";
 import { printSeedSummary } from "./helpers/summary.js";
 import { validateSeed } from "./validators/validateSeed.js";
 
-/**
- * 1. Seed System Permissions
- */
 async function seedPermissions() {
   const operations = permissionSeedData.map((perm) => ({
     updateOne: {
@@ -46,13 +43,9 @@ async function seedPermissions() {
   }
 }
 
-/**
- * 2. Seed Users (System Admin & Demo Personas)
- */
 async function seedUsers(isSystemOnly = false) {
   const defaultHashedPassword = await hashPassword(DEFAULT_PASSWORD);
 
-  // System Admin (Required bootstrap creator)
   let adminUser = await User.findOne({ email: systemAdminUserData.email });
   if (!adminUser) {
     adminUser = await User.create({
@@ -64,7 +57,6 @@ async function seedUsers(isSystemOnly = false) {
 
   if (isSystemOnly) return;
 
-  // Demo Personas
   for (const userData of demoUsersData) {
     let user = await User.findOne({ email: userData.email });
     if (!user) {
@@ -80,9 +72,6 @@ async function seedUsers(isSystemOnly = false) {
   }
 }
 
-/**
- * 3. Seed System Roles & Role-Permission Mappings
- */
 async function seedRolesAndPermissions() {
   const systemAdmin = seedContext.users.get("admin@system.local");
   const allPermissions = Array.from(seedContext.permissions.values());
@@ -134,9 +123,6 @@ async function seedRolesAndPermissions() {
   }
 }
 
-/**
- * 4. Seed Teams
- */
 async function seedTeams() {
   for (const teamItem of teamsData) {
     const creator = seedContext.users.get(teamItem.creatorEmail);
@@ -157,11 +143,7 @@ async function seedTeams() {
   }
 }
 
-/**
- * 5. Seed Memberships & Membership Roles
- */
 async function seedMembershipsAndRoles() {
-  // Memberships
   for (const item of scenariosData.memberships) {
     const user = seedContext.users.get(item.userEmail);
     const team = seedContext.teams.get(item.teamName);
@@ -181,7 +163,6 @@ async function seedMembershipsAndRoles() {
     seedContext.memberships.set(`${item.userEmail}:${item.teamName}`, membership);
   }
 
-  // Membership Roles
   for (const item of scenariosData.membershipRoles) {
     const membership = seedContext.memberships.get(`${item.userEmail}:${item.teamName}`);
     const role = seedContext.roles.get(item.roleName);
@@ -207,9 +188,6 @@ async function seedMembershipsAndRoles() {
   }
 }
 
-/**
- * 6. Seed Tasks
- */
 async function seedTasks() {
   for (const item of tasksData) {
     const team = seedContext.teams.get(item.teamName);
@@ -243,9 +221,6 @@ async function seedTasks() {
   }
 }
 
-/**
- * 7. Seed Invitations
- */
 async function seedInvitations() {
   const now = Date.now();
   for (const item of scenariosData.invitations) {
@@ -286,13 +261,9 @@ async function seedInvitations() {
   }
 }
 
-/**
- * 8. Seed Access Requests & Grants
- */
 async function seedAccessRequestsAndGrants() {
   const now = Date.now();
 
-  // Access Requests
   for (const item of scenariosData.accessRequests) {
     const requester = seedContext.users.get(item.requesterEmail);
     const targetUser = seedContext.users.get(item.targetUserEmail);
@@ -327,7 +298,6 @@ async function seedAccessRequestsAndGrants() {
     seedContext.accessRequests.set(item.key, req);
   }
 
-  // Access Grants
   for (const item of scenariosData.accessGrants) {
     const user = seedContext.users.get(item.userEmail);
     const team = seedContext.teams.get(item.teamName);
@@ -369,11 +339,7 @@ async function seedAccessRequestsAndGrants() {
   }
 }
 
-/**
- * 9. Seed Notifications & Audit Logs
- */
 async function seedNotificationsAndAuditLogs() {
-  // Notifications
   for (const item of scenariosData.notifications) {
     const recipient = seedContext.users.get(item.recipientEmail);
     const team = item.teamName ? seedContext.teams.get(item.teamName) : null;
@@ -394,7 +360,6 @@ async function seedNotificationsAndAuditLogs() {
     });
   }
 
-  // Audit Logs
   for (const item of scenariosData.auditLogs) {
     const actor = seedContext.users.get(item.actorEmail);
     const team = item.teamName ? seedContext.teams.get(item.teamName) : null;
@@ -425,11 +390,6 @@ async function seedNotificationsAndAuditLogs() {
   }
 }
 
-/**
- * Global Seeder Function
- * Orchestrates the complete seeding lifecycle in strict dependency order.
- * @param {{ fresh?: boolean, systemOnly?: boolean }} options
- */
 export async function seedDatabase(options = {}) {
   const { fresh = false, systemOnly = false } = options;
 
@@ -443,40 +403,37 @@ export async function seedDatabase(options = {}) {
     await clearAllCollections();
   }
 
-  // Dependency Order Execution
-  console.log("→ 1/7 Seeding permissions...");
+  console.log("1/7 Seeding permissions...");
   await seedPermissions();
 
-  console.log("→ 2/7 Seeding users...");
+  console.log("2/7 Seeding users...");
   await seedUsers(systemOnly);
 
-  console.log("→ 3/7 Seeding roles & role-permission mappings...");
+  console.log("3/7 Seeding roles & role-permission mappings...");
   await seedRolesAndPermissions();
 
   if (systemOnly) {
-    console.log("\n✅ System bootstrap seeding complete.\n");
+    console.log("\nSystem bootstrap seeding complete.\n");
     return;
   }
 
-  console.log("→ 4/7 Seeding teams & tasks...");
+  console.log("4/7 Seeding teams & tasks...");
   await seedTeams();
   await seedTasks();
 
-  console.log("→ 5/7 Seeding memberships, roles & invitations...");
+  console.log("5/7 Seeding memberships, roles & invitations...");
   await seedMembershipsAndRoles();
   await seedInvitations();
 
-  console.log("→ 6/7 Seeding access requests & temporary grants...");
+  console.log("6/7 Seeding access requests & temporary grants...");
   await seedAccessRequestsAndGrants();
 
-  console.log("→ 7/7 Seeding notifications & audit logs...");
+  console.log("7/7 Seeding notifications & audit logs...");
   await seedNotificationsAndAuditLogs();
 
-  // Run post-seed validation suite
   await validateSeed();
 
-  // Print summary tables
   await printSeedSummary(seedContext.rawInvitationTokens);
 
-  console.log("✅ Global database seeding completed successfully.\n");
+  console.log("Global database seeding completed successfully.\n");
 }

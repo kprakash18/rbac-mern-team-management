@@ -48,10 +48,8 @@ export default function BroadcastCard({
 
   return (
     <div className="bg-surface-container-lowest rounded-xl p-md sm:p-lg shadow-sm border border-surface-variant flex flex-col gap-sm hover:shadow-md transition-shadow">
-      {/* Top Row: Type & Status & Timing */}
       <div className="flex flex-wrap items-center justify-between gap-xs">
         <div className="flex items-center gap-xs flex-wrap">
-          {/* Type Tag */}
           <span
             className={`px-2.5 py-0.5 rounded-md text-[12px] font-bold inline-flex items-center gap-1 border ${typeConfig.badgeClass}`}
           >
@@ -59,7 +57,6 @@ export default function BroadcastCard({
             <span>{typeConfig.label}</span>
           </span>
 
-          {/* Status Badge */}
           {getStatusBadge()}
         </div>
 
@@ -69,7 +66,6 @@ export default function BroadcastCard({
         </span>
       </div>
 
-      {/* Title & Message */}
       <div>
         <h3 className="font-headline-md text-[16px] sm:text-[18px] font-bold text-on-surface">
           {broadcast.title}
@@ -79,7 +75,6 @@ export default function BroadcastCard({
         </p>
       </div>
 
-      {/* Target Audience & Read Stats Bar */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm bg-surface-container-low p-sm rounded-lg text-[12px]">
         <div className="flex items-center gap-xs">
           <span className="material-symbols-outlined text-[18px] text-primary shrink-0">
@@ -121,7 +116,6 @@ export default function BroadcastCard({
         </div>
       </div>
 
-      {/* Bottom Action Bar */}
       <div className="flex flex-wrap items-center justify-between gap-sm pt-xs border-t border-surface-variant/50">
         <span className="text-[11px] text-on-surface-variant">
           Created by <strong className="text-on-surface">{broadcast.createdBy}</strong>

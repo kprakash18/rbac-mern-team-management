@@ -5,7 +5,7 @@ export default function ConfirmModal({
   children,
   confirmText = 'Confirm',
   cancelText = 'Cancel',
-  confirmVariant = 'danger', // 'danger' | 'warning' | 'primary'
+  confirmVariant = 'danger',
   icon = 'warning',
   onConfirm,
   onClose,

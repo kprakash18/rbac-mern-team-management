@@ -29,7 +29,7 @@ Options:
     await connectDatabase(env.mongoUri);
     await seedDatabase({ fresh: isFresh, systemOnly: isSystemOnly });
   } catch (error) {
-    console.error("\n❌ Database seed failed:");
+    console.error("\nDatabase seed failed:");
     console.error(error);
     process.exitCode = 1;
   } finally {

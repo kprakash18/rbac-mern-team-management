@@ -1,16 +1,12 @@
 import { Router } from "express";
-import { membershipRoleController } from "./member-role.controller.js";
-
+import { membershipRoleController as c } from "./member-role.controller.js";
 import { authenticate } from "../../common/middleware/authenticate.js";
 import { requirePermission } from "../../common/middleware/authorize.js";
 
-// mergeParams: true allows accessing :teamId and :userId from parent router
 const router = Router({ mergeParams: true });
-
-router.post("/", authenticate, requirePermission("role.assign"), membershipRoleController.assignRole);
-router.patch("/:assignmentId", authenticate, requirePermission("role.assign"), membershipRoleController.updateAssignment);
-router.delete("/:assignmentId", authenticate, requirePermission("role.revoke"), membershipRoleController.revokeAssignment);
-router.get("/", authenticate, requirePermission("role.read"), membershipRoleController.getMemberRoles);
-
+router.post("/", authenticate, requirePermission("role.assign"), c.assignRole);
+router.patch("/:assignmentId", authenticate, requirePermission("role.assign"), c.updateAssignment);
+router.delete("/:assignmentId", authenticate, requirePermission("role.revoke"), c.revokeAssignment);
+router.get("/", authenticate, requirePermission("role.read"), c.getMemberRoles);
 
 export default router;

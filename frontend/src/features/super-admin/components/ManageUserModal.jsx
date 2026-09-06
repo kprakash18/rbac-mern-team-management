@@ -199,9 +199,7 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
 
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-on-primary-fixed/40 backdrop-blur-sm p-md">
-      {/* Modal Card */}
       <div className="w-full max-w-160 flex flex-col bg-surface-container-lowest rounded-lg shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between p-lg pb-md bg-surface-container-lowest shadow-sm z-10 relative border-b border-border-subtle">
           <h2 className="font-headline-md text-on-surface">Manage User: {user.name}</h2>
           <button
@@ -213,9 +211,7 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
           </button>
         </div>
 
-        {/* Scrollable Body */}
         <div className="flex flex-col flex-1 overflow-y-auto p-lg gap-xl">
-          {/* User Summary */}
           <div className="flex items-center gap-md bg-surface-container-low p-md rounded-lg shadow-sm">
             {user.avatar ? (
               <img
@@ -261,7 +257,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
             )}
           </div>
 
-          {/* Account Status */}
           <div className="flex flex-col gap-sm">
             <label className="font-label-bold text-on-surface">Account Status</label>
             <div className="relative w-full md:w-1/2">
@@ -281,7 +276,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
             </div>
           </div>
 
-          {/* Workspaces & Roles */}
           <div className="flex flex-col gap-md">
             <div className="flex items-center justify-between">
               <label className="font-label-bold text-on-surface">Workspaces &amp; Roles</label>
@@ -313,7 +307,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
                         <div className="w-8 h-8 bg-primary text-on-primary rounded-lg flex items-center justify-center shadow-sm shrink-0">
                           <span className="material-symbols-outlined text-[18px]">{icon}</span>
                         </div>
-                        {/* Workspace Selector Dropdown */}
                         <div className="relative flex-1 min-w-[160px]">
                           <select
                             value={ws.name}
@@ -336,7 +329,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
                       </div>
 
                       <div className="flex items-center gap-3 shrink-0 flex-wrap sm:flex-nowrap">
-                        {/* Team Admin Toggle Checkbox */}
                         <label className="flex items-center gap-1.5 text-[11px] font-semibold text-on-surface cursor-pointer select-none bg-surface-container-lowest px-2.5 py-1.5 rounded-lg border border-border-subtle hover:bg-surface-container-high transition-colors">
                           <input
                             type="checkbox"
@@ -350,7 +342,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
                           </span>
                         </label>
 
-                        {/* Role Selection Dropdown */}
                         <div className="relative w-36">
                           <select
                             value={ws.role}
@@ -371,7 +362,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
                           </span>
                         </div>
 
-                        {/* Remove Workspace Button */}
                         <button
                           type="button"
                           aria-label="Remove workspace assignment"
@@ -389,7 +379,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
             </div>
           </div>
 
-          {/* Platform Authority */}
           <div className="flex flex-col gap-sm">
             <label className="font-label-bold text-on-surface">Platform Authority</label>
             <div className="flex items-start gap-sm p-md bg-surface-container-low rounded-lg shadow-sm">
@@ -416,7 +405,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
             </div>
           </div>
 
-          {/* Security & Sessions */}
           <div className="flex flex-col gap-sm">
             <label className="font-label-bold text-on-surface">Security &amp; Sessions</label>
             <div className="flex flex-col gap-md p-md bg-surface-container-low rounded-lg shadow-sm">
@@ -466,7 +454,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
           </div>
         </div>
 
-        {/* Footer */}
         <div className="flex items-center justify-end gap-sm p-lg bg-surface-container-low shadow-[0_-1px_3px_rgba(0,0,0,0.05)] relative z-10 border-t border-border-subtle">
           <button
             type="button"
@@ -485,7 +472,6 @@ export default function ManageUserModal({ isOpen, user, onClose, onSaveUser }) {
         </div>
       </div>
 
-      {/* Confirmation Dialog Overlay */}
       {confirmModal && (
         <div className="fixed inset-0 z-120 flex items-center justify-center bg-inverse-surface/60 backdrop-blur-xs p-md animate-in fade-in duration-150">
           <div className="w-full max-w-110 bg-surface-container-lowest rounded-xl shadow-2xl p-lg flex flex-col gap-md border border-border-subtle animate-in zoom-in-95 duration-150">

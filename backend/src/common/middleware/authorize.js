@@ -1,9 +1,6 @@
 import { can, isSuperAdmin } from "../../modules/authorization/authorization.service.js";
 import { ForbiddenError, BadRequestError } from "../errors/index.js";
 
-/**
- * Express middleware to enforce permissions on protected routes.
- */
 export function requirePermission(permissionKey, getResourceId = null) {
   return async (req, res, next) => {
     try {
@@ -14,14 +11,12 @@ export function requirePermission(permissionKey, getResourceId = null) {
         req.body?.teamId ||
         req.headers["x-team-id"];
 
-      // 1. Super Admin platform check: Super Admins bypass team-level RBAC checks
       const userIsSuperAdmin = req.user?.isSuperAdmin ?? (await isSuperAdmin(userId));
       if (userIsSuperAdmin) {
         req.authContext = { teamId: teamId || null, permissionKey, resource: null };
         return next();
       }
 
-      // 2. Canonical catalog read without team context
       if (!teamId && permissionKey === "permission.read") {
         req.authContext = { teamId: null, permissionKey, resource: null };
         return next();

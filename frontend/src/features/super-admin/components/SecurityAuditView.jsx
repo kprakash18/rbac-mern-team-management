@@ -13,7 +13,6 @@ function formatAuditLog(l) {
   const initials = (actorName || 'SYS').split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'SA';
   const workspaceName = l.teamId?.name || l.workspace || (l.teamId ? 'Workspace' : 'System / Global');
 
-  // Category determination
   let category = l.category;
   if (!category) {
     const act = (l.action || '').toLowerCase();
@@ -30,7 +29,6 @@ function formatAuditLog(l) {
     }
   }
 
-  // Severity determination
   let severity = l.severity;
   if (!severity) {
     const isFail = l.result === 'FAILURE' || l.result === 'FAILED';
@@ -71,16 +69,13 @@ export default function SecurityAuditView() {
   const [loading, setLoading] = useState(false);
   const [isLiveStreaming, setIsLiveStreaming] = useState(true);
 
-  // Search & Filter State
   const [searchQuery, setSearchQuery] = useState('');
   const [severityFilter, setSeverityFilter] = useState('ALL');
   const [categoryFilter, setCategoryFilter] = useState('ALL');
   const [resultFilter, setResultFilter] = useState('ALL');
 
-  // Selected Log for Forensic Inspection Modal
   const [inspectedLog, setInspectedLog] = useState(null);
 
-  // Toast Notification
   const [toast, showToast] = useToast(3500);
 
   const fetchAuditLogs = useCallback(async () => {
@@ -114,7 +109,6 @@ export default function SecurityAuditView() {
     };
   }, [fetchAuditLogs]);
 
-  // Filtered Logs
   const filteredLogs = logs.filter((log) => {
     const matchSeverity = severityFilter === 'ALL' || log.severity === severityFilter;
     const matchCategory = categoryFilter === 'ALL' || log.category === categoryFilter;
@@ -132,7 +126,6 @@ export default function SecurityAuditView() {
     return matchSeverity && matchCategory && matchResult && matchSearch;
   });
 
-  // Severity & Metric Counts
   const criticalCount = logs.filter((l) => l.severity === 'CRITICAL').length;
   const warningCount = logs.filter((l) => l.severity === 'WARNING').length;
   const infoCount = logs.filter((l) => l.severity === 'INFO').length;
@@ -198,12 +191,10 @@ export default function SecurityAuditView() {
 
   return (
     <div className="flex flex-col w-full p-xl gap-xl">
-      {/* Toast Notification */}
       <div className="fixed top-6 right-6 z-1300">
         <Toast message={toast?.msg} type={toast?.type} />
       </div>
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-md">
         <div className="flex flex-col gap-xs">
           <div className="flex items-center gap-xs text-on-surface-variant font-label-sm text-label-sm">
@@ -263,9 +254,7 @@ export default function SecurityAuditView() {
         </div>
       </div>
 
-      {/* 4 Security Telemetry Metrics Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-md">
-        {/* Metric 1 */}
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">Total Events (24h)</span>
@@ -279,7 +268,6 @@ export default function SecurityAuditView() {
           </div>
         </div>
 
-        {/* Metric 2 */}
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">Threats / Auth Failures</span>
@@ -295,7 +283,6 @@ export default function SecurityAuditView() {
           </div>
         </div>
 
-        {/* Metric 3 */}
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">JIT Privilege Grants</span>
@@ -311,7 +298,6 @@ export default function SecurityAuditView() {
           </div>
         </div>
 
-        {/* Metric 4 */}
         <div className="bg-surface-container-lowest rounded-xl p-md border border-surface-variant shadow-xs flex items-center justify-between">
           <div>
             <span className="text-[12px] font-label-bold text-on-surface-variant block">RBAC &amp; Config Changes</span>
@@ -328,9 +314,7 @@ export default function SecurityAuditView() {
         </div>
       </div>
 
-      {/* Forensic Search & Filter Controls Toolbar */}
       <div className="bg-surface-container-lowest rounded-xl p-sm shadow-xs border border-surface-variant flex flex-col lg:flex-row items-center justify-between gap-sm">
-        {/* Search */}
         <div className="relative w-full lg:w-80">
           <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">
             search
@@ -344,9 +328,7 @@ export default function SecurityAuditView() {
           />
         </div>
 
-        {/* Filters */}
         <div className="flex items-center gap-xs w-full lg:w-auto justify-end flex-wrap">
-          {/* Severity Pills */}
           <div className="flex items-center bg-surface-container-low p-1 rounded-lg gap-0.5">
             {[
               { id: 'ALL', label: `All (${logs.length})` },
@@ -369,7 +351,6 @@ export default function SecurityAuditView() {
             ))}
           </div>
 
-          {/* Category Dropdown */}
           <select
             value={categoryFilter}
             onChange={(e) => setCategoryFilter(e.target.value)}
@@ -382,7 +363,6 @@ export default function SecurityAuditView() {
             ))}
           </select>
 
-          {/* Result Filter */}
           <select
             value={resultFilter}
             onChange={(e) => setResultFilter(e.target.value)}
@@ -395,14 +375,12 @@ export default function SecurityAuditView() {
         </div>
       </div>
 
-      {/* Main Audit Logs Table */}
       <AuditLogsTable
         logs={filteredLogs}
         loading={loading}
         onInspectLog={(log) => setInspectedLog(log)}
       />
 
-      {/* Forensic Inspection Modal */}
       <AuditLogDetailsModal
         isOpen={Boolean(inspectedLog)}
         log={inspectedLog}

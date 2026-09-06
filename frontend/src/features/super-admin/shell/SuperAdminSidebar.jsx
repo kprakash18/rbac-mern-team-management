@@ -9,7 +9,6 @@ export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav
           isOpen ? 'w-72' : 'w-20'
         }`}
       >
-        {/* Header */}
         <div className={`flex items-center border-b border-surface-variant/40 transition-all duration-300 ${isOpen ? 'p-lg justify-between gap-sm' : 'py-lg px-2 flex-col gap-xs items-center justify-center'}`}>
           {isOpen ? (
             <>
@@ -56,7 +55,6 @@ export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav
           )}
         </div>
 
-        {/* Nav items */}
         <nav
           className={`flex-1 mt-md space-y-xs transition-all duration-300 ${isOpen ? 'px-sm' : 'px-2'}`}
         >
@@ -84,7 +82,6 @@ export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav
                   {isOpen && <span className="font-body-base truncate">{item.label}</span>}
                 </a>
 
-                {/* Tooltip when collapsed */}
                 {!isOpen && (
                   <div className="absolute left-full top-1/2 -translate-y-1/2 ml-2 hidden group-hover/nav:flex z-[100] whitespace-nowrap bg-inverse-surface text-inverse-on-surface font-label-sm text-[12px] px-2.5 py-1 rounded-md shadow-lg pointer-events-none">
                     {item.label}
@@ -95,7 +92,6 @@ export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav
           })}
         </nav>
 
-        {/* Footer */}
         <div className={`border-t border-surface-variant mt-auto space-y-xs transition-all duration-300 ${isOpen ? 'px-lg py-md' : 'px-2 py-md flex flex-col items-center'}`}>
           {isOpen ? (
             <div className="flex items-center gap-xs px-base mb-1">
@@ -113,7 +109,6 @@ export default function SuperAdminSidebar({ activeNav = 'dashboard', onSelectNav
             </div>
           )}
 
-          {/* Log Out Button */}
           <div className="relative group/logout w-full">
             <a
               className={`flex items-center rounded-lg text-error hover:bg-error-bg transition-colors cursor-pointer ${

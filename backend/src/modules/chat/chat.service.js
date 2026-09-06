@@ -1,8 +1,5 @@
 import ChatMessage from "./chat-message.model.js";
 
-/**
- * 1. Persist a new chat message in MongoDB
- */
 export async function saveChatMessage({ teamId, groupId = "grp-general", senderId, content, messageType = "TEXT" }) {
   const message = await ChatMessage.create({
     teamId,
@@ -15,9 +12,6 @@ export async function saveChatMessage({ teamId, groupId = "grp-general", senderI
   return message;
 }
 
-/**
- * 2. Retrieve chat messages for a team and specific group/channel with cursor-based pagination
- */
 export async function getTeamChatHistory({ teamId, groupId = "grp-general", limit = 50, before = null }) {
   const sanitizedLimit = Math.min(Math.max(Number(limit) || 50, 1), 100);
 
@@ -63,9 +57,6 @@ export async function getTeamChatHistory({ teamId, groupId = "grp-general", limi
   };
 }
 
-/**
- * 3. Edit a chat message (only by original sender)
- */
 export async function editChatMessage({ messageId, senderId, content }) {
   const message = await ChatMessage.findOne({ _id: messageId, senderId });
   if (!message) return null;
@@ -77,11 +68,7 @@ export async function editChatMessage({ messageId, senderId, content }) {
   return message;
 }
 
-/**
- * 4. Delete a chat message
- */
 export async function deleteChatMessage({ messageId, senderId }) {
   const result = await ChatMessage.findOneAndDelete({ _id: messageId, senderId });
   return Boolean(result);
 }
-

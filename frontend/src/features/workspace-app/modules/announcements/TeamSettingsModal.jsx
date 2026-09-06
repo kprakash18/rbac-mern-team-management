@@ -45,7 +45,6 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
       <div className="w-full max-w-lg bg-surface-container-lowest rounded-2xl shadow-2xl p-lg flex flex-col gap-md border border-border-subtle animate-in zoom-in-95 duration-150">
-        {/* Header */}
         <div className="flex items-center justify-between pb-sm border-b border-border-subtle">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
@@ -69,7 +68,6 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
           </button>
         </div>
 
-        {/* Settings Form */}
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div>
             <label className="text-label-sm font-label-bold text-on-surface block mb-1">
@@ -152,7 +150,6 @@ export default function TeamSettingsModal({ isOpen, workspace, onClose, onSave }
             </div>
           </div>
 
-          {/* Modal Actions */}
           <div className="flex items-center justify-end gap-2 pt-2 border-t border-border-subtle">
             <button
               type="button"

@@ -42,15 +42,12 @@ export default function BroadcastDetailsDrawer({
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md" id="modal-broadcast-details">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
-      {/* Centered Modal Card */}
       <div
         className="relative bg-card-bg w-[620px] max-w-[94vw] max-h-[92vh] rounded-xl shadow-2xl overflow-hidden border border-border-subtle z-[1110] animate-in zoom-in-95 duration-150 flex flex-col mx-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Modal Header */}
         <div className="p-lg bg-surface-container-lowest flex items-center justify-between border-b border-border-subtle shrink-0">
           <div className="flex items-center gap-sm min-w-0 flex-1 pr-sm">
             <span className={`p-2 rounded-lg shrink-0 ${typeConfig.badgeClass}`}>
@@ -74,7 +71,6 @@ export default function BroadcastDetailsDrawer({
           </button>
         </div>
 
-        {/* Tab Navigation */}
         <div className="flex border-b border-border-subtle bg-surface-container-low px-lg gap-md text-body-sm font-label-bold">
           <button
             type="button"
@@ -103,9 +99,7 @@ export default function BroadcastDetailsDrawer({
           </button>
         </div>
 
-        {/* Body Content */}
         <div className="p-lg space-y-md overflow-y-auto flex-1">
-          {/* Full Message Box */}
           <div className="p-md bg-surface-container-low rounded-xl border border-border-subtle text-body-sm text-on-surface">
             <span className="font-label-bold text-[11px] text-on-surface-variant block mb-1 uppercase tracking-wider">
               Broadcast Message Content
@@ -121,7 +115,6 @@ export default function BroadcastDetailsDrawer({
 
           {activeTab === 'telemetry' ? (
             <div className="space-y-md">
-              {/* Stat Gauges */}
               <div className="grid grid-cols-3 gap-xs p-sm bg-surface-container-lowest rounded-xl border border-border-subtle text-center">
                 <div className="p-xs">
                   <span className="text-[11px] text-on-surface-variant font-label-bold block">Targeted</span>
@@ -143,7 +136,6 @@ export default function BroadcastDetailsDrawer({
                 </div>
               </div>
 
-              {/* Workspace Breakdown */}
               <div>
                 <span className="font-label-bold text-label-sm text-on-surface block mb-sm">
                   Breakdown by Targeted Workspace
@@ -166,7 +158,6 @@ export default function BroadcastDetailsDrawer({
                 </div>
               </div>
 
-              {/* Metadata */}
               <div className="p-sm bg-surface-container-low rounded-lg text-[12px] text-on-surface-variant space-y-1">
                 <div><strong>Created By:</strong> {broadcast.createdBy}</div>
                 <div><strong>Started:</strong> {broadcast.startAt || broadcast.createdAt}</div>
@@ -220,7 +211,6 @@ export default function BroadcastDetailsDrawer({
           )}
         </div>
 
-        {/* Modal Footer Actions */}
         <div className="p-md bg-surface-container-low flex justify-between items-center border-t border-border-subtle shrink-0">
           <button
             type="button"

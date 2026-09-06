@@ -4,10 +4,7 @@ import { Server as SocketIOServer } from "socket.io";
 import { socketAuthMiddleware } from "./socket-auth.middleware.js";
 import { env } from "../config/env.js";
 
-
-
 let ioInstance = null;
-
 
 export function initSocketServer(httpServer) {
   const io = new SocketIOServer(httpServer, {

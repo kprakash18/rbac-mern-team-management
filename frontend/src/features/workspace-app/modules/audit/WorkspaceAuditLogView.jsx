@@ -165,10 +165,8 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
 
   return (
     <div className="flex flex-col w-full max-w-7xl mx-auto p-md sm:p-lg gap-lg animate-in fade-in duration-150">
-      {/* Toast Notification */}
       <Toast message={toast?.msg} type={toast?.type} />
 
-      {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-md border-b border-border-subtle pb-md">
         <div>
           <div className="flex items-center gap-2">
@@ -204,7 +202,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
         </div>
       </div>
 
-      {/* Metrics Row */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="p-3.5 rounded-xl bg-surface-container-lowest border border-border-subtle flex flex-col">
           <span className="text-[11px] font-semibold text-on-surface-variant">Total Logged Events</span>
@@ -230,9 +227,7 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
         </div>
       </div>
 
-      {/* Filter & Search Bar */}
       <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3 p-3 rounded-xl bg-surface-container-low border border-border-subtle">
-        {/* Search */}
         <SearchInput
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
@@ -241,7 +236,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
           className="flex-1 min-w-60"
         />
 
-        {/* Category Filter */}
         <div className="flex items-center gap-2 flex-wrap">
           <select
             value={categoryFilter}
@@ -256,7 +250,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
             <option value="SECURITY">Security & Auth</option>
           </select>
 
-          {/* Severity Filter */}
           <select
             value={severityFilter}
             onChange={(e) => setSeverityFilter(e.target.value)}
@@ -270,7 +263,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
         </div>
       </div>
 
-      {/* Events Table / Feed */}
       <div className="bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-16 gap-3 text-on-surface-variant">
@@ -295,7 +287,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
                   className="p-3.5 sm:p-4 flex items-start justify-between gap-3 hover:bg-surface-container-low/60 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-start gap-3 min-w-0 flex-1">
-                    {/* Actor Avatar */}
                     <div
                       className={`w-9 h-9 rounded-full flex items-center justify-center font-bold text-[12px] shrink-0 ${
                         evt.actor.isAnomaly
@@ -308,7 +299,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
                       {evt.actor.initials}
                     </div>
 
-                    {/* Main Details */}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-label-bold text-[13px] text-on-surface">
@@ -345,7 +335,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
                     </div>
                   </div>
 
-                  {/* Timestamp & Inspect Arrow */}
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="text-[11px] text-on-surface-variant font-mono">{evt.timestamp}</span>
                     <span className="material-symbols-outlined text-[18px] text-outline group-hover:text-primary transition-colors">
@@ -359,11 +348,9 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
         )}
       </div>
 
-      {/* Forensic Inspection Modal */}
       {selectedEvent && (
         <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
           <div className="w-full max-w-lg bg-surface-container-lowest rounded-xl shadow-2xl border border-border-subtle animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh] overflow-hidden">
-            {/* Modal Header */}
             <div className="p-lg pb-md border-b border-border-subtle bg-surface-container-low flex items-center justify-between">
               <div className="flex items-center gap-2.5">
                 <div className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-xs">
@@ -387,9 +374,7 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
               </button>
             </div>
 
-            {/* Modal Body */}
             <div className="p-lg overflow-y-auto flex flex-col gap-md">
-              {/* Status Banner */}
               <div className="flex items-center justify-between p-3 rounded-xl bg-surface-container-low border border-border-subtle">
                 <div className="flex items-center gap-2">
                   <span className="material-symbols-outlined text-emerald-600 text-[20px]">verified</span>
@@ -400,7 +385,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
                 </span>
               </div>
 
-              {/* Event Metadata */}
               <div className="grid grid-cols-2 gap-3 text-[12px]">
                 <div className="p-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest">
                   <span className="text-on-surface-variant block text-[10px] uppercase font-bold">Action Type</span>
@@ -428,7 +412,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
                 </div>
               </div>
 
-              {/* Full Description */}
               <div className="flex flex-col gap-1">
                 <span className="text-[11px] font-bold text-on-surface uppercase">Event Narrative</span>
                 <div className="p-3 rounded-xl bg-surface-container-low border border-border-subtle text-[13px] text-on-surface leading-relaxed">
@@ -437,7 +420,6 @@ export default function WorkspaceAuditLogView({ currentUser, workspace, onNaviga
               </div>
             </div>
 
-            {/* Footer */}
             <div className="p-md border-t border-border-subtle bg-surface-container-low flex justify-end">
               <button
                 type="button"

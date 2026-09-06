@@ -31,7 +31,6 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues, load
 
   return (
     <form className="flex flex-col gap-4 w-full" onSubmit={handleSubmit}>
-      {/* Email Input */}
       <div className="flex flex-col gap-1 w-full">
         <label className="text-[13px] font-semibold text-on-surface" htmlFor="email">
           Email address
@@ -48,7 +47,6 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues, load
         />
       </div>
 
-      {/* Password Input */}
       <div className="flex flex-col gap-1 w-full">
         <div className="flex items-center justify-between">
           <label className="text-[13px] font-semibold text-on-surface" htmlFor="password">
@@ -83,7 +81,6 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues, load
         </div>
       </div>
 
-      {/* Remember Me Checkbox */}
       <div className="flex items-center gap-2">
         <input
           className="w-4 h-4 rounded text-primary focus:ring-primary cursor-pointer disabled:opacity-60"
@@ -101,7 +98,6 @@ export default function LoginForm({ onSubmit, onInputChange, initialValues, load
         </label>
       </div>
 
-      {/* Submit Button */}
       <button
         className="w-full bg-primary text-on-primary font-bold py-2.5 px-4 rounded-lg hover:bg-on-primary-fixed focus:outline-none focus:ring-2 focus:ring-primary transition-all mt-2 flex items-center justify-center gap-2 group cursor-pointer shadow-sm text-[14px] disabled:opacity-70 disabled:cursor-not-allowed"
         type="submit"

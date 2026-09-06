@@ -1,6 +1,31 @@
 import { useState, useEffect } from 'react';
 import { BROADCAST_TYPES } from '@/constants';
 
+const getDefaultDateTime = (daysAhead = 0, hoursAhead = 1) => {
+  const d = new Date();
+  d.setDate(d.getDate() + daysAhead);
+  d.setHours(d.getHours() + hoursAhead);
+  d.setMinutes(0, 0, 0);
+  return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+};
+
+const getInitialFormData = () => ({
+  title: '',
+  message: '',
+  type: 'OUTAGE',
+  severity: 'P0 Critical Outage',
+  scope: 'GLOBAL',
+  targetWorkspaces: ['All Workspaces (18 active)'],
+  targetRoles: ['All Roles'],
+  ackMode: 'READ_RECEIPT',
+  ctaLabel: '',
+  ctaUrl: '',
+  startTiming: 'NOW',
+  scheduledDate: getDefaultDateTime(0, 1),
+  endTiming: 'DISMISSED',
+  expireDate: getDefaultDateTime(7, 0),
+});
+
 export default function CreateEditBroadcastModal({
   isOpen,
   broadcastToEdit,
@@ -8,22 +33,7 @@ export default function CreateEditBroadcastModal({
   onSubmit,
 }) {
   const [activeStep, setActiveStep] = useState(1);
-  const [formData, setFormData] = useState({
-    title: '',
-    message: '',
-    type: 'OUTAGE',
-    severity: 'P0 Critical Outage',
-    scope: 'GLOBAL',
-    targetWorkspaces: ['All Workspaces (18 active)'],
-    targetRoles: ['All Roles'],
-    ackMode: 'READ_RECEIPT',
-    ctaLabel: '',
-    ctaUrl: '',
-    startTiming: 'NOW',
-    scheduledDate: '2026-10-30T00:00',
-    endTiming: 'DISMISSED',
-    expireDate: '2026-11-05T23:59',
-  });
+  const [formData, setFormData] = useState(getInitialFormData);
 
   useEffect(() => {
     if (isOpen) {
@@ -41,31 +51,15 @@ export default function CreateEditBroadcastModal({
           ctaLabel: broadcastToEdit.cta?.label || '',
           ctaUrl: broadcastToEdit.cta?.url || '',
           startTiming: broadcastToEdit.status === 'SCHEDULED' ? 'SCHEDULED' : 'NOW',
-          scheduledDate: broadcastToEdit.startsAt ? new Date(broadcastToEdit.startsAt).toISOString().slice(0, 16) : '2026-10-30T00:00',
+          scheduledDate: broadcastToEdit.startsAt ? new Date(broadcastToEdit.startsAt).toISOString().slice(0, 16) : getDefaultDateTime(0, 1),
           endTiming: broadcastToEdit.expiresAt ? 'DATE' : 'DISMISSED',
-          expireDate: broadcastToEdit.expiresAt ? new Date(broadcastToEdit.expiresAt).toISOString().slice(0, 16) : '2026-11-05T23:59',
+          expireDate: broadcastToEdit.expiresAt ? new Date(broadcastToEdit.expiresAt).toISOString().slice(0, 16) : getDefaultDateTime(7, 0),
         });
       } else {
-        setFormData({
-          title: '',
-          message: '',
-          type: 'OUTAGE',
-          severity: 'P0 Critical Outage',
-          scope: 'GLOBAL',
-          targetWorkspaces: ['All Workspaces (18 active)'],
-          targetRoles: ['All Roles'],
-          ackMode: 'READ_RECEIPT',
-          ctaLabel: '',
-          ctaUrl: '',
-          startTiming: 'NOW',
-          scheduledDate: '2026-10-30T00:00',
-          endTiming: 'DISMISSED',
-          expireDate: '2026-11-05T23:59',
-        });
+        setFormData(getInitialFormData());
       }
     }
   }, [isOpen, broadcastToEdit]);
-
 
   if (!isOpen) return null;
 
@@ -119,13 +113,11 @@ export default function CreateEditBroadcastModal({
 
   return (
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-md" id="modal-create-broadcast">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div
         className="relative bg-card-bg rounded-xl w-[720px] max-w-[96vw] shadow-2xl overflow-hidden border border-border-subtle z-[1000] animate-in zoom-in-95 duration-150 mx-auto max-h-[92vh] flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="p-lg bg-surface-container-lowest flex items-center justify-between border-b border-border-subtle shrink-0">
           <div className="flex items-center gap-sm">
             <div className="w-10 h-10 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-xs">
@@ -148,7 +140,6 @@ export default function CreateEditBroadcastModal({
           </button>
         </div>
 
-        {/* Wizard Step Navigation */}
         <div className="flex border-b border-border-subtle bg-surface-container-low px-lg py-xs gap-sm text-[12px] font-label-bold overflow-x-auto">
           {[
             { step: 1, label: '1. Basic Details' },
@@ -171,10 +162,8 @@ export default function CreateEditBroadcastModal({
           ))}
         </div>
 
-        {/* Body Content */}
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-lg space-y-md overflow-y-auto flex-1">
-            {/* Step 1: Basic Details */}
             {activeStep === 1 && (
               <div className="space-y-md animate-in fade-in duration-150">
                 <div>
@@ -237,7 +226,7 @@ export default function CreateEditBroadcastModal({
                     </label>
                     <input
                       type="text"
-                      placeholder="e.g. Live Status Page →"
+                      placeholder="e.g. Live Status Page ->"
                       value={formData.ctaLabel}
                       onChange={(e) => setFormData({ ...formData, ctaLabel: e.target.value })}
                       className="w-full h-9 px-sm bg-surface-container-low rounded-lg text-body-sm text-on-surface border border-border-subtle focus:outline-none"
@@ -259,7 +248,6 @@ export default function CreateEditBroadcastModal({
               </div>
             )}
 
-            {/* Step 2: Audience Scope */}
             {activeStep === 2 && (
               <div className="space-y-md animate-in fade-in duration-150">
                 <div>
@@ -424,7 +412,6 @@ export default function CreateEditBroadcastModal({
               </div>
             )}
 
-            {/* Step 3: Timing & Lifespan */}
             {activeStep === 3 && (
               <div className="space-y-md animate-in fade-in duration-150">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-md">
@@ -479,7 +466,6 @@ export default function CreateEditBroadcastModal({
               </div>
             )}
 
-            {/* Step 4: Live Banner Preview */}
             {activeStep === 4 && (
               <div className="space-y-md animate-in fade-in duration-150">
                 <div>
@@ -527,7 +513,6 @@ export default function CreateEditBroadcastModal({
             )}
           </div>
 
-          {/* Modal Footer Controls */}
           <div className="p-md bg-surface-container-low flex justify-between items-center border-t border-border-subtle shrink-0">
             {activeStep > 1 ? (
               <button
@@ -554,7 +539,7 @@ export default function CreateEditBroadcastModal({
                   className="h-9 px-lg rounded-lg bg-primary text-on-primary hover:bg-on-primary-fixed font-label-bold text-label-sm transition-colors cursor-pointer shadow-xs"
                   onClick={() => setActiveStep((prev) => prev + 1)}
                 >
-                  Continue →
+                  Continue &rarr;
                 </button>
               ) : (
                 <button

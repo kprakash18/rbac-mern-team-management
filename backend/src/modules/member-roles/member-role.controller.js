@@ -1,70 +1,54 @@
 import { membershipRoleService } from "./member-role.service.js";
+import { asyncHandler } from "../../common/utils/async-handler.js";
 
+export const assignRole = asyncHandler(async (req, res) => {
+  const { teamId, userId } = req.params;
+  const { roleId, expiresAt } = req.body;
 
-export async function assignRole(req, res, next) {
-  try {
-    const { teamId, userId } = req.params;
-    const { roleId, expiresAt } = req.body;
+  const assignment = await membershipRoleService.assignRoleToMember({
+    teamId,
+    userId,
+    roleId,
+    expiresAt,
+    assignedBy: req.user.id,
+  });
 
-    const assignment = await membershipRoleService.assignRoleToMember({
-      teamId,
-      userId,
-      roleId,
-      expiresAt,
-      assignedBy: req.user.id,
-    });
+  res.status(201).json({ success: true, data: assignment });
+});
 
-    return res.status(201).json({ success: true, data: assignment });
-  } catch (error) {
-    next(error);
-  }
-}
+export const updateAssignment = asyncHandler(async (req, res) => {
+  const { teamId, userId, assignmentId } = req.params;
+  const { expiresAt } = req.body;
 
-export async function updateAssignment(req, res, next) {
-  try {
-    const { teamId, userId, assignmentId } = req.params;
-    const { expiresAt } = req.body;
+  const updated = await membershipRoleService.updateRoleAssignmentTtl({
+    teamId,
+    userId,
+    assignmentId,
+    expiresAt,
+  });
 
-    const updated = await membershipRoleService.updateRoleAssignmentTtl({
-      teamId,
-      userId,
-      assignmentId,
-      expiresAt,
-    });
+  res.status(200).json({ success: true, data: updated });
+});
 
-    return res.status(200).json({ success: true, data: updated });
-  } catch (error) {
-    next(error);
-  }
-}
+export const revokeAssignment = asyncHandler(async (req, res) => {
+  const { teamId, userId, assignmentId } = req.params;
 
-export async function revokeAssignment(req, res, next) {
-  try {
-    const { teamId, userId, assignmentId } = req.params;
+  const result = await membershipRoleService.revokeRoleAssignment({
+    teamId,
+    userId,
+    assignmentId,
+    revokedBy: req.user.id,
+  });
 
-    const result = await membershipRoleService.revokeRoleAssignment({
-      teamId,
-      userId,
-      assignmentId,
-      revokedBy: req.user.id,
-    });
+  res.status(200).json(result);
+});
 
-    return res.status(200).json(result);
-  } catch (error) {
-    next(error);
-  }
-}
+export const getMemberRoles = asyncHandler(async (req, res) => {
+  const { teamId, userId } = req.params;
+  const roles = await membershipRoleService.listMemberRoles({ teamId, userId });
 
-export async function getMemberRoles(req, res, next) {
-  try {
-    const { teamId, userId } = req.params;
-    const roles = await membershipRoleService.listMemberRoles({ teamId, userId });
-
-    return res.status(200).json({ success: true, data: roles, count: roles.length });
-  } catch (error) {
-    next(error);
-  }
-}
+  res.status(200).json({ success: true, data: roles, count: roles.length });
+});
 
 export const membershipRoleController = {
   assignRole,

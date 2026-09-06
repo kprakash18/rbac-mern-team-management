@@ -38,7 +38,6 @@ export default function JitRequestRow({
 
   return (
     <tr className="hover:bg-surface-container-low/60 transition-colors">
-      {/* Member Identity */}
       <td className="py-3.5 px-4 w-44 align-top">
         <div className="flex items-center gap-2.5">
           <Avatar
@@ -58,7 +57,6 @@ export default function JitRequestRow({
         </div>
       </td>
 
-      {/* Elevated Privilege & Risk */}
       <td className="py-3.5 px-4 w-52 align-top">
         <span className="font-medium text-[13px] text-on-surface block leading-snug">
           {req.requestedRoleLabel}
@@ -68,7 +66,6 @@ export default function JitRequestRow({
         </Badge>
       </td>
 
-      {/* Justification & Ticket */}
       <td className="py-3.5 px-4 align-top min-w-60">
         <div className="flex items-center gap-1.5 mb-0.5">
           <span className="font-mono text-[11px] font-bold px-1.5 py-0.2 rounded bg-surface-container border border-border-subtle text-on-surface">
@@ -86,7 +83,6 @@ export default function JitRequestRow({
         )}
       </td>
 
-      {/* Duration / Expiry */}
       <td className="py-3.5 px-4 w-32 align-top">
         <span className="text-[12px] font-medium text-on-surface block">
           {req.requestedDuration}
@@ -98,14 +94,12 @@ export default function JitRequestRow({
         )}
       </td>
 
-      {/* Status Badge */}
       <td className="py-3.5 px-4 w-36 text-center align-top">
         <Badge variant={statusVariant} size="pill">
           {req.status === 'APPROVED' && req.expiresAt ? 'Active' : statusInfo.label}
         </Badge>
       </td>
 
-      {/* Action / Governance */}
       <td className="py-3.5 px-4 w-40 text-right align-top">
         {req.status === 'PENDING' ? (
           isRequester ? (

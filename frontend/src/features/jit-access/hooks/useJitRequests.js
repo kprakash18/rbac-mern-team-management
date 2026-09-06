@@ -79,7 +79,6 @@ export function useJitRequests({ teamId, currentUserId, showToast }) {
     fetchRequestsAndCatalog();
   }, [fetchRequestsAndCatalog]);
 
-  // Real-time socket listeners
   useEffect(() => {
     if (!teamId) return;
     const socket = getSocket();
@@ -220,7 +219,6 @@ export function useJitRequests({ teamId, currentUserId, showToast }) {
     }
   };
 
-  // Filter Requests
   const filteredRequests = requests.filter((r) => {
     const matchesSearch =
       !searchQuery ||

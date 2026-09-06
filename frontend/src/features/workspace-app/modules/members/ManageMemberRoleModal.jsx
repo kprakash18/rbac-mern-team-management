@@ -14,7 +14,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
-  // Fetch backend roles dynamically
   useEffect(() => {
     if (!isOpen) return;
 
@@ -31,7 +30,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
         if (isMounted) {
           setRoles(roleList);
 
-          // Find current role from backend list
           const currentRoleName = member?.role || member?.roles?.[0]?.name || 'Developer';
           const matched = roleList.find(
             (r) =>
@@ -102,13 +100,11 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
         member.status?.toLowerCase() === 'suspended';
       const isTargetSuspended = memberStatus === 'Suspended';
 
-      // 1. Handle Status Change if modified
       if (isCurrentlySuspended !== isTargetSuspended) {
         const action = isTargetSuspended ? 'suspend' : 'reactivate';
         await api.patch(`/api/teams/${effectiveTeamId}/members/${membershipId}/${action}`);
       }
 
-      // 2. Handle Role Change if modified
       const currentRoleId = member.roleId || member.roles?.[0]?._id;
       const currentRoleName = member.role || member.roles?.[0]?.name;
       const isRoleDifferent =
@@ -149,7 +145,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
   return (
     <div className="fixed inset-0 z-60 flex items-center justify-center bg-inverse-surface/50 backdrop-blur-xs p-md animate-in fade-in duration-150">
       <div className="w-full max-w-xl bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-border-subtle animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
         <div className="p-lg pb-md border-b border-border-subtle bg-surface-container-low flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-xs">
@@ -173,7 +168,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
           </button>
         </div>
 
-        {/* Error Alert */}
         {errorMessage && (
           <div className="mx-lg mt-md p-3 rounded-lg bg-error-container/40 border border-error/30 text-error flex items-center gap-2 text-body-sm">
             <span className="material-symbols-outlined text-[18px]">error</span>
@@ -181,9 +175,7 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
           </div>
         )}
 
-        {/* Form Body */}
         <form onSubmit={handleSubmit} className="p-lg flex-1 overflow-y-auto flex flex-col gap-lg">
-          {/* Member Profile Summary */}
           <div className="flex items-center gap-3 p-3 rounded-xl bg-surface-container-low border border-border-subtle">
             <div className="w-11 h-11 rounded-full bg-primary text-on-primary font-label-bold flex items-center justify-center text-label-md shrink-0 shadow-xs">
               {member.initials}
@@ -209,7 +201,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
             </div>
           </div>
 
-          {/* Membership Status Selector */}
           <div className="flex flex-col gap-2 p-3.5 rounded-xl bg-surface-container-low/60 border border-border-subtle">
             <label className="text-label-sm font-label-bold text-on-surface flex items-center justify-between">
               <span className="flex items-center gap-1.5">
@@ -262,7 +253,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
             </p>
           </div>
 
-          {/* Role Selection */}
           <div className="flex flex-col gap-1.5">
             <label className="text-label-sm font-label-bold text-on-surface flex items-center justify-between">
               <span>Assigned Workspace Role</span>
@@ -296,7 +286,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
             )}
           </div>
 
-          {/* Department Field */}
           <div className="flex flex-col gap-1.5">
             <label className="text-label-sm font-label-bold text-on-surface">
               Department / Functional Unit
@@ -310,7 +299,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
             />
           </div>
 
-          {/* Live Backend Permissions Preview */}
           <div className="flex flex-col gap-2">
             <span className="text-label-sm font-label-bold text-on-surface flex items-center justify-between">
               <span>Role Permissions &amp; Capabilities</span>
@@ -345,7 +333,6 @@ export default function ManageMemberRoleModal({ isOpen, member, teamId, onClose,
             </div>
           </div>
 
-          {/* Footer Actions */}
           <div className="pt-md border-t border-border-subtle flex items-center justify-end gap-2">
             <button
               type="button"

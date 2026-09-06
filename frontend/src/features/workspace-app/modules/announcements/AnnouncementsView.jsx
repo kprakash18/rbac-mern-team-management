@@ -31,7 +31,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
   const [teamBroadcasts, setTeamBroadcasts] = useState([]);
   const [submitting, setSubmitting] = useState(false);
 
-  // Broadcast Form State
   const [broadcastTitle, setBroadcastTitle] = useState('');
   const [broadcastType, setBroadcastType] = useState('MAINTENANCE');
   const [broadcastBody, setBroadcastBody] = useState('');
@@ -81,7 +80,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
     fetchBroadcasts();
   }, [fetchBroadcasts]);
 
-  // Real-time socket listener for team broadcasts
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
@@ -148,7 +146,7 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
         onAddAnnouncement?.(formattedNew);
       }
       setIsBroadcastModalOpen(false);
-      showToast('📢 System broadcast dispatched to all team members!');
+      showToast(' System broadcast dispatched to all team members!');
     } catch (err) {
       console.error('Failed to send broadcast:', err);
       showToast(err.response?.data?.message || err.response?.data?.error?.message || 'Failed to dispatch broadcast.', 'error');
@@ -162,7 +160,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
 
   return (
     <div className="w-full max-w-5xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
-      {/* Toast */}
       {toast && (
         <div
           className={`fixed top-6 right-6 z-50 px-md py-2.5 rounded-xl shadow-xl flex items-center gap-2 text-[13px] font-semibold transition-all animate-in slide-in-from-top-4 duration-200 border ${
@@ -178,7 +175,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
         </div>
       )}
 
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <div className="flex items-center gap-2">
@@ -196,7 +192,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
           </p>
         </div>
 
-        {/* Broadcast Button */}
         {canBroadcast ? (
           <button
             type="button"
@@ -217,7 +212,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
         )}
       </div>
 
-      {/* Announcements List */}
       <div className="flex flex-col gap-md">
         {displayAnnouncements.map((ann) => {
           const typeConf = TYPE_CONFIG[ann.type] || TYPE_CONFIG.ANNOUNCEMENT;
@@ -230,7 +224,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 !ann.isRead ? 'border-primary/40 ring-1 ring-primary/10' : 'border-border-subtle'
               }`}
             >
-              {/* Card Header */}
               <div className="p-md flex items-start gap-3">
                 <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${typeConf.badge}`}>
                   <span className="material-symbols-outlined text-[20px]">{typeConf.icon}</span>
@@ -288,7 +281,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 </div>
               </div>
 
-              {/* Expanded Body */}
               {isExpanded && (
                 <div className="px-md pb-md">
                   <div className="bg-surface-container-low rounded-xl p-3.5 text-[13px] text-on-surface leading-relaxed border border-border-subtle/70">
@@ -308,7 +300,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 </div>
               )}
 
-              {/* Card Footer */}
               <div className="px-md pb-3 pt-1 border-t border-border-subtle/60 flex items-center justify-between">
                 <button
                   type="button"
@@ -349,7 +340,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
         )}
       </div>
 
-      {/* Broadcast Modal (Team Admin On-The-Go Broadcast) */}
       {isBroadcastModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-on-surface/30 backdrop-blur-xs">
           <div className="bg-surface-container-lowest border border-border-subtle rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95 duration-150">
@@ -373,7 +363,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
             </div>
 
             <form onSubmit={handleSubmitBroadcast} className="p-md flex flex-col gap-3.5">
-              {/* Category */}
               <div>
                 <label className="text-label-sm font-label-bold text-on-surface block mb-1">
                   Broadcast Category *
@@ -397,7 +386,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 </div>
               </div>
 
-              {/* Title / Headline */}
               <div>
                 <label className="text-label-sm font-label-bold text-on-surface block mb-1">
                   Message Headline *
@@ -412,7 +400,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 />
               </div>
 
-              {/* Message Body */}
               <div>
                 <label className="text-label-sm font-label-bold text-on-surface block mb-1">
                   Broadcast Details *
@@ -427,7 +414,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 ></textarea>
               </div>
 
-              {/* Toggles */}
               <div className="p-3 rounded-xl bg-surface-container-low border border-border-subtle flex flex-col gap-2.5">
                 <label className="flex items-center justify-between cursor-pointer">
                   <div>
@@ -466,7 +452,6 @@ export default function AnnouncementsView({ currentUser, workspace, announcement
                 </div>
               </div>
 
-              {/* Modal Footer */}
               <div className="pt-2 border-t border-border-subtle flex items-center justify-between">
                 <span className="text-[11px] text-on-surface-variant">
                   Broadcasting as <strong>{currentUser?.name || 'Diana Morales'} (Team Admin)</strong>

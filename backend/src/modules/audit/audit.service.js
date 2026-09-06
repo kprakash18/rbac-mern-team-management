@@ -3,14 +3,10 @@ import { getPaginationParams, getTotalPages } from "../../common/utils/index.js"
 import { emitToAll } from "../../realtime/event-emitter.js";
 import mongoose from "mongoose";
 
-/**
- * Writes a single audit event record.
- * Non-blocking: a write failure must never crash the caller.
- */
 export async function logAuditEvent({
   actorId = null,
-  action,          // e.g. "access_request.approved"
-  targetType,      // e.g. "AccessRequest"
+  action,
+  targetType,
   targetId = null,
   teamId = null,
   result = "SUCCESS",
@@ -31,7 +27,6 @@ export async function logAuditEvent({
       userAgent: userAgent || null,
     });
 
-    // Populate and broadcast to super admin live feeds
     try {
       const populated = await logDoc.populate([
         { path: "actorId", select: "name email" },
@@ -44,9 +39,6 @@ export async function logAuditEvent({
   }
 }
 
-/**
- * Paginated query of audit logs for a specific team or the entire platform (teamId = null).
- */
 export async function getAuditLogs({
   teamId = null,
   filters = {},

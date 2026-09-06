@@ -8,7 +8,6 @@ export default function PlatformMetricsCards({ metrics = {} }) {
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-md w-full">
-      {/* 1. Workspaces */}
       <div className="bg-card-bg shadow-sm rounded-xl p-lg flex flex-col gap-md h-full transition-transform hover:-translate-y-1 duration-300">
         <div className="p-sm bg-primary-container/10 rounded-lg w-fit">
           <span className="material-symbols-outlined text-primary-container text-[24px]">corporate_fare</span>
@@ -30,7 +29,6 @@ export default function PlatformMetricsCards({ metrics = {} }) {
         </div>
       </div>
 
-      {/* 2. Users */}
       <div className="bg-card-bg shadow-sm rounded-xl p-lg flex flex-col gap-md h-full transition-transform hover:-translate-y-1 duration-300 relative overflow-hidden group">
         <div className="absolute inset-0 bg-gradient-to-br from-transparent via-primary/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
         <div className="p-sm bg-tertiary-container/10 rounded-lg w-fit relative z-10">
@@ -56,7 +54,6 @@ export default function PlatformMetricsCards({ metrics = {} }) {
         </div>
       </div>
 
-      {/* 3. JIT Grants */}
       <div className="bg-card-bg shadow-sm rounded-xl p-lg flex flex-col gap-md h-full transition-transform hover:-translate-y-1 duration-300">
         <div className="flex justify-between items-start">
           <div className="p-sm bg-secondary-container/30 rounded-lg">
@@ -81,7 +78,6 @@ export default function PlatformMetricsCards({ metrics = {} }) {
         </div>
       </div>
 
-      {/* 4. Security Events */}
       <div className="bg-card-bg shadow-sm rounded-xl p-lg flex flex-col gap-md h-full transition-transform hover:-translate-y-1 duration-300">
         <div className="p-sm bg-error-container/30 rounded-lg w-fit">
           <span className="material-symbols-outlined text-on-error-container text-[24px]">policy</span>

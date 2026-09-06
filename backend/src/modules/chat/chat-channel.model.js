@@ -44,7 +44,6 @@ const chatChannelSchema = new mongoose.Schema(
   }
 );
 
-// Unique channel name per team
 chatChannelSchema.index({ teamId: 1, name: 1 }, { unique: true });
 
 const ChatChannel = mongoose.model("ChatChannel", chatChannelSchema);

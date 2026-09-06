@@ -66,7 +66,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
     onClose();
   };
 
-  // Check if entered email already belongs to an existing user
   const matchedUser = existingUsers.find(
     (u) => u.email.toLowerCase() === email.trim().toLowerCase()
   );
@@ -153,7 +152,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/50 backdrop-blur-sm p-4">
       <div className="relative w-full max-w-145 bg-surface-container-lowest rounded-xl shadow-xl border border-border-subtle flex flex-col max-h-[90vh]">
-        {/* Modal Header */}
         <div className="flex items-center justify-between p-lg border-b border-border-subtle">
           <div className="flex items-center gap-sm">
             <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface">
@@ -171,9 +169,7 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-lg overflow-y-auto flex flex-col gap-xl">
-          {/* User Identity Details */}
           <div className="flex flex-col gap-md">
             <div className="flex items-center justify-between">
               <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
@@ -213,7 +209,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
 
           <div className="h-px bg-border-subtle w-full"></div>
 
-          {/* Workspace & Role Assignment */}
           <div className="flex flex-col gap-md">
             <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
               Workspace &amp; Role Assignment
@@ -286,7 +281,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
                       )}
                     </div>
 
-                    {/* Team Admin Option for this Workspace */}
                     <div className="pt-2 border-t border-border-subtle/80 flex items-center justify-between">
                       <label className="flex items-center gap-2 text-[12px] font-medium text-on-surface cursor-pointer select-none">
                         <input
@@ -324,7 +318,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
 
           <div className="h-px bg-border-subtle w-full"></div>
 
-          {/* Platform Authority */}
           <div className="flex flex-col gap-md">
             <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
               Platform Authority
@@ -360,7 +353,6 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
           </div>
         </div>
 
-        {/* Modal Footer */}
         <div className="p-lg border-t border-border-subtle flex items-center justify-end gap-sm bg-surface-container-low rounded-b-xl">
           <button
             type="button"

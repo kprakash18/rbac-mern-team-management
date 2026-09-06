@@ -127,7 +127,6 @@ export default function WorkspaceModal({
   return (
     <div className="fixed inset-0 z-100 flex items-center justify-center bg-on-primary-fixed/40 backdrop-blur-sm p-md animate-in fade-in duration-150">
       <div className="w-full max-w-lg bg-surface-container-lowest rounded-xl shadow-2xl overflow-hidden border border-border-subtle animate-in zoom-in-95 duration-150 flex flex-col max-h-[90vh]">
-        {/* Header */}
         <div className="flex items-center justify-between p-lg pb-md border-b border-border-subtle bg-surface-container-low">
           <div className="flex items-center gap-sm">
             <div className="w-9 h-9 rounded-lg bg-primary text-on-primary flex items-center justify-center shadow-sm">
@@ -171,7 +170,6 @@ export default function WorkspaceModal({
           </button>
         </div>
 
-        {/* Form Body */}
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-lg flex flex-col gap-md">
           {error && (
             <div className="p-sm rounded-lg bg-error-container text-error text-label-sm font-label-sm flex items-center gap-xs">
@@ -180,7 +178,6 @@ export default function WorkspaceModal({
             </div>
           )}
 
-          {/* Workspace Name */}
           <div className="flex flex-col gap-xs">
             <label className="font-label-bold text-label-sm text-on-surface">
               Workspace Name <span className="text-error">*</span>
@@ -195,7 +192,6 @@ export default function WorkspaceModal({
             />
           </div>
 
-          {/* Slug */}
           <div className="flex flex-col gap-xs">
             <label className="font-label-bold text-label-sm text-on-surface">
               Workspace URL Slug
@@ -212,7 +208,6 @@ export default function WorkspaceModal({
             </div>
           </div>
 
-          {/* Description */}
           <div className="flex flex-col gap-xs">
             <label className="font-label-bold text-label-sm text-on-surface">Description</label>
             <textarea
@@ -224,7 +219,6 @@ export default function WorkspaceModal({
             />
           </div>
 
-          {/* Icon Selector */}
           <div className="flex flex-col gap-xs">
             <label className="font-label-bold text-label-sm text-on-surface">Workspace Icon</label>
             <div className="grid grid-cols-4 gap-2">
@@ -246,7 +240,6 @@ export default function WorkspaceModal({
             </div>
           </div>
 
-          {/* Tier Selection */}
           <div className="flex flex-col gap-xs">
             <label className="font-label-bold text-label-sm text-on-surface">Compliance / Security Tier</label>
             <select
@@ -260,7 +253,6 @@ export default function WorkspaceModal({
             </select>
           </div>
 
-          {/* Create-only: Initial Team Admin Email */}
           {!isEdit && (
             <div className="flex flex-col gap-xs">
               <label className="font-label-bold text-label-sm text-on-surface">
@@ -279,7 +271,6 @@ export default function WorkspaceModal({
             </div>
           )}
 
-          {/* Edit-only: Lifecycle Archive Zone */}
           {isEdit && (
             <div className="mt-2 pt-4 border-t border-border-subtle flex flex-col gap-2">
               <label className="font-label-bold text-label-sm text-on-surface">Lifecycle State</label>
@@ -338,7 +329,6 @@ export default function WorkspaceModal({
             </div>
           )}
 
-          {/* Modal Footer Actions */}
           <div className="flex items-center justify-end gap-2 pt-md border-t border-border-subtle mt-2">
             <button
               type="button"

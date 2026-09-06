@@ -42,7 +42,6 @@ export default function LoginPage({ onLoginSuccess }) {
       return;
     }
 
-    // ─── Live API Mode ──────────────────────────────────
     setLoading(true);
     try {
       const response = await api.post('/api/auth/login', {
@@ -92,7 +91,6 @@ export default function LoginPage({ onLoginSuccess }) {
     <div className="min-h-screen flex flex-col items-center justify-center bg-surface font-body-base text-on-surface antialiased p-md">
       <main className="w-110 max-w-[94vw] mx-auto">
         <div className="w-full bg-surface-container-lowest rounded-xl shadow-lg border border-surface-variant p-lg sm:p-xl flex flex-col gap-md">
-          {/* Header */}
           <div className="flex flex-col items-center text-center gap-xs">
             <AuthHeader
               title="Platform Control Plane"
@@ -100,10 +98,8 @@ export default function LoginPage({ onLoginSuccess }) {
             />
           </div>
 
-          {/* Error Banner */}
           <AuthErrorBanner message={error} />
 
-          {/* Form */}
           <LoginForm
             onSubmit={handleLogin}
             loading={loading}

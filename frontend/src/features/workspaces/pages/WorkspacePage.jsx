@@ -31,7 +31,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
         }));
         setWorkspaces(formatted);
 
-        // Direct user straight to workspace if navigated from onboarding email
         const params = new URLSearchParams(window.location.search);
         const targetTeamId = params.get('teamId') || params.get('workspace');
         if (targetTeamId && onWorkspaceSelected) {
@@ -70,7 +69,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
 
   return (
     <div className="bg-surface font-body-md text-on-surface min-h-screen flex flex-col">
-      {/* Top Header */}
       <header className="fixed top-0 w-full z-50 bg-surface-container-lowest/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] border-b border-outline-variant/20">
         <div className="h-16 max-w-7xl mx-auto px-container-margin flex items-center justify-between">
           <div className="flex items-center gap-stack-sm">
@@ -115,7 +113,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
         </div>
       </header>
 
-      {/* Main Center Content */}
       <main className="w-full pt-16 bg-surface flex-1 flex flex-col justify-center items-center py-section-gap">
         <div className="w-full max-w-lg px-container-margin md:px-0">
           <div className="mb-stack-lg text-center">
@@ -156,7 +153,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
             )}
           </div>
 
-          {/* Remember Choice Checkbox */}
           <div className="mt-stack-lg text-center">
             <label className="flex items-center justify-center gap-stack-sm cursor-pointer group select-none">
               <div className="relative flex items-center">
@@ -175,7 +171,6 @@ export default function WorkspacesPage({ onWorkspaceSelected }) {
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="w-full bg-surface-container-low py-stack-lg border-t border-outline-variant/20">
         <div className="max-w-7xl mx-auto px-container-margin flex flex-col md:flex-row justify-between items-center gap-stack-lg">
           <div className="flex items-center gap-stack-sm">

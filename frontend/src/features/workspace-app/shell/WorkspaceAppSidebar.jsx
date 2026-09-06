@@ -38,7 +38,6 @@ export default function WorkspaceAppSidebar({
       id="main-sidebar"
     >
       <div className={`flex flex-col ${isCollapsed ? 'items-center gap-md' : 'gap-lg'} w-full`}>
-        {/* Brand & Toggle Header */}
         <div
           className={`flex items-center ${
             isCollapsed
@@ -75,7 +74,6 @@ export default function WorkspaceAppSidebar({
           </button>
         </div>
 
-        {/* Navigation Items */}
         <nav className={`flex flex-col ${isCollapsed ? 'items-center gap-1.5' : 'gap-1'} w-full`}>
           {navItems.map((item) => {
             const isActive = activeView === item.id;

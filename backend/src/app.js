@@ -24,17 +24,14 @@ import chatChannelRouter from "./modules/chat/chat-channel.routes.js";
 
 const app = express();
 
-// Global Middlewares
 app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Health Check Route
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
-// Routes
 app.use("/api-docs", swaggerDocs.serve, swaggerDocs.setup);
 app.use("/api/auth", authRouter);
 app.use("/api/authorization", authorizationRouter);
@@ -54,7 +51,6 @@ app.use("/api/audit-logs", globalAuditRouter);
 app.use("/api/notifications", notificationRouter);
 app.use("/api/teams/:teamId/channels", chatChannelRouter);
 
-// Global Error Handler
 app.use(errorHandler);
 
 export default app;

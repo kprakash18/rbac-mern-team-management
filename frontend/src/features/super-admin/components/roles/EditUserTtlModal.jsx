@@ -8,7 +8,6 @@ export default function EditUserTtlModal({
 
   return (
     <div className="fixed inset-0 z-[1050] flex items-center justify-center p-md" id="modal-edit-ttl">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
       <div
         className="relative bg-card-bg rounded-xl w-[460px] max-w-[92vw] shadow-2xl overflow-hidden border border-border-subtle z-[1100] animate-in zoom-in-95 duration-150 mx-auto"

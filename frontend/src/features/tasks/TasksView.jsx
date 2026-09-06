@@ -42,7 +42,6 @@ export default function TasksView({ currentUser, workspace }) {
     removeTask,
   } = useTasks({ teamId, currentUserId });
 
-  // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [editingTask, setEditingTask] = useState(null);
@@ -147,7 +146,6 @@ export default function TasksView({ currentUser, workspace }) {
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg flex-1">
-      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-md">
         <div>
           <h1 className="font-display-title text-[24px] font-semibold text-on-surface tracking-tight">
@@ -171,7 +169,6 @@ export default function TasksView({ currentUser, workspace }) {
         )}
       </div>
 
-      {/* Simplified Filter & Search Bar */}
       <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div className="flex items-center gap-2 flex-1">
           <SearchInput
@@ -184,7 +181,6 @@ export default function TasksView({ currentUser, workspace }) {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          {/* My Tasks vs All Tasks Toggle */}
           <Tabs
             options={[
               { key: 'ALL', label: 'All Tasks' },
@@ -194,7 +190,6 @@ export default function TasksView({ currentUser, workspace }) {
             onChange={setAssigneeFilter}
           />
 
-          {/* Status Tabs */}
           <Tabs
             options={STATUS_TABS}
             value={statusFilter}
@@ -203,7 +198,6 @@ export default function TasksView({ currentUser, workspace }) {
         </div>
       </div>
 
-      {/* Consistent Table Layout */}
       <div className="w-full bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
         {loading ? (
           <LoadingState message="Loading workspace tasks..." />
@@ -257,7 +251,6 @@ export default function TasksView({ currentUser, workspace }) {
         )}
       </div>
 
-      {/* Modal Dialog */}
       <TaskModal
         isOpen={isModalOpen}
         isSaving={isSaving}

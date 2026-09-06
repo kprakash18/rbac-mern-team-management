@@ -4,7 +4,6 @@ import { NotFoundError, BadRequestError } from "../../common/errors/index.js";
 import VALID_CATEGORIES from "./constants.js";
 import mongoose from "mongoose";
 
-
 export async function listPermissions({ category, scope } = {}){
     const queryFilter = {};
 
@@ -32,7 +31,6 @@ export async function getPermissionById(permissionId) {
     throw new NotFoundError("Permission not found.");
   }
 
-   // TODO #2: Query Permission.findById(permissionId). If not found, throw new NotFoundError("Permission not found.")
    const permission = await Permission.findById(permissionId);
         if(!permission) {
             throw new NotFoundError("Permission not found");

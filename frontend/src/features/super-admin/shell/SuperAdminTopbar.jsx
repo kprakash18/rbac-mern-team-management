@@ -22,7 +22,6 @@ export default function SuperAdminTopbar({
       .slice(0, 2)
       .toUpperCase() || 'SA';
 
-  // Close popover when clicking outside
   useEffect(() => {
     function handleClickOutside(event) {
       if (menuRef.current && !menuRef.current.contains(event.target)) {
@@ -80,13 +79,11 @@ export default function SuperAdminTopbar({
             </button>
           </div>
 
-          {/* Real-time Interactive Notification Dropdown */}
           <NotificationDropdown
             currentUser={currentUser}
             onSelectTab={handleSelectTab}
           />
 
-          {/* User Profile Menu */}
           <div className="relative" ref={menuRef}>
             <div
               onClick={() => setIsUserMenuOpen((prev) => !prev)}
@@ -154,7 +151,6 @@ export default function SuperAdminTopbar({
         </div>
       </header>
 
-      {/* User Profile & Password Change Settings Modal */}
       <UserProfileSettingsModal
         isOpen={isProfileModalOpen}
         onClose={() => setIsProfileModalOpen(false)}

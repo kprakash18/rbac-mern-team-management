@@ -3,9 +3,6 @@ import nodemailer from "nodemailer";
 import { getInvitationEmailHtml } from "./templates/invitation.template.js";
 import { getRoleAssignedEmailHtml } from "./templates/role-assigned.template.js";
 
-/**
- * Initialize or retrieve the Nodemailer transporter
- */
 function getTransporter() {
   const hasSmtpConfig = (process.env.SMTP_HOST || process.env.SMTP_USER) && process.env.SMTP_USER && process.env.SMTP_PASS;
 
@@ -35,7 +32,6 @@ function getTransporter() {
     });
   }
 
-  // Development fallback transporter (logs preview URL / prints to console)
   return nodemailer.createTransport({
     streamTransport: true,
     newline: "unix",
@@ -43,15 +39,6 @@ function getTransporter() {
   });
 }
 
-/**
- * Send a Team Invitation Email (for new or suspended users)
- * @param {Object} options
- * @param {string} options.to - Recipient email address
- * @param {string} options.inviterName - Name of the person who sent the invite
- * @param {string} options.teamName - Name of the team
- * @param {string} options.inviteUrl - Link with token to accept the invitation
- * @param {Date} [options.expiresAt] - Expiration date of the invitation
- */
 export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }) {
   const mailClient = getTransporter();
   const fromAddress = process.env.EMAIL_FROM || (process.env.SMTP_USER ? `"Team Management System" <${process.env.SMTP_USER}>` : '"Team Management System" <no-reply@teammanager.local>');
@@ -71,23 +58,14 @@ export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }
       html: htmlContent,
     });
 
-    console.log(`✉️ [Email Service] Invitation email sent to ${to} for team "${teamName}"`);
+    console.log(`[Email Service] Invitation email sent to ${to} for team "${teamName}"`);
     return info;
   } catch (error) {
-    console.error(`❌ [Email Service] Failed to send email to ${to}:`, error.message);
+    console.error(`[Email Service] Failed to send email to ${to}:`, error.message);
     return null;
   }
 }
 
-/**
- * Send a Role Assignment Email (for active existing users)
- * @param {Object} options
- * @param {string} options.to - Recipient email address
- * @param {string} [options.recipientName] - Recipient name
- * @param {string} options.teamName - Name of the team
- * @param {string} [options.roleName] - Assigned role name
- * @param {string} options.workspaceUrl - Link to open the workspace
- */
 export async function sendRoleAssignedEmail({ to, recipientName, teamName, roleName, workspaceUrl }) {
   const mailClient = getTransporter();
   const fromAddress = process.env.EMAIL_FROM || (process.env.SMTP_USER ? `"Team Management System" <${process.env.SMTP_USER}>` : '"Team Management System" <no-reply@teammanager.local>');
@@ -108,12 +86,10 @@ export async function sendRoleAssignedEmail({ to, recipientName, teamName, roleN
       html: htmlContent,
     });
 
-    console.log(`✉️ [Email Service] Role assigned email sent to ${to} for team "${teamName}"`);
+    console.log(`[Email Service] Role assigned email sent to ${to} for team "${teamName}"`);
     return info;
   } catch (error) {
-    console.error(`❌ [Email Service] Failed to send role assigned email to ${to}:`, error.message);
+    console.error(`[Email Service] Failed to send role assigned email to ${to}:`, error.message);
     return null;
   }
 }
-
-

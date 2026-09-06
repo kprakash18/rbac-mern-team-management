@@ -31,7 +31,6 @@ export default function TaskModal({
       maxWidth="max-w-md"
     >
       <form onSubmit={onSubmit} className="p-md flex flex-col gap-3.5">
-        {/* Title */}
         <div>
           <label className="text-label-sm font-label-bold text-on-surface block mb-1">
             Title *
@@ -49,7 +48,6 @@ export default function TaskModal({
           />
         </div>
 
-        {/* Assignee & Priority (Two Columns) */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-label-sm font-label-bold text-on-surface block mb-1">
@@ -92,7 +90,6 @@ export default function TaskModal({
           </div>
         </div>
 
-        {/* Due Date & Status (Two Columns) */}
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-label-sm font-label-bold text-on-surface block mb-1">
@@ -128,7 +125,6 @@ export default function TaskModal({
           </div>
         </div>
 
-        {/* Remarks */}
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="text-label-sm font-label-bold text-on-surface">
@@ -145,7 +141,6 @@ export default function TaskModal({
           ></textarea>
         </div>
 
-        {/* Modal Buttons */}
         <div className="pt-2 border-t border-border-subtle flex items-center justify-end gap-2">
           <Button
             variant="secondary"

@@ -100,7 +100,6 @@ export default function UsersAccessView() {
       await fetchUsers();
     } catch (err) {
       console.error('Failed to update user on backend:', err);
-      // Fallback local update
       setUsers((prev) => prev.map((u) => (u.id === updatedUser.id ? updatedUser : u)));
     } finally {
       setLoading(false);
@@ -115,7 +114,6 @@ export default function UsersAccessView() {
         localStorage.setItem('auth_session', JSON.stringify(currentSession));
       }
     } catch {
-      // ignore
     }
   };
 
@@ -124,7 +122,6 @@ export default function UsersAccessView() {
     let isDirectAssignment = false;
 
     try {
-      // 1. Fetch active teams and roles to resolve IDs
       const [teamsRes, rolesRes] = await Promise.allSettled([
         api.get('/api/teams'),
         api.get('/api/roles'),
@@ -166,10 +163,8 @@ export default function UsersAccessView() {
       console.warn('Invitation API warning:', err.response?.data?.message || err.message);
     }
 
-    // Refresh live users list from database
     await fetchUsers();
 
-    // Open success modal
     setInviteSuccessData({
       fullName: newUserData.fullName || newUserData.name,
       email: newUserData.email,
@@ -413,7 +408,6 @@ export default function UsersAccessView() {
         </div>
       </div>
 
-      {/* 1. Create & Invite User Modal */}
       <CreateUserModal
         isOpen={isCreateModalOpen}
         existingUsers={users}
@@ -421,7 +415,6 @@ export default function UsersAccessView() {
         onInvite={handleInviteUser}
       />
 
-      {/* 2. User Invited Successfully Modal */}
       <InviteSuccessModal
         isOpen={Boolean(inviteSuccessData)}
         inviteData={inviteSuccessData}
@@ -432,7 +425,6 @@ export default function UsersAccessView() {
         }}
       />
 
-      {/* 3. Manage User Modal */}
       {selectedUserForManage && (
         <ManageUserModal
           key={selectedUserForManage.id}

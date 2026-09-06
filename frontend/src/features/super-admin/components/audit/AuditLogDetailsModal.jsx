@@ -20,15 +20,12 @@ export default function AuditLogDetailsModal({
 
   return (
     <div className="fixed inset-0 z-[1100] flex items-center justify-center p-md" id="modal-audit-details">
-      {/* Backdrop */}
       <div className="fixed inset-0 bg-black/50 backdrop-blur-xs transition-opacity" onClick={onClose} />
 
-      {/* Centered Modal Card */}
       <div
         className="relative bg-card-bg w-[680px] max-w-[94vw] max-h-[92vh] rounded-xl shadow-2xl overflow-hidden border border-border-subtle z-[1110] animate-in zoom-in-95 duration-150 flex flex-col mx-auto"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Header */}
         <div className="p-lg bg-surface-container-lowest flex items-center justify-between border-b border-border-subtle shrink-0">
           <div className="flex items-center gap-sm min-w-0 flex-1 pr-sm">
             <span className={`p-2 rounded-lg shrink-0 border ${severityConfig.badgeClass}`}>
@@ -63,11 +60,8 @@ export default function AuditLogDetailsModal({
           </button>
         </div>
 
-        {/* Modal Body */}
         <div className="p-lg space-y-md overflow-y-auto flex-1 text-body-sm">
-          {/* Actor & Execution Context Card */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-sm">
-            {/* Actor Card */}
             <div className="p-sm bg-surface-container-low rounded-xl border border-border-subtle flex flex-col gap-xs">
               <span className="text-[11px] font-label-bold text-on-surface-variant uppercase tracking-wider">
                 Initiating Actor
@@ -89,7 +83,6 @@ export default function AuditLogDetailsModal({
               </div>
             </div>
 
-            {/* Network & Client Telemetry */}
             <div className="p-sm bg-surface-container-low rounded-xl border border-border-subtle flex flex-col gap-xs">
               <span className="text-[11px] font-label-bold text-on-surface-variant uppercase tracking-wider">
                 Network &amp; Client Telemetry
@@ -113,7 +106,6 @@ export default function AuditLogDetailsModal({
             </div>
           </div>
 
-          {/* User Agent String */}
           <div className="p-sm bg-surface-container-low rounded-xl border border-border-subtle">
             <span className="text-[11px] font-label-bold text-on-surface-variant block mb-1 uppercase tracking-wider">
               Client User-Agent Fingerprint
@@ -123,7 +115,6 @@ export default function AuditLogDetailsModal({
             </code>
           </div>
 
-          {/* Raw JSON Metadata Payload */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <span className="text-[11px] font-label-bold text-on-surface-variant uppercase tracking-wider">
@@ -146,7 +137,6 @@ export default function AuditLogDetailsModal({
           </div>
         </div>
 
-        {/* Modal Footer Actions */}
         <div className="p-md bg-surface-container-low flex justify-between items-center border-t border-border-subtle shrink-0">
           <button
             type="button"

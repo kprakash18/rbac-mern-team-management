@@ -277,7 +277,7 @@ test.describe("Phase 3 & 3.5 — Layered Authorization Engine & Shadow Comparato
 
     assert.ok(totalComparisons >= 50, `Expected at least 50 test scenarios, executed ${totalComparisons}`);
     assert.equal(agreements, totalComparisons, "100% agreement required between legacy and document-native can()");
-    console.log(`✅ Shadow Comparator: ${agreements}/${totalComparisons} (100%) test assertions PASSED.`);
+    console.log(`Shadow Comparator: ${agreements}/${totalComparisons} (100%) test assertions PASSED.`);
   });
 
   test("2. Micro-benchmark: Measure latency and throughput of newCan() vs legacyCan()", async () => {
@@ -313,10 +313,10 @@ test.describe("Phase 3 & 3.5 — Layered Authorization Engine & Shadow Comparato
 
     const speedup = (legacyDuration / newDuration).toFixed(2);
 
-    console.log(`\n📊 Micro-Benchmark Results (${ITERATIONS} iterations):`);
+    console.log(`\nMicro-Benchmark Results (${ITERATIONS} iterations):`);
     console.log(`   Legacy 16-Query Engine: Total ${legacyDuration.toFixed(2)}ms | Mean ${legacyMeanMs.toFixed(3)}ms/op`);
     console.log(`   New Document-Native:    Total ${newDuration.toFixed(2)}ms | Mean ${newMeanMs.toFixed(3)}ms/op`);
-    console.log(`   ⚡ Speedup Factor:      ${speedup}x faster\n`);
+    console.log(`   Speedup Factor:      ${speedup}x faster\n`);
 
     assert.ok(newMeanMs <= legacyMeanMs * 1.5, "New engine must be equal or faster than legacy relational engine");
   });

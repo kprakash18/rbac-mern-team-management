@@ -17,7 +17,6 @@ export async function disconnectDatabase() {
   console.log("MongoDB disconnected");
 }
 
-
 export async function gracefulShutdown(server){
   const shutdown = async(signal) =>{
     console.log(`\nReceived ${signal}.Shutting down gracefully...`);

@@ -15,7 +15,7 @@ export const swaggerDocs = {
     return swaggerUi.setup(document, {
       customSiteTitle: "Team Management & RBAC API Docs",
       swaggerOptions: {
-        persistAuthorization: true, // Remembers your JWT token on browser reload
+        persistAuthorization: true,
       },
     })(req, res, next);
   },
