@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import Toast from '../../../components/shared/Toast.jsx';
+import { Toast } from '@/shared/components';
 import { useToast } from '../../../lib/useToast.js';
 import api from '@/lib/api';
 import TeamRolesModal from './roles/TeamRolesModal.jsx';

@@ -11,7 +11,7 @@ import JitAccessView from '../components/JitAccessView';
 import SystemBroadcastsView from '../components/SystemBroadcastsView';
 import SecurityAuditView from '../components/SecurityAuditView';
 import WorkspaceModal from '../components/WorkspaceModal';
-import Toast from '../../../components/shared/Toast';
+import { Toast } from '@/shared/components';
 import { useToast } from '../../../lib/useToast';
 import api from '@/lib/api';
 import { getSocket } from '../../../lib/socket';

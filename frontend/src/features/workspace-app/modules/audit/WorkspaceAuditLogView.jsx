@@ -1,9 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import api from '../../../../lib/api';
 import { useApp } from '@/context/useApp';
-import SearchInput from '../../../../components/shared/SearchInput';
-import EmptyState from '../../../../components/shared/EmptyState';
-import Toast from '../../../../components/shared/Toast';
+import { SearchInput, EmptyState, Toast } from '@/shared/components';
 import { useToast } from '../../../../lib/useToast';
 
 const CATEGORY_CONFIG = {

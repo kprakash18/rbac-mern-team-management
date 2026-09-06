@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import NotificationDropdown from '../../shell/NotificationDropdown';
-import UserProfileSettingsModal from '@/components/shared/UserProfileSettingsModal';
+import { UserProfileSettingsModal } from '@/shared/components';
 import { useApp } from '@/context/useApp';
 import api from '@/lib/api';
 
