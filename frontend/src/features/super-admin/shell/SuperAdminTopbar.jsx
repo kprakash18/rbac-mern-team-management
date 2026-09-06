@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import NotificationDropdown from '../../workspace-app/shell/NotificationDropdown';
-import UserProfileSettingsModal from '@/components/shared/UserProfileSettingsModal';
+import { UserProfileSettingsModal } from '@/shared/components';
 
 export default function SuperAdminTopbar({
   onCreateTeam,

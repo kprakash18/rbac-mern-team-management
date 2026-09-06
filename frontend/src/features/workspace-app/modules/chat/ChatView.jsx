@@ -3,7 +3,7 @@ import api from '@/lib/api';
 import { getStorage, setStorage } from '../../../../lib/storage';
 import { getSocket } from '../../../../lib/socket';
 import { useApp } from '@/context/useApp';
-import ConfirmModal from '../../../../components/shared/ConfirmModal';
+import { ConfirmModal } from '@/shared/components';
 
 const FALLBACK_GENERAL = {
   id: 'grp-general',
