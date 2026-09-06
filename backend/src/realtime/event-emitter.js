@@ -21,6 +21,13 @@ export function disconnectUserSockets(userId) {
   } catch (error) {}
 }
 
+export function evictUserFromTeam(userId, teamId) {
+  try {
+    const io = getIO();
+    io.in(`user:${userId.toString()}`).socketsLeave(`team:${teamId.toString()}`);
+  } catch (error) {}
+}
+
 export function emitToAll(event, payload) {
   try {
     const io = getIO();

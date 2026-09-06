@@ -6,7 +6,7 @@ import MembershipRole from "../member-roles/member-role.model.js";
 import Role from "../roles/role.model.js";
 import RolePermission from "../roles/role-permission.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
-import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
+import { emitToUser, emitToTeam, evictUserFromTeam } from "../../realtime/event-emitter.js";
 import { createTargetedNotifications } from "../notifications/notification.service.js";
 import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
 import { env } from "../../config/env.js";
@@ -226,6 +226,9 @@ async function handleMembershipStatusChange({ teamId, membershipId, actorId, new
 
   emitToUser(membership.userId, "access:changed", { teamId, reason: `MEMBERSHIP_${newStatus}` });
   emitToTeam(teamId, eventName, { userId: membership.userId, membershipId: membership._id });
+  if (newStatus === "REMOVED" || newStatus === "SUSPENDED") {
+    evictUserFromTeam(membership.userId, teamId);
+  }
 
   createTargetedNotifications({
     recipients: [membership.userId],
