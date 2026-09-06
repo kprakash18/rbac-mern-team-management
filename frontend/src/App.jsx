@@ -1,13 +1,29 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider } from './context/AppContext.jsx';
 import { useApp } from './context/useApp';
-import LoginPage from './features/auth/pages/LoginPage';
-import ForceChangePasswordPage from './features/auth/pages/ForceChangePasswordPage';
-import SuspendedAccountPage from './features/auth/pages/SuspendedAccountPage';
-import AcceptInvitationPage from './features/invitation/pages/AcceptInvitationPage';
-import WorkspacePage from './features/workspaces/pages/WorkspacePage';
-import WorkspaceApp from './features/workspace-app/pages/WorkspaceApp';
-import SuperAdminPage from './features/super-admin/pages/SuperAdminPage';
+import { queryClient } from './lib/queryClient';
+import { SkeletonCard } from '@/shared/components';
+
+const LoginPage = lazy(() => import('./features/auth/pages/LoginPage'));
+const ForceChangePasswordPage = lazy(() => import('./features/auth/pages/ForceChangePasswordPage'));
+const SuspendedAccountPage = lazy(() => import('./features/auth/pages/SuspendedAccountPage'));
+const AcceptInvitationPage = lazy(() => import('./features/invitation/pages/AcceptInvitationPage'));
+const WorkspacePage = lazy(() => import('./features/workspaces/pages/WorkspacePage'));
+const WorkspaceApp = lazy(() => import('./features/workspace-app/pages/WorkspaceApp'));
+const SuperAdminPage = lazy(() => import('./features/super-admin/pages/SuperAdminPage'));
+
+function PageFallback() {
+  return (
+    <div className="min-h-screen bg-background flex items-center justify-center p-6">
+      <div className="w-full max-w-md space-y-4">
+        <SkeletonCard lines={4} />
+      </div>
+    </div>
+  );
+}
+
 
 function AppRoutes() {
   const { authUser, activeWorkspace, isSuperAdmin, login, logout, updateAuthUser, selectWorkspace, clearWorkspace } =
@@ -142,10 +158,15 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <AppRoutes />
-      </AppProvider>
-    </BrowserRouter>
+    <QueryClientProvider client={queryClient}>
+      <BrowserRouter>
+        <AppProvider>
+          <Suspense fallback={<PageFallback />}>
+            <AppRoutes />
+          </Suspense>
+        </AppProvider>
+      </BrowserRouter>
+    </QueryClientProvider>
   );
 }
+
