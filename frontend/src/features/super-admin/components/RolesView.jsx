@@ -103,6 +103,7 @@ function formatRole(r) {
 export default function RolesView() {
   const [roles, setRoles] = useState([]);
   const [dbPermissions, setDbPermissions] = useState([]);
+  const [availableWorkspaces, setAvailableWorkspaces] = useState([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
@@ -136,13 +137,19 @@ export default function RolesView() {
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
-      const [rolesRes, permsRes] = await Promise.allSettled([
+      const [rolesRes, permsRes, teamsRes] = await Promise.allSettled([
         api.get('/api/roles?status=all'),
         api.get('/api/permissions'),
+        api.get('/api/teams?status=all'),
       ]);
 
       if (permsRes.status === 'fulfilled' && permsRes.value.data?.data) {
         setDbPermissions(permsRes.value.data.data);
+      }
+
+      if (teamsRes.status === 'fulfilled') {
+        const rawTeams = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
+        setAvailableWorkspaces(rawTeams);
       }
 
       if (rolesRes.status === 'fulfilled') {
@@ -508,11 +515,12 @@ export default function RolesView() {
   const handleAssignNewMember = (formData) => {
     if (!drawerRole) return;
 
+    const defaultWorkspaceName = availableWorkspaces[0]?.name || 'Global Platform';
     const newUser = {
       id: `user-${Date.now()}`,
       name: formData.name,
       email: formData.email,
-      workspace: formData.workspace || 'Engineering Core',
+      workspace: formData.workspace || defaultWorkspaceName,
       assignedAt: new Date().toISOString(),
       expiresAt:
         formData.ttlType === 'Permanent'
@@ -813,6 +821,7 @@ export default function RolesView() {
       <RoleMembersDrawer
         isOpen={Boolean(drawerRole)}
         role={drawerRole}
+        workspaces={availableWorkspaces}
         activeTab={drawerTab}
         setActiveTab={setDrawerTab}
         onClose={() => setDrawerRole(null)}
@@ -841,7 +850,7 @@ export default function RolesView() {
             roleId: drawerRole.id,
             userId: u.id,
             userName: u.name,
-            currentWorkspace: u.workspace || 'Engineering Core',
+            currentWorkspace: u.workspace || availableWorkspaces[0]?.name || 'Global Platform',
           })
         }
         onInitiateDelete={handleDeleteRole}

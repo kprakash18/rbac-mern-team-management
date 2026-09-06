@@ -1,8 +1,10 @@
 import { registerChatHandlers } from "../modules/chat/chat.handler.js";
 import { registerTeamRoomHandlers } from "../modules/teams/team.handler.js";
 import { Server as SocketIOServer } from "socket.io";
+import { createAdapter } from "@socket.io/redis-adapter";
 import { socketAuthMiddleware } from "./socket-auth.middleware.js";
 import { env } from "../config/env.js";
+import { createRedisPubSubClients } from "../config/redis.js";
 
 let ioInstance = null;
 
@@ -14,7 +16,21 @@ export function initSocketServer(httpServer) {
     },
   });
 
+  const redisClients = createRedisPubSubClients();
+  if (redisClients) {
+    const { pubClient, subClient } = redisClients;
+    Promise.all([pubClient.connect(), subClient.connect()])
+      .then(() => {
+        io.adapter(createAdapter(pubClient, subClient));
+        console.log("[Socket.IO] Redis Pub/Sub adapter successfully attached.");
+      })
+      .catch((err) => {
+        console.warn(`[Socket.IO] Could not attach Redis adapter (${err.message}). Using in-memory adapter.`);
+      });
+  }
+
   io.use(socketAuthMiddleware);
+
 
   io.on("connection", (socket) => {
     const userId = socket.data.user?.id;

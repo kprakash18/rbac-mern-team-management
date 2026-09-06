@@ -4,6 +4,7 @@ import { CANONICAL_PERMISSIONS } from '@/constants';
 export default function RoleMembersDrawer({
   isOpen,
   role,
+  workspaces = [],
   activeTab,
   setActiveTab,
   onClose,
@@ -17,10 +18,11 @@ export default function RoleMembersDrawer({
 }) {
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
   const [isAssignFormOpen, setIsAssignFormOpen] = useState(false);
+  const defaultWs = workspaces.length > 0 ? (typeof workspaces[0] === 'string' ? workspaces[0] : workspaces[0].name) : 'Default Workspace';
   const [assignFormData, setAssignFormData] = useState({
     name: '',
     email: '',
-    workspace: 'Engineering Core',
+    workspace: defaultWs,
     ttlType: 'Permanent',
     customTtlValue: 7,
     customTtlUnit: 'days',
@@ -45,7 +47,7 @@ export default function RoleMembersDrawer({
     setAssignFormData({
       name: '',
       email: '',
-      workspace: 'Engineering Core',
+      workspace: defaultWs,
       ttlType: 'Permanent',
       customTtlValue: 7,
       customTtlUnit: 'days',
@@ -206,11 +208,14 @@ export default function RoleMembersDrawer({
                       onChange={(e) => setAssignFormData({ ...assignFormData, workspace: e.target.value })}
                       className="w-full h-8 px-xs bg-surface-container-lowest rounded-md text-[12px] border border-border-subtle focus:outline-none cursor-pointer"
                     >
-                      <option value="Engineering Core">Engineering Core</option>
-                      <option value="Finance Secure">Finance Secure</option>
-                      <option value="Marketing Global">Marketing Global</option>
-                      <option value="Research & Dev">Research & Dev</option>
-                      <option value="Global Platform">Global Platform</option>
+                      {(workspaces.length > 0 ? workspaces : [{ id: defaultWs, name: defaultWs }]).map((ws) => {
+                        const name = typeof ws === 'string' ? ws : ws.name;
+                        return (
+                          <option key={name} value={name}>
+                            {name}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                   <div>

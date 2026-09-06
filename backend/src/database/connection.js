@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { closeRedis } from "../config/redis.js";
 
 export async function connectDatabase(uri) {
   try {
@@ -17,16 +18,18 @@ export async function disconnectDatabase() {
   console.log("MongoDB disconnected");
 }
 
-export async function gracefulShutdown(server){
-  const shutdown = async(signal) =>{
-    console.log(`\nReceived ${signal}.Shutting down gracefully...`);
-    server.close(async() =>{
+export async function gracefulShutdown(server) {
+
+  const shutdown = async (signal) => {
+    console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+    server.close(async () => {
       console.log("Http server closed");
-      await disconnectDatabase() ;
-      process.exit(0) ;
-      
+      await disconnectDatabase();
+      await closeRedis();
+      process.exit(0);
     });
   };
+
 
   process.on("SIGINT", ()=> shutdown("SIGINT")) ;
   process.on("SIGTERM", ()=> shutdown("SIGTERM")) ;

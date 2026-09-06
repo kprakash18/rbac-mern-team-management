@@ -1,4 +1,11 @@
-import "dotenv/config";
+import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+dotenv.config();
+
 
 const requiredVariables = [
   "MONGO_URI",
@@ -18,4 +25,8 @@ export const env = {
   jwtSecret: process.env.JWT_SECRET,
   jwtExpiresIn: process.env.JWT_EXPIRES_IN,
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
+  redisUrl: process.env.REDIS_URL,
+  upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL,
+  upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN,
 };
+

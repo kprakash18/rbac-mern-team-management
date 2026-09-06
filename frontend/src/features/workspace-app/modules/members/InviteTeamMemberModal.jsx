@@ -1,32 +1,12 @@
 import { useState } from 'react';
 
-const WORKSPACE_ROLE_OPTIONS = [
-  'Developer',
-  'Lead Architect',
-  'Senior Staff SRE',
-  'DevOps Engineer',
-  'Security Auditor',
-  'Senior Backend Developer',
-  'Lead UI Engineer',
-  'QA Tester',
-  'Viewer',
-];
+const DEFAULT_ROLES = ['Developer', 'Team Admin', 'Project Manager', 'Viewer', 'Security Auditor'];
 
-const DEPARTMENTS = [
-  'Engineering Core',
-  'Cloud Infrastructure',
-  'Platform Architecture',
-  'API & Gateway Services',
-  'Design System & Frontend',
-  'Reliability & Database Systems',
-  'Governance & Compliance',
-];
-
-export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
+export default function InviteTeamMemberModal({ isOpen, availableRoles = [], onClose, onInvite }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [role, setRole] = useState('Developer');
-  const [department, setDepartment] = useState(DEPARTMENTS[0]);
+  const roleList = availableRoles.length > 0 ? availableRoles.map((r) => (typeof r === 'string' ? r : r.name)) : DEFAULT_ROLES;
+  const [role, setRole] = useState(roleList[0] || 'Developer');
   const [error, setError] = useState('');
 
   if (!isOpen) return null;
@@ -42,7 +22,6 @@ export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
       name: name.trim() || 'Invited Teammate',
       email: email.trim(),
       role,
-      department,
     });
     setName('');
     setEmail('');
@@ -110,36 +89,19 @@ export default function InviteTeamMemberModal({ isOpen, onClose, onInvite }) {
             />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div className="flex flex-col gap-1">
-              <label className="text-label-sm font-label-bold text-on-surface">Assigned Role</label>
-              <select
-                value={role}
-                onChange={(e) => setRole(e.target.value)}
-                className="h-10 px-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest text-on-surface font-body-sm outline-none focus:border-primary cursor-pointer"
-              >
-                {WORKSPACE_ROLE_OPTIONS.map((r) => (
-                  <option key={r} value={r}>
-                    {r}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <label className="text-label-sm font-label-bold text-on-surface">Department</label>
-              <select
-                value={department}
-                onChange={(e) => setDepartment(e.target.value)}
-                className="h-10 px-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest text-on-surface font-body-sm outline-none focus:border-primary cursor-pointer"
-              >
-                {DEPARTMENTS.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
+          <div className="flex flex-col gap-1">
+            <label className="text-label-sm font-label-bold text-on-surface">Assigned Role</label>
+            <select
+              value={role}
+              onChange={(e) => setRole(e.target.value)}
+              className="h-10 px-2.5 rounded-lg border border-border-subtle bg-surface-container-lowest text-on-surface font-body-sm outline-none focus:border-primary cursor-pointer"
+            >
+              {roleList.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="mt-2 pt-md border-t border-border-subtle flex items-center justify-end gap-2">
