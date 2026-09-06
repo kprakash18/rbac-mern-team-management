@@ -31,7 +31,12 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const isAuthEndpoint =
+      error.config?.url?.includes('/auth/login') ||
+      error.config?.url?.includes('/auth/register') ||
+      error.config?.url?.includes('/auth/forgot-password');
+
+    if (error.response?.status === 401 && !isAuthEndpoint) {
       removeStorage(STORAGE_KEYS.AUTH);
       removeStorage(STORAGE_KEYS.WORKSPACE);
       window.location.href = '/';
@@ -39,5 +44,6 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
 
 export default api;

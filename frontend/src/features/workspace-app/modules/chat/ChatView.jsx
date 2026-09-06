@@ -108,6 +108,23 @@ export default function ChatView({ currentUser, workspace }) {
     }
   }, [teamId]);
 
+  const persistMessages = useCallback(
+    (updater) => {
+      setMessages((prev) => {
+        const next = typeof updater === 'function' ? updater(prev) : updater;
+        if (teamId) {
+          const clamped = {};
+          for (const [gid, list] of Object.entries(next)) {
+            clamped[gid] = Array.isArray(list) ? list.slice(-100) : list;
+          }
+          setStorage(`workspace_chat_messages_${teamId}`, clamped);
+        }
+        return next;
+      });
+    },
+    [teamId]
+  );
+
   useEffect(() => {
     fetchChannels();
     const stored = teamId ? getStorage(`workspace_chat_messages_${teamId}`, {}) : {};
@@ -116,6 +133,7 @@ export default function ChatView({ currentUser, workspace }) {
 
   const activeGroup = groups.find((g) => g.id === activeGroupId) || groups[0];
   const rawActiveMessages = messages[activeGroupId] || [];
+
 
   const activeMessages = (() => {
     const seen = new Set();
@@ -168,14 +186,12 @@ export default function ChatView({ currentUser, workspace }) {
                 createdAt: m.createdAt,
               }));
 
-              setMessages((prev) => {
+              persistMessages((prev) => {
                 const existing = prev[activeGroupId] || [];
                 const serverMsgKeys = new Set(formattedMsgs.map((f) => `${f.senderId}_${f.text}`));
                 const cleaned = existing.filter((e) => !String(e.id).startsWith('msg-') || !serverMsgKeys.has(`${e.senderId}_${e.text}`));
                 const existingIds = new Set(cleaned.map((e) => e._id || e.id));
-                const next = { ...prev, [activeGroupId]: [...cleaned, ...formattedMsgs.filter((n) => !existingIds.has(n._id || n.id))] };
-                if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-                return next;
+                return { ...prev, [activeGroupId]: [...cleaned, ...formattedMsgs.filter((n) => !existingIds.has(n._id || n.id))] };
               });
             }
           });
@@ -202,40 +218,35 @@ export default function ChatView({ currentUser, workspace }) {
           createdAt: incoming.createdAt || new Date().toISOString(),
         };
 
-        setMessages((prev) => {
+        persistMessages((prev) => {
           const current = prev[targetGroup] || [];
           if (current.some((m) => m._id === msgId || m.id === msgId)) return prev;
           const tempIdx = current.findIndex((m) => (!m._id || String(m.id).startsWith('msg-')) && String(m.senderId) === String(senderId) && m.text === content);
           const updated = tempIdx !== -1 ? current.map((m, idx) => (idx === tempIdx ? normalized : m)) : [...current, normalized];
-          const next = { ...prev, [targetGroup]: updated };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
+          return { ...prev, [targetGroup]: updated };
         });
       };
 
       const onMessageUpdated = (data) => {
         if (!data?.messageId) return;
-        setMessages((prev) => {
+        persistMessages((prev) => {
           const targetGroup = data.groupId || activeGroupId;
           const updated = (prev[targetGroup] || []).map((m) =>
             m.id === data.messageId || m._id === data.messageId ? { ...m, text: data.content, isEdited: true } : m
           );
-          const next = { ...prev, [targetGroup]: updated };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
+          return { ...prev, [targetGroup]: updated };
         });
       };
 
       const onMessageDeleted = (data) => {
         if (!data?.messageId) return;
-        setMessages((prev) => {
+        persistMessages((prev) => {
           const targetGroup = data.groupId || activeGroupId;
           const updated = (prev[targetGroup] || []).filter((m) => m.id !== data.messageId && m._id !== data.messageId);
-          const next = { ...prev, [targetGroup]: updated };
-          if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-          return next;
+          return { ...prev, [targetGroup]: updated };
         });
       };
+
 
       const onTyping = (data) => {
         if (!data || data.userId === currentUserId || (data.groupId && data.groupId !== activeGroupId)) return;
@@ -266,7 +277,8 @@ export default function ChatView({ currentUser, workspace }) {
         socket.emit('team:leave', { teamId });
       };
     }
-  }, [teamId, activeGroupId, currentUserId, fetchChannels]);
+  }, [teamId, activeGroupId, currentUserId, fetchChannels, persistMessages]);
+
 
   const handleSendMessage = (e) => {
     e.preventDefault();
@@ -288,11 +300,10 @@ export default function ChatView({ currentUser, workspace }) {
       createdAt: new Date().toISOString(),
     };
 
-    setMessages((prev) => {
-      const next = { ...prev, [activeGroupId]: [...(prev[activeGroupId] || []), localMsg] };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-      return next;
-    });
+    persistMessages((prev) => ({
+      ...prev,
+      [activeGroupId]: [...(prev[activeGroupId] || []), localMsg],
+    }));
 
     setInputText('');
     setIsSystemBroadcastMode(false);
@@ -324,13 +335,11 @@ export default function ChatView({ currentUser, workspace }) {
   const handleSaveEdit = (messageId) => {
     if (!editingText.trim()) return;
     const text = editingText.trim();
-    setMessages((prev) => {
+    persistMessages((prev) => {
       const updated = (prev[activeGroupId] || []).map((m) =>
         m.id === messageId || m._id === messageId ? { ...m, text, isEdited: true } : m
       );
-      const next = { ...prev, [activeGroupId]: updated };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-      return next;
+      return { ...prev, [activeGroupId]: updated };
     });
     setEditingMessageId(null);
     setEditingText('');
@@ -342,12 +351,11 @@ export default function ChatView({ currentUser, workspace }) {
   };
 
   const handleDeleteMessage = (msg) => {
-    setMessages((prev) => {
+    persistMessages((prev) => {
       const updated = (prev[activeGroupId] || []).filter((m) => m.id !== msg.id && m._id !== msg.id);
-      const next = { ...prev, [activeGroupId]: updated };
-      if (teamId) setStorage(`workspace_chat_messages_${teamId}`, next);
-      return next;
+      return { ...prev, [activeGroupId]: updated };
     });
+
 
     const socket = getSocket();
     if (socket && socket.connected && teamId) {

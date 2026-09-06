@@ -23,8 +23,12 @@ export default function Toast({ message, type = 'success', onClose }) {
 
   return (
     <div
+      role="alert"
+      aria-live="assertive"
+      aria-atomic="true"
       className={`p-sm px-md rounded-lg border font-label-bold text-label-sm flex items-center justify-between animate-in fade-in duration-200 ${config.container}`}
     >
+
       <div className="flex items-center gap-2">
         <span className="material-symbols-outlined text-[18px]">{config.icon}</span>
         <span>{message}</span>

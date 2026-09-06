@@ -48,16 +48,17 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
     ? Array.from(new Set(roles.map((r) => r.name)))
     : ['Admin', 'Developer', 'Viewer', 'Editor', 'Manager'];
 
+  const createInitialAssignment = () => ({
+    tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
+    workspace: workspaceOptions[0] || DEFAULT_WORKSPACE,
+    role: WORKSPACE_ROLES_MAP[workspaceOptions[0] || DEFAULT_WORKSPACE]?.[0] || 'Developer',
+    isTeamAdmin: false,
+  });
+
   const resetForm = () => {
     setFullName('');
     setEmail('');
-    setAssignments([
-      {
-        workspace: workspaceOptions[0] || DEFAULT_WORKSPACE,
-        role: WORKSPACE_ROLES_MAP[workspaceOptions[0] || DEFAULT_WORKSPACE]?.[0] || 'Developer',
-        isTeamAdmin: false,
-      },
-    ]);
+    setAssignments([createInitialAssignment()]);
     setIsSuperAdmin(false);
   };
 
@@ -85,13 +86,15 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   if (!isOpen) return null;
 
   const handleAddAssignment = () => {
+    const assignedWorkspaces = assignments.map((a) => a.workspace);
     const nextWorkspace = workspaceOptions.find(
-      (ws) => !assignments.some((a) => a.workspace === ws)
+      (ws) => !assignedWorkspaces.includes(ws)
     ) || workspaceOptions[0] || 'Production';
 
     setAssignments((prev) => [
       ...prev,
       {
+        tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
         workspace: nextWorkspace,
         role: WORKSPACE_ROLES_MAP[nextWorkspace]?.[0] || 'Developer',
         isTeamAdmin: false,
@@ -218,9 +221,10 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
               {assignments.map((item, index) => {
                 return (
                   <div
-                    key={index}
+                    key={item.tempId || item.workspace || index}
                     className="p-3.5 rounded-xl bg-surface-container-low/60 border border-border-subtle flex flex-col gap-2.5"
                   >
+
                     <div className="flex gap-md items-end">
                       <div className="flex-1 flex flex-col gap-sm relative">
                         <label className="font-label-sm text-label-sm text-on-surface-variant">
