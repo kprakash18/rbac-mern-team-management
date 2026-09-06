@@ -263,8 +263,6 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     roleIds: invitation.roleIds,
     status: invitation.status,
     expiresAt: invitation.expiresAt,
-    token: rawToken,
-    inviteLink: inviteUrl,
   };
 }
 
@@ -315,54 +313,48 @@ export async function acceptInvitation({ token, name, password }) {
   }
 
   const tokenHash = hashToken(token);
-  const invitation = await Invitation.findOne({ tokenHash });
-
-  if (!invitation) {
-    throw new NotFoundError("Invitation not found or invalid token.");
-  }
-
-  if (invitation.status !== "PENDING") {
-    throw new ConflictError("Invitation has already been used or revoked.");
-  }
-
-  if (invitation.expiresAt < new Date()) {
-    throw new BadRequestError("Invitation token has expired.");
-  }
 
   // 2. Transaction Session Setup
   const session = await mongoose.startSession();
   let resolvedUser = null;
   let targetTeam = null;
+  let consumedInvitation = null;
 
   try {
     await session.withTransaction(async () => {
-      // Step A: Fetch & Validate Team
-      targetTeam = await Team.findById(invitation.teamId).session(session);
+      // Step A: Atomic Compare-And-Swap on Invitation
+      consumedInvitation = await Invitation.findOneAndUpdate(
+        { tokenHash, status: "PENDING", expiresAt: { $gt: new Date() } },
+        { $set: { status: "ACCEPTED", acceptedAt: new Date() } },
+        { returnDocument: "after", session }
+      );
+
+      if (!consumedInvitation) {
+        throw new ConflictError("Invitation token is invalid, expired, or has already been used.");
+      }
+
+      // Step B: Fetch & Validate Team
+      targetTeam = await Team.findById(consumedInvitation.teamId).session(session);
       if (!targetTeam || targetTeam.status === "ARCHIVED") {
         throw new NotFoundError("Team not found or is archived.");
       }
 
-      // Step B: Resolve Existing vs New User
-      const existingUser = await User.findOne({ email: invitation.email }).session(session);
+      // Step C: Resolve Existing vs New User
+      const existingUser = await User.findOne({ email: consumedInvitation.email }).session(session);
 
       if (existingUser) {
-        // Reactivate suspended, disabled, or invited accounts upon accepting valid admin invitation
-        if (
-          existingUser.accountStatus === "DISABLED" ||
-          existingUser.accountStatus === "SUSPENDED" ||
-          existingUser.accountStatus === "INVITED"
-        ) {
-          existingUser.accountStatus = "ACTIVE";
-          if (password && typeof password === "string") {
-            existingUser.hashedPassword = await hashPassword(password);
-          }
-          if (name && typeof name === "string") {
-            existingUser.name = name.trim();
-          }
-          await existingUser.save({ session });
+        // Guard: Team invitations cannot reactivate globally suspended or disabled accounts
+        if (existingUser.accountStatus === "SUSPENDED" || existingUser.accountStatus === "DISABLED") {
+          throw new ForbiddenError(
+            "Your user account is suspended or disabled. Please contact your platform administrator.",
+            "ACCOUNT_SUSPENDED"
+          );
         }
+
+        // Invariant: Never overwrite existing user passwords or credentials
         resolvedUser = existingUser;
       } else {
+        // Brand new user registration
         if (!name || typeof name !== "string" || !password || typeof password !== "string") {
           throw new BadRequestError("Name and password are required for new user registration.");
         }
@@ -372,7 +364,7 @@ export async function acceptInvitation({ token, name, password }) {
           [
             {
               name: name.trim(),
-              email: invitation.email,
+              email: consumedInvitation.email,
               hashedPassword,
               accountStatus: "ACTIVE",
               mustChangePassword: false,
@@ -383,10 +375,10 @@ export async function acceptInvitation({ token, name, password }) {
         resolvedUser = newUser;
       }
 
-      // Step C: Create or Activate Membership
+      // Step D: Create or Activate Membership
       let membership = await Membership.findOne({
         userId: resolvedUser._id,
-        teamId: invitation.teamId,
+        teamId: consumedInvitation.teamId,
       }).session(session);
 
       if (membership) {
@@ -401,7 +393,7 @@ export async function acceptInvitation({ token, name, password }) {
           [
             {
               userId: resolvedUser._id,
-              teamId: invitation.teamId,
+              teamId: consumedInvitation.teamId,
               status: "ACTIVE",
             },
           ],
@@ -410,22 +402,22 @@ export async function acceptInvitation({ token, name, password }) {
         membership = newMembership;
       }
 
-      // Step D: Batch Assign Roles
-      if (Array.isArray(invitation.roleIds) && invitation.roleIds.length > 0) {
-        const roleDocs = invitation.roleIds.map((roleId) => ({
+      // Step E: Batch Assign Roles
+      if (Array.isArray(consumedInvitation.roleIds) && consumedInvitation.roleIds.length > 0) {
+        const roleDocs = consumedInvitation.roleIds.map((roleId) => ({
           membershipId: membership._id,
           roleId,
-          assignedBy: invitation.invitedBy,
+          assignedBy: consumedInvitation.invitedBy,
           assignedAt: new Date(),
         }));
         await MembershipRole.insertMany(roleDocs, { session });
+        membership.roleIds = [...new Set([...(membership.roleIds || []), ...consumedInvitation.roleIds])];
+        await membership.save({ session });
       }
 
-      // Step E: Transition Invitation Status
-      invitation.status = "ACCEPTED";
-      invitation.acceptedAt = new Date();
-      invitation.userId = resolvedUser._id;
-      await invitation.save({ session });
+      // Update consumed invitation's userId
+      consumedInvitation.userId = resolvedUser._id;
+      await consumedInvitation.save({ session });
     });
   } finally {
     await session.endSession();
@@ -438,12 +430,12 @@ export async function acceptInvitation({ token, name, password }) {
     email: resolvedUser.email,
   });
   createNotification({
-    recipientId: invitation.invitedBy,
+    recipientId: consumedInvitation.invitedBy,
     actorId: resolvedUser._id,
     type: "INVITATION_ACCEPTED",
     teamId: targetTeam._id,
     resourceType: "INVITATION",
-    resourceId: invitation._id,
+    resourceId: consumedInvitation._id,
     metadata: {
       userId: resolvedUser._id,
       userName: resolvedUser.name,
@@ -456,7 +448,7 @@ export async function acceptInvitation({ token, name, password }) {
     actorId: resolvedUser._id,
     action: "invitation.accepted",
     targetType: "Invitation",
-    targetId: invitation._id,
+    targetId: consumedInvitation._id,
     teamId: targetTeam._id,
     result: "SUCCESS",
     metadata: {
@@ -482,7 +474,7 @@ export async function acceptInvitation({ token, name, password }) {
       name: targetTeam.name,
       slug: targetTeam.slug,
     },
-    invitationId: invitation._id,
+    invitationId: consumedInvitation._id,
   };
 }
 

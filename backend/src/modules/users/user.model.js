@@ -27,6 +27,11 @@ const userSchema = new mongoose.Schema(
       default: "INVITED",
       index: true
     },
+    isSuperAdmin: {
+      type: Boolean,
+      default: false,
+      index: true
+    },
     mustChangePassword: {
       type: Boolean,
       default: false

@@ -26,6 +26,13 @@ const accessGrantSchema = new mongoose.Schema(
       required: true,
     },
 
+    permissionKey: {
+      type: String,
+      trim: true,
+      lowercase: true,
+      index: true,
+    },
+
     grantedBy: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "User",
@@ -83,6 +90,15 @@ accessGrantSchema.index({
   teamId: 1,
   permissionId: 1,
   resource: 1,
+});
+
+accessGrantSchema.index({
+  userId: 1,
+  teamId: 1,
+  status: 1,
+  permissionKey: 1,
+  resource: 1,
+  expiresAt: 1,
 });
 
 const AccessGrant = mongoose.model(
