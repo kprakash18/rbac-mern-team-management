@@ -83,6 +83,12 @@ export async function assignRoleToMember({
     expiresAt: expiresAt ? new Date(expiresAt) : null,
   });
 
+  // Dual-write: update Membership.roleIds
+  await Membership.updateOne(
+    { _id: membership._id },
+    { $addToSet: { roleIds: role._id } }
+  );
+
   // Real-time Event Emissions & Persistent Notification
   emitToUser(userId, "access:changed", {
     teamId,
@@ -245,6 +251,12 @@ export async function revokeRoleAssignment({
   assignment.revokedAt = new Date();
   assignment.revokedBy = revokedBy;
   await assignment.save();
+
+  // Dual-write: remove roleId from Membership.roleIds
+  await Membership.updateOne(
+    { _id: membership._id },
+    { $pull: { roleIds: assignment.roleId } }
+  );
 
   // Real-time Event Emissions & Persistent Notification
   emitToUser(userId, "access:changed", {

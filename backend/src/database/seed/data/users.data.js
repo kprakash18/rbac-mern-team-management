@@ -1,6 +1,7 @@
 export const systemAdminUserData = {
   name: "System Administrator",
   email: "admin@system.local",
+  isSuperAdmin: true,
   accountStatus: "ACTIVE",
   mustChangePassword: false,
   passwordChangedAt: new Date("2026-01-01T00:00:00Z"),

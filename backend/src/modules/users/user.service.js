@@ -31,7 +31,7 @@ export async function searchUsers({ query = "", page = 1, limit = 50, status } =
 
   const [rawUsers, total] = await Promise.all([
     User.find(filter)
-      .select("name email accountStatus mustChangePassword createdAt avatar")
+      .select("name email accountStatus isSuperAdmin mustChangePassword createdAt avatar")
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(limitNum)
@@ -75,6 +75,10 @@ export async function updateUser(userId, data = {}, actorId = null) {
 
   // Privileged fields (Super Admin only)
   if (isActorSuperAdmin) {
+    if (typeof data.isSuperAdmin === "boolean") {
+      user.isSuperAdmin = data.isSuperAdmin;
+    }
+
     if (data.accountStatus || data.status || data.statusType) {
       const rawStatus = (data.accountStatus || data.status || data.statusType).toUpperCase();
       if (["ACTIVE", "SUSPENDED", "DISABLED", "INVITED"].includes(rawStatus)) {

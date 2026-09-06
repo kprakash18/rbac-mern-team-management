@@ -8,13 +8,9 @@ export function requirePermission(permissionKey, getResourceId = null) {
   return async (req, res, next) => {
     try {
       const userId = req.user?.id;
-      const teamId =
-        req.params?.teamId ||
-        req.query?.teamId ||
-        req.body?.teamId ||
-        req.headers["x-team-id"];
+      const teamId = req.params?.teamId || req.query?.teamId;
 
-      // 1. Dynamic Super Admin check: Platform administrators have unrestricted global access
+      // 1. Super Admin platform check: Super Admins bypass team-level RBAC checks
       const userIsSuperAdmin = req.user?.isSuperAdmin ?? (await isSuperAdmin(userId));
       if (userIsSuperAdmin) {
         req.authContext = { teamId: teamId || null, permissionKey, resource: null };
