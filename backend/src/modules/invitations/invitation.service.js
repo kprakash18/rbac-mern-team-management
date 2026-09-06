@@ -66,6 +66,7 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
         const exists = await MembershipRole.findOne({ membershipId: membership._id, roleId });
         if (!exists) await MembershipRole.create({ membershipId: membership._id, roleId, assignedBy: invitedByUserId, assignedAt: new Date() });
       }
+      await Membership.updateOne({ _id: membership._id }, { $addToSet: { roleIds: { $each: resolvedRoleIds } } });
     }
 
     const assignedRoles = await Role.find({ _id: { $in: resolvedRoleIds } }).select("name");
@@ -239,6 +240,11 @@ export async function acceptInvitation({ token, name, password }) {
       if (Array.isArray(invitation.roleIds) && invitation.roleIds.length > 0) {
         await MembershipRole.insertMany(
           invitation.roleIds.map((roleId) => ({ membershipId: membership._id, roleId, assignedBy: invitation.invitedBy, assignedAt: new Date() })),
+          { session }
+        );
+        await Membership.updateOne(
+          { _id: membership._id },
+          { $addToSet: { roleIds: { $each: invitation.roleIds } } },
           { session }
         );
       }

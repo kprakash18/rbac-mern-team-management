@@ -5,7 +5,7 @@ import { useApp } from '@/context/useApp';
 import api from '@/lib/api';
 
 export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
-  const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
+  const { selectWorkspace, clearWorkspace, isSuperAdmin, workspacePermissions } = useApp();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [workspaces, setWorkspaces] = useState([]);
@@ -32,19 +32,19 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
     try {
       setLoading(true);
-      const [membersRes, tasksRes, jitRes, auditRes, permsRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members`),
-        api.get(`/api/teams/${teamId}/tasks`),
-        api.get(`/api/teams/${teamId}/access-requests`),
-        api.get(`/api/teams/${teamId}/audit-logs`),
-        api.get('/api/authorization/permissions'),
+      const [membersRes, tasksRes, jitRes, auditRes, permsCatalogRes] = await Promise.allSettled([
+        api.get(`/api/teams/${teamId}/members?limit=100`),
+        api.get(`/api/teams/${teamId}/tasks?limit=100`),
+        api.get(`/api/teams/${teamId}/access-requests?limit=50`),
+        api.get(`/api/teams/${teamId}/audit-logs?limit=10`),
+        api.get('/api/permissions'),
       ]);
 
       const members = membersRes.status === 'fulfilled' ? (membersRes.value.data?.data?.members || membersRes.value.data?.data || []) : [];
       const tasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.data?.data?.tasks || tasksRes.value.data?.data || []) : [];
       const jitRequests = jitRes.status === 'fulfilled' ? (Array.isArray(jitRes.value.data?.data) ? jitRes.value.data.data : []) : [];
       const auditLogs = auditRes.status === 'fulfilled' ? (Array.isArray(auditRes.value.data?.data) ? auditRes.value.data.data : auditRes.value.data?.data?.logs || []) : [];
-      const perms = permsRes.status === 'fulfilled' ? (permsRes.value.data?.data?.effectivePermissions || permsRes.value.data?.data || []) : [];
+      const catalogPerms = permsCatalogRes.status === 'fulfilled' ? (permsCatalogRes.value.data?.data?.permissions || permsCatalogRes.value.data?.data || []) : [];
 
       const activeJits = jitRequests.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
       const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
@@ -64,9 +64,19 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
         };
       });
 
+      const totalCatalogCount = Array.isArray(catalogPerms) && catalogPerms.length > 0 ? catalogPerms.length : 39;
+
+      const effectivePermsCount = Array.isArray(workspacePermissions) && workspacePermissions.length > 0
+        ? workspacePermissions.filter((p) => p !== '*').length
+        : (currentUser?.permissions?.length || 0);
+
+      const userCapabilitiesCount = (isSuperAdmin || workspacePermissions.includes('*'))
+        ? totalCatalogCount
+        : effectivePermsCount;
+
       setMetrics({
-        capabilitiesCount: Array.isArray(perms) ? perms.length : 0,
-        totalCapabilities: 35,
+        capabilitiesCount: userCapabilitiesCount,
+        totalCapabilities: totalCatalogCount,
         activeJitCount: activeJits,
         activeMembersCount: Array.isArray(members) ? members.length : 0,
         tasksCount: Array.isArray(tasks) ? tasks.length : 0,
@@ -78,7 +88,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     } finally {
       setLoading(false);
     }
-  }, [teamId]);
+  }, [teamId, isSuperAdmin, workspacePermissions, currentUser]);
 
   useEffect(() => {
     fetchDashboardMetrics();
