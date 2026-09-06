@@ -1,12 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import NotificationDropdown from '../../shell/NotificationDropdown';
-import WorkspaceSwitcherDropdown from '../../shell/WorkspaceSwitcherDropdown';
+import UserProfileSettingsModal from '@/components/shared/UserProfileSettingsModal';
 import { useApp } from '@/context/useApp';
 import api from '@/lib/api';
 
 export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
-  const { clearWorkspace } = useApp();
+  const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [workspaces, setWorkspaces] = useState([]);
   const userMenuRef = useRef(null);
 
   const [loading, setLoading] = useState(true);
@@ -92,6 +94,36 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  // Fetch workspaces when user profile dropdown opens
+  useEffect(() => {
+    if (!isUserMenuOpen) return;
+    let isMounted = true;
+    async function loadWorkspaces() {
+      try {
+        const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
+        const res = await api.get(endpoint);
+        const rawTeams = res.data?.data?.teams || res.data?.data || [];
+        const formatted = rawTeams.map((t) => ({
+          ...t,
+          id: t._id || t.id,
+          name: t.name,
+          role: t.role || (t.isTeamAdmin ? 'Team Admin' : 'Developer'),
+          isTeamAdmin: Boolean(
+            t.isTeamAdmin || t.role === 'Team Admin' || t.role?.toLowerCase().includes('admin')
+          ),
+          icon: t.icon || 'domain',
+        }));
+        if (isMounted) setWorkspaces(formatted);
+      } catch (err) {
+        console.warn('Failed to load workspaces:', err);
+      }
+    }
+    loadWorkspaces();
+    return () => {
+      isMounted = false;
+    };
+  }, [isUserMenuOpen, isSuperAdmin]);
+
   const userName = currentUser?.name || 'Team Member';
   const displayName = userName.includes(' ') ? userName.split(' ')[0] : userName;
   const userRole = currentUser?.role || 'Member';
@@ -102,13 +134,9 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
   return (
     <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg flex flex-col gap-lg">
-      {/* Top search bar, workspace switcher & actions */}
+      {/* Top search bar & actions */}
       <div className="flex items-center justify-between pb-sm border-b border-border-subtle gap-md flex-wrap">
         <div className="flex items-center gap-md flex-1 max-w-lg">
-          <WorkspaceSwitcherDropdown
-            currentWorkspace={workspace}
-            placement="bottom-left"
-          />
           <div className="flex items-center gap-xs px-md py-1.5 rounded-lg bg-surface-container-lowest border border-border-subtle text-on-surface-variant w-full shadow-sm">
             <span className="material-symbols-outlined text-[18px]">search</span>
             <input
@@ -147,8 +175,15 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
             </button>
 
             {isUserMenuOpen && (
-              <div className="absolute right-0 mt-2 w-64 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-xl py-2 z-50">
-                <div className="px-md py-2 border-b border-border-subtle">
+              <div className="absolute right-0 mt-2 w-72 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-xl py-2 z-50 animate-in fade-in slide-in-from-top-2 duration-150">
+                <div 
+                  onClick={() => {
+                    setIsUserMenuOpen(false);
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="px-md py-2 border-b border-border-subtle cursor-pointer hover:bg-surface-container-low transition-colors"
+                  title="Click to manage account settings"
+                >
                   <div className="flex items-center justify-between gap-1">
                     <p className="font-label-bold text-on-surface truncate">{userName}</p>
                     <span
@@ -167,7 +202,73 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
                   </span>
                 </div>
 
+                {/* Switch Workspace Section inside Profile Dropdown */}
+                {workspaces.length > 0 && (
+                  <div className="py-1 border-b border-border-subtle">
+                    <div className="px-md py-1 flex items-center justify-between">
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">
+                        Switch Workspace
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsUserMenuOpen(false);
+                          clearWorkspace();
+                        }}
+                        className="text-[10px] font-bold text-primary hover:underline cursor-pointer"
+                      >
+                        All Hubs
+                      </button>
+                    </div>
+                    <div className="max-h-36 overflow-y-auto px-1 space-y-0.5">
+                      {workspaces.map((ws) => {
+                        const isCurrent = (ws.id || ws._id) === (workspace?._id || workspace?.id);
+                        return (
+                          <button
+                            key={ws.id || ws._id}
+                            type="button"
+                            onClick={() => {
+                              setIsUserMenuOpen(false);
+                              if (!isCurrent) selectWorkspace(ws);
+                            }}
+                            className={`w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-left transition-colors cursor-pointer text-xs ${
+                              isCurrent
+                                ? 'bg-primary/10 text-primary font-bold'
+                                : 'text-on-surface hover:bg-surface-container-low font-medium'
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <span className="material-symbols-outlined text-[16px] shrink-0">
+                                {ws.icon || 'domain'}
+                              </span>
+                              <span className="truncate">{ws.name}</span>
+                            </div>
+                            {isCurrent && (
+                              <span className="material-symbols-outlined text-primary text-[16px] shrink-0">
+                                check
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="py-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsUserMenuOpen(false);
+                      setIsProfileModalOpen(true);
+                    }}
+                    className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left font-medium"
+                  >
+                    <span className="material-symbols-outlined text-[18px] text-primary">
+                      manage_accounts
+                    </span>
+                    <span>Profile &amp; Security Settings</span>
+                  </button>
                   <button
                     type="button"
                     onClick={() => {
@@ -176,7 +277,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
                     }}
                     className="w-full flex items-center gap-2 px-md py-2 text-[13px] text-on-surface hover:bg-surface-container-low transition-colors cursor-pointer text-left font-medium"
                   >
-                    <span className="material-symbols-outlined text-[18px] text-primary">
+                    <span className="material-symbols-outlined text-[18px] text-on-surface-variant">
                       apps
                     </span>
                     <span>Switch Workspace Hub</span>
@@ -201,6 +302,13 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
           </div>
         </div>
       </div>
+
+      {/* User Profile & Password Change Settings Modal */}
+      <UserProfileSettingsModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        onLogout={() => onNavigate?.('logout')}
+      />
 
       {/* Welcome Card */}
       <div className="w-full rounded-xl bg-surface-container-lowest border border-border-subtle p-lg shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-md">

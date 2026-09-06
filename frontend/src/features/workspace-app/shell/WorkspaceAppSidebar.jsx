@@ -1,5 +1,3 @@
-import WorkspaceSwitcherDropdown from './WorkspaceSwitcherDropdown';
-
 const WORKSPACE_APP_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'tasks', label: 'Tasks & Sprints', icon: 'task_alt' },
@@ -11,16 +9,13 @@ const WORKSPACE_APP_NAV = [
 ];
 
 export default function WorkspaceAppSidebar({
-  workspace,
   currentUser,
   activeView,
   onSelectView,
-  onOpenTeamSettings,
   unreadAnnouncementsCount = 2,
   isCollapsed = false,
   onToggleCollapse,
 }) {
-  const workspaceName = workspace?.name || 'Acme Engineering';
   const isTeamAdmin = Boolean(currentUser?.isTeamAdmin);
   const isAuditorOrAdmin = isTeamAdmin || currentUser?.teamRole === 'Security Auditor' || currentUser?.role === 'Security Auditor';
 
@@ -75,53 +70,6 @@ export default function WorkspaceAppSidebar({
             </span>
           </button>
         </div>
-
-        {/* Workspace Switcher Pill / Trigger */}
-        <WorkspaceSwitcherDropdown
-          currentWorkspace={workspace}
-          onOpenTeamSettings={isTeamAdmin ? onOpenTeamSettings : undefined}
-          placement={isCollapsed ? 'bottom-left' : 'bottom-left'}
-          trigger={({ isOpen, toggle }) =>
-            isCollapsed ? (
-              <div
-                onClick={toggle}
-                className="w-full flex justify-center py-1 cursor-pointer"
-                title={`${workspaceName} (Click to switch workspace)`}
-              >
-                <div className={`w-3 h-3 rounded-full bg-primary shrink-0 transition-transform ${isOpen ? 'scale-125 ring-2 ring-primary/30' : ''}`} />
-              </div>
-            ) : (
-              <div
-                onClick={toggle}
-                className={`p-sm rounded-lg border transition-all cursor-pointer flex items-center justify-between ${
-                  isOpen
-                    ? 'bg-surface-container border-primary/50 ring-1 ring-primary/20'
-                    : 'bg-surface-container-low border-border-subtle hover:bg-surface-container'
-                }`}
-                title="Click to switch workspace"
-              >
-                <div className="flex items-center gap-xs min-w-0">
-                  <div className="w-2 h-2 rounded-full bg-primary shrink-0"></div>
-                  <div className="truncate">
-                    <p className="font-label-bold text-label-bold text-on-surface truncate">
-                      {workspaceName}
-                    </p>
-                    <p className="text-[11px] font-mono text-on-surface-variant truncate">
-                      {workspace?.region || 'Prod US-East'}
-                    </p>
-                  </div>
-                </div>
-                <span
-                  className={`material-symbols-outlined text-on-surface-variant text-[18px] transition-transform duration-200 ${
-                    isOpen ? 'rotate-180 text-primary' : ''
-                  }`}
-                >
-                  unfold_more
-                </span>
-              </div>
-            )
-          }
-        />
 
         {/* Navigation Items */}
         <nav className={`flex flex-col ${isCollapsed ? 'items-center gap-1.5' : 'gap-1'} w-full`}>
@@ -181,13 +129,6 @@ export default function WorkspaceAppSidebar({
             );
           })}
         </nav>
-      </div>
-
-      {/* Bottom area: Clean minimal status indicator when collapsed or expanded, with no user footer */}
-      <div className="py-2 flex items-center justify-center border-t border-border-subtle">
-        <span className="text-[10px] font-mono text-on-surface-variant uppercase tracking-wider">
-          {isCollapsed ? 'v2.4' : 'ACME OS • v2.4.1'}
-        </span>
       </div>
     </aside>
   );
