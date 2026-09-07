@@ -3,28 +3,44 @@ import nodemailer from "nodemailer";
 import { getInvitationEmailHtml } from "./templates/invitation.template.js";
 import { getRoleAssignedEmailHtml } from "./templates/role-assigned.template.js";
 
+const clean = (val) => (typeof val === "string" ? val.replace(/^["']|["']$/g, "").trim() : val);
+
+function getFromAddress() {
+  const emailFrom = clean(process.env.EMAIL_FROM);
+  if (emailFrom) return emailFrom;
+  const smtpUser = clean(process.env.SMTP_USER);
+  if (smtpUser) return `"Team Management System" <${smtpUser}>`;
+  return '"Team Management System" <no-reply@teammanager.local>';
+}
+
 function getTransporter() {
-  const hasSmtpConfig = (process.env.SMTP_HOST || process.env.SMTP_USER) && process.env.SMTP_USER && process.env.SMTP_PASS;
+  const smtpHost = clean(process.env.SMTP_HOST);
+  const smtpUser = clean(process.env.SMTP_USER);
+  const smtpPass = clean(process.env.SMTP_PASS)?.replace(/\s+/g, "");
+  const smtpPort = Number(clean(process.env.SMTP_PORT)) || 587;
+  const smtpSecure = clean(process.env.SMTP_SECURE) === "true";
+
+  const hasSmtpConfig = (smtpHost || smtpUser) && smtpUser && smtpPass;
 
   if (hasSmtpConfig) {
-    const isGmail = process.env.SMTP_HOST?.includes('gmail') || process.env.SMTP_USER?.includes('@gmail.com');
+    const isGmail = smtpHost?.includes("gmail") || smtpUser?.includes("@gmail.com");
     if (isGmail) {
       return nodemailer.createTransport({
-        service: 'gmail',
+        service: "gmail",
         auth: {
-          user: process.env.SMTP_USER,
-          pass: process.env.SMTP_PASS?.trim(),
+          user: smtpUser,
+          pass: smtpPass,
         },
       });
     }
 
     return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT) || 587,
-      secure: process.env.SMTP_SECURE === "true",
+      host: smtpHost,
+      port: smtpPort,
+      secure: smtpSecure,
       auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
+        user: smtpUser,
+        pass: smtpPass,
       },
       tls: {
         rejectUnauthorized: false,
@@ -41,7 +57,7 @@ function getTransporter() {
 
 export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }) {
   const mailClient = getTransporter();
-  const fromAddress = process.env.EMAIL_FROM || (process.env.SMTP_USER ? `"Team Management System" <${process.env.SMTP_USER}>` : '"Team Management System" <no-reply@teammanager.local>');
+  const fromAddress = getFromAddress();
 
   const htmlContent = getInvitationEmailHtml({
     teamName,
@@ -58,7 +74,7 @@ export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }
       html: htmlContent,
     });
 
-    console.log(`[Email Service] Invitation email sent to ${to} for team "${teamName}"`);
+    console.log(`[Email Service] Invitation email successfully sent to ${to} for team "${teamName}"`);
     return info;
   } catch (error) {
     console.error(`[Email Service] Failed to send email to ${to}:`, error.message);
@@ -68,7 +84,7 @@ export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }
 
 export async function sendRoleAssignedEmail({ to, recipientName, teamName, roleName, workspaceUrl }) {
   const mailClient = getTransporter();
-  const fromAddress = process.env.EMAIL_FROM || (process.env.SMTP_USER ? `"Team Management System" <${process.env.SMTP_USER}>` : '"Team Management System" <no-reply@teammanager.local>');
+  const fromAddress = getFromAddress();
 
   const htmlContent = getRoleAssignedEmailHtml({
     recipientName,

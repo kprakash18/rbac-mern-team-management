@@ -71,9 +71,9 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
 
     const assignedRoles = await Role.find({ _id: { $in: resolvedRoleIds } }).select("name");
     const roleNamesString = assignedRoles.map((r) => r.name).join(", ") || "Team Member";
-    const workspaceUrl = `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`;
-
-    sendRoleAssignedEmail({ to: normalizedEmail, recipientName: existingUser.name, teamName: team.name, roleName: roleNamesString, workspaceUrl }).catch(() => {});
+    await sendRoleAssignedEmail({ to: normalizedEmail, recipientName: existingUser.name, teamName: team.name, roleName: roleNamesString, workspaceUrl }).catch((err) => {
+      console.error("[Invitation Service] Non-fatal role assigned email error:", err.message);
+    });
     createNotification({
       recipientId: existingUser._id,
       actorId: invitedByUserId,
@@ -140,7 +140,9 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
   }
 
   const inviteUrl = `${env.clientUrl}/invite?token=${rawToken}`;
-  sendInvitationEmail({ to: normalizedEmail, inviterName, teamName: team.name, inviteUrl, expiresAt }).catch(() => {});
+  await sendInvitationEmail({ to: normalizedEmail, inviterName, teamName: team.name, inviteUrl, expiresAt }).catch((err) => {
+    console.error("[Invitation Service] Non-fatal email dispatch error:", err.message);
+  });
 
   logAuditEvent({
     actorId: invitedByUserId,
