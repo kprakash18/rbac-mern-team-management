@@ -76,7 +76,11 @@ export async function getUserTeams(userId) {
 
 export async function listTeams({ status, search, page = 1, limit = 50 } = {}) {
   const query = {};
-  if (status && !["all", "ALL"].includes(status)) query.status = status.toUpperCase();
+  if (status && !["all", "ALL"].includes(status)) {
+    query.status = status.toUpperCase();
+  } else if (!status) {
+    query.status = { $ne: "ARCHIVED" };
+  }
   if (search?.trim()) query.name = { $regex: search.trim(), $options: "i" };
 
   const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 50 });

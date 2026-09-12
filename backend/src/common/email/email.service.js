@@ -1,92 +1,84 @@
-import "dotenv/config";
-import nodemailer from "nodemailer";
+import { env } from "../../config/env.js";
 import { getInvitationEmailHtml } from "./templates/invitation.template.js";
 import { getRoleAssignedEmailHtml } from "./templates/role-assigned.template.js";
 
 const clean = (val) => (typeof val === "string" ? val.replace(/^["']|["']$/g, "").trim() : val);
 
-function getFromAddress() {
-  const emailFrom = clean(process.env.EMAIL_FROM);
-  if (emailFrom) return emailFrom;
-  const smtpUser = clean(process.env.SMTP_USER);
-  if (smtpUser) return `"Team Management System" <${smtpUser}>`;
-  return '"Team Management System" <no-reply@teammanager.local>';
+function parseSender() {
+  const from = clean(env.emailFrom || process.env.EMAIL_FROM || "Team Management System <kethavathprakash2004@gmail.com>");
+  const match = from.match(/^(?:"?([^"]*)"?\s)?(?:<?(.+@[^>]+)>?)$/);
+  if (match && match[2]) {
+    return {
+      name: match[1]?.trim() || "Team Management System",
+      email: match[2]?.trim(),
+    };
+  }
+  return {
+    name: "Team Management System",
+    email: clean(env.senderEmail || process.env.SENDER_EMAIL || "kethavathprakash2004@gmail.com"),
+  };
 }
 
-function getTransporter() {
-  const smtpHost = clean(process.env.SMTP_HOST);
-  const smtpUser = clean(process.env.SMTP_USER);
-  const smtpPass = clean(process.env.SMTP_PASS)?.replace(/\s+/g, "");
-  const smtpSecure = clean(process.env.SMTP_SECURE) === "true";
-  const smtpPort = Number(clean(process.env.SMTP_PORT)) || (smtpSecure ? 465 : 587);
+async function sendViaBrevo({ to, subject, htmlContent, textContent }) {
+  const apiKey = clean(env.brevoApiKey || process.env.BREVO_API_KEY);
+  const sender = parseSender();
 
-  const hasSmtpConfig = Boolean((smtpHost || smtpUser) && smtpUser && smtpPass);
-
-  if (hasSmtpConfig) {
-    const isGmail = smtpHost?.includes("gmail") || smtpUser?.includes("@gmail.com");
-    if (isGmail) {
-      return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
-    }
-
-    return nodemailer.createTransport({
-      host: smtpHost,
-      port: smtpPort,
-      secure: smtpSecure || smtpPort === 465,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
-      tls: {
-        rejectUnauthorized: false,
-      },
-    });
+  if (!apiKey) {
+    console.warn(`[Email Service - Simulated] Email to ${to} ("${subject}") - (No BREVO_API_KEY configured).`);
+    return { messageId: "simulated-id", simulated: true };
   }
 
-  console.warn("[Email Service] No valid SMTP credentials configured in environment. Operating in mock streamTransport mode.");
-  return nodemailer.createTransport({
-    streamTransport: true,
-    newline: "unix",
-    buffer: true,
-  });
+  try {
+    const response = await fetch("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "api-key": apiKey,
+        "content-type": "application/json",
+        "accept": "application/json",
+      },
+      body: JSON.stringify({
+        sender,
+        to: [{ email: to }],
+        subject,
+        htmlContent,
+        textContent,
+      }),
+    });
+
+    const result = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      console.error(`[Email Service - Brevo Error ${response.status}] Failed to send email to ${to}:`, result.message || JSON.stringify(result));
+      return null;
+    }
+
+    console.log(`[Email Service] Email successfully delivered via Brevo to ${to} (Message ID: ${result.messageId})`);
+    return result;
+  } catch (error) {
+    console.error(`[Email Service] Network error sending email to ${to}:`, error.message);
+    return null;
+  }
 }
 
 export async function sendInvitationEmail({ to, teamName, inviteUrl, expiresAt }) {
-  const mailClient = getTransporter();
-  const fromAddress = getFromAddress();
-
   const htmlContent = getInvitationEmailHtml({
     teamName,
     inviteUrl,
     expiresAt,
   });
 
-  try {
-    const info = await mailClient.sendMail({
-      from: fromAddress,
-      to,
-      subject: `You've been invited to join team "${teamName}"`,
-      text: `You have been invited to join ${teamName}. Accept your invitation here: ${inviteUrl}`,
-      html: htmlContent,
-    });
+  const subject = `You've been invited to join team "${teamName}"`;
+  const textContent = `You have been invited to join ${teamName}. Accept your invitation here: ${inviteUrl}`;
 
-    console.log(`[Email Service] Invitation email successfully sent to ${to} for team "${teamName}"`);
-    return info;
-  } catch (error) {
-    console.error(`[Email Service] Failed to send email to ${to}:`, error.message);
-    return null;
-  }
+  return sendViaBrevo({
+    to,
+    subject,
+    htmlContent,
+    textContent,
+  });
 }
 
 export async function sendRoleAssignedEmail({ to, recipientName, teamName, roleName, workspaceUrl }) {
-  const mailClient = getTransporter();
-  const fromAddress = getFromAddress();
-
   const htmlContent = getRoleAssignedEmailHtml({
     recipientName,
     teamName,
@@ -94,19 +86,13 @@ export async function sendRoleAssignedEmail({ to, recipientName, teamName, roleN
     workspaceUrl,
   });
 
-  try {
-    const info = await mailClient.sendMail({
-      from: fromAddress,
-      to,
-      subject: `You've been onboarded to team "${teamName}"`,
-      text: `You have been onboarded to team "${teamName}" with the role "${roleName || "Team Member"}". Open workspace: ${workspaceUrl}`,
-      html: htmlContent,
-    });
+  const subject = `You've been onboarded to team "${teamName}"`;
+  const textContent = `You have been onboarded to team "${teamName}" with the role "${roleName || "Team Member"}". Open workspace: ${workspaceUrl}`;
 
-    console.log(`[Email Service] Role assigned email sent to ${to} for team "${teamName}"`);
-    return info;
-  } catch (error) {
-    console.error(`[Email Service] Failed to send role assigned email to ${to}:`, error.message);
-    return null;
-  }
+  return sendViaBrevo({
+    to,
+    subject,
+    htmlContent,
+    textContent,
+  });
 }
