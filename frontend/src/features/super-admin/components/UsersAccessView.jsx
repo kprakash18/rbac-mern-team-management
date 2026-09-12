@@ -123,23 +123,27 @@ export default function UsersAccessView() {
 
     try {
       const [teamsRes, rolesRes] = await Promise.allSettled([
-        api.get('/api/teams'),
-        api.get('/api/roles'),
+        api.get('/api/teams?status=ACTIVE'),
+        api.get('/api/roles?status=all'),
       ]);
 
       const teamsList = teamsRes.status === 'fulfilled' ? (teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || []) : [];
       const rolesList = rolesRes.status === 'fulfilled' ? (rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || []) : [];
 
+      const targetTeamId = newUserData.teamId || newUserData.assignments?.[0]?.teamId;
       const targetTeamName = newUserData.workspace || newUserData.assignments?.[0]?.workspace;
+      const targetRoleId = newUserData.roleId || newUserData.assignments?.[0]?.roleId;
       const targetRoleName = newUserData.role || newUserData.assignments?.[0]?.role;
 
-      const matchedTeam = teamsList.find(
-        (t) => t.name?.toLowerCase() === targetTeamName?.toLowerCase()
-      ) || teamsList[0];
+      const matchedTeam =
+        (targetTeamId && teamsList.find((t) => String(t._id || t.id) === String(targetTeamId))) ||
+        teamsList.find((t) => t.name?.toLowerCase() === targetTeamName?.toLowerCase()) ||
+        (targetTeamId ? { _id: targetTeamId, name: targetTeamName } : teamsList[0]);
 
-      const matchedRole = rolesList.find(
-        (r) => r.name?.toLowerCase() === targetRoleName?.toLowerCase()
-      );
+      const matchedRole =
+        (targetRoleId && rolesList.find((r) => String(r._id || r.id) === String(targetRoleId))) ||
+        rolesList.find((r) => r.name?.toLowerCase() === targetRoleName?.toLowerCase()) ||
+        (targetRoleId ? { _id: targetRoleId, name: targetRoleName } : rolesList[0]);
 
       if (matchedTeam) {
         const teamId = matchedTeam._id || matchedTeam.id;

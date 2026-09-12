@@ -34,6 +34,8 @@ export default function AcceptInvitationPage() {
             workspaceName: data.teamId?.name || data.team?.name || 'Workspace',
             role: data.roleId?.name || data.role?.name || 'Member',
             email: data.email || '',
+            name: data.name || data.fullName || '',
+            fullName: data.fullName || data.name || '',
             inviterName: data.invitedBy?.name || 'Team Admin',
           });
           setViewState(data.isExistingUser ? INVITATION_STATES.EXISTING_USER : INVITATION_STATES.NEW_USER);

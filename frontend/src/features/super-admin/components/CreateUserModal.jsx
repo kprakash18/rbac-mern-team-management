@@ -12,7 +12,9 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   const [roles, setRoles] = useState([]);
   const [assignments, setAssignments] = useState([
     {
-      workspace: DEFAULT_WORKSPACE,
+      teamId: '',
+      workspace: '',
+      roleId: '',
       role: 'Developer',
       isTeamAdmin: false,
     },
@@ -22,38 +24,59 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   useEffect(() => {
     if (!isOpen) return;
     Promise.allSettled([
-      api.get('/api/teams?status=all'),
+      api.get('/api/teams?status=ACTIVE'),
       api.get('/api/roles?status=all'),
     ]).then(([teamsRes, rolesRes]) => {
+      let activeTeams = [];
+      let activeRoles = [];
       if (teamsRes.status === 'fulfilled') {
         const list = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
         if (Array.isArray(list) && list.length > 0) {
-          setTeams(list);
+          activeTeams = list.filter((t) => t.status !== 'ARCHIVED');
+          setTeams(activeTeams);
         }
       }
       if (rolesRes.status === 'fulfilled') {
         const roleList = rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || [];
         if (Array.isArray(roleList) && roleList.length > 0) {
-          setRoles(roleList);
+          activeRoles = roleList;
+          setRoles(activeRoles);
         }
       }
+
+      setAssignments([
+        {
+          tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
+          teamId: activeTeams[0]?._id || activeTeams[0]?.id || '',
+          workspace: activeTeams[0]?.name || DEFAULT_WORKSPACE,
+          roleId: activeRoles[0]?._id || activeRoles[0]?.id || '',
+          role: activeRoles[0]?.name || 'Developer',
+          isTeamAdmin: false,
+        },
+      ]);
     });
   }, [isOpen]);
 
   const workspaceOptions = teams.length > 0
-    ? Array.from(new Set([...teams.map((t) => t.name), ...Object.keys(WORKSPACE_ROLES_MAP)]))
+    ? teams.map((t) => t.name)
     : Object.keys(WORKSPACE_ROLES_MAP);
 
   const availableRoleNames = roles.length > 0
     ? Array.from(new Set(roles.map((r) => r.name)))
     : ['Admin', 'Developer', 'Viewer', 'Editor', 'Manager'];
 
-  const createInitialAssignment = () => ({
-    tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
-    workspace: workspaceOptions[0] || DEFAULT_WORKSPACE,
-    role: WORKSPACE_ROLES_MAP[workspaceOptions[0] || DEFAULT_WORKSPACE]?.[0] || 'Developer',
-    isTeamAdmin: false,
-  });
+  const createInitialAssignment = () => {
+    const firstTeam = teams[0];
+    const firstRole = roles[0];
+    return {
+      tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
+      teamId: firstTeam?._id || firstTeam?.id || '',
+      workspace: firstTeam ? firstTeam.name : (workspaceOptions[0] || DEFAULT_WORKSPACE),
+      roleId: firstRole?._id || firstRole?.id || '',
+      role: firstRole?.name || 'Developer',
+      isTeamAdmin: false,
+    };
+  };
 
   const resetForm = () => {
     setFullName('');
@@ -86,17 +109,20 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   if (!isOpen) return null;
 
   const handleAddAssignment = () => {
-    const assignedWorkspaces = assignments.map((a) => a.workspace);
-    const nextWorkspace = workspaceOptions.find(
-      (ws) => !assignedWorkspaces.includes(ws)
-    ) || workspaceOptions[0] || 'Production';
+    const assignedTeamIds = assignments.map((a) => a.teamId || a.workspace);
+    const nextTeam =
+      teams.find((t) => !assignedTeamIds.includes(t._id || t.id) && !assignedTeamIds.includes(t.name)) ||
+      teams[0];
+    const defaultRole = roles[0];
 
     setAssignments((prev) => [
       ...prev,
       {
         tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
-        workspace: nextWorkspace,
-        role: WORKSPACE_ROLES_MAP[nextWorkspace]?.[0] || 'Developer',
+        teamId: nextTeam?._id || nextTeam?.id || '',
+        workspace: nextTeam?.name || workspaceOptions[0] || 'Engineering Core',
+        roleId: defaultRole?._id || defaultRole?.id || '',
+        role: defaultRole?.name || 'Developer',
         isTeamAdmin: false,
       },
     ]);
@@ -107,24 +133,46 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
     setAssignments((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleWorkspaceChange = (index, newWorkspace) => {
-    const availableRoles = WORKSPACE_ROLES_MAP[newWorkspace] || ['Viewer'];
+  const handleWorkspaceChange = (index, selectedVal) => {
+    const matchedTeam = teams.find(
+      (t) => String(t._id || t.id) === String(selectedVal) || t.name === selectedVal
+    );
+    const newWorkspaceName = matchedTeam ? matchedTeam.name : selectedVal;
+    const teamId = matchedTeam ? (matchedTeam._id || matchedTeam.id) : undefined;
+    const availableRoles = WORKSPACE_ROLES_MAP[newWorkspaceName] || ['Viewer'];
+
     setAssignments((prev) =>
       prev.map((item, i) =>
         i === index
           ? {
               ...item,
-              workspace: newWorkspace,
-              role: availableRoles.includes(item.role) ? item.role : availableRoles[0],
+              teamId: teamId || item.teamId,
+              workspace: newWorkspaceName,
+              role: availableRoles.includes(item.role) ? item.role : (roles[0]?.name || availableRoles[0]),
+              roleId: roles.find((r) => r.name === (availableRoles.includes(item.role) ? item.role : (roles[0]?.name || availableRoles[0])))?._id || item.roleId,
             }
           : item
       )
     );
   };
 
-  const handleRoleChange = (index, newRole) => {
+  const handleRoleChange = (index, selectedVal) => {
+    const matchedRole = roles.find(
+      (r) => String(r._id || r.id) === String(selectedVal) || r.name === selectedVal
+    );
+    const roleName = matchedRole ? matchedRole.name : selectedVal;
+    const roleId = matchedRole ? (matchedRole._id || matchedRole.id) : undefined;
+
     setAssignments((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, role: newRole } : item))
+      prev.map((item, i) =>
+        i === index
+          ? {
+              ...item,
+              roleId: roleId || item.roleId,
+              role: roleName,
+            }
+          : item
+      )
     );
   };
 
@@ -137,12 +185,30 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
   const handleSubmit = (e) => {
     e.preventDefault();
     if (onInvite) {
+      const primaryAssignment = assignments[0] || {};
+      const primaryTeamId = primaryAssignment.teamId || teams.find((t) => t.name === primaryAssignment.workspace)?._id || teams[0]?._id;
+      const matchedTeam = teams.find((t) => String(t._id || t.id) === String(primaryTeamId)) || teams[0];
+      const primaryRoleId = primaryAssignment.roleId || roles.find((r) => r.name === primaryAssignment.role)?._id || roles[0]?._id;
+      const matchedRole = roles.find((r) => String(r._id || r.id) === String(primaryRoleId)) || roles[0];
+
       onInvite({
         fullName,
         email,
-        assignments,
-        workspace: assignments[0]?.workspace || DEFAULT_WORKSPACE,
-        role: assignments[0]?.role || 'Viewer',
+        assignments: assignments.map((a) => {
+          const tMatch = teams.find((t) => String(t._id || t.id) === String(a.teamId) || t.name?.toLowerCase() === a.workspace?.toLowerCase());
+          const rMatch = roles.find((r) => String(r._id || r.id) === String(a.roleId) || r.name?.toLowerCase() === a.role?.toLowerCase());
+          return {
+            ...a,
+            teamId: tMatch?._id || tMatch?.id,
+            workspace: tMatch?.name || a.workspace,
+            roleId: rMatch?._id || rMatch?.id,
+            role: rMatch?.name || a.role,
+          };
+        }),
+        teamId: matchedTeam?._id || matchedTeam?.id,
+        roleId: matchedRole?._id || matchedRole?.id,
+        workspace: matchedTeam?.name || primaryAssignment.workspace,
+        role: matchedRole?.name || primaryAssignment.role,
         isTeamAdmin: assignments.some((a) => a.isTeamAdmin),
         isSuperAdmin,
         isExistingUser,
@@ -232,15 +298,23 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
                         </label>
                         <div className="relative">
                           <select
-                            value={item.workspace}
+                            value={item.teamId || item.workspace}
                             onChange={(e) => handleWorkspaceChange(index, e.target.value)}
                             className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
                           >
-                            {workspaceOptions.map((ws) => (
-                              <option key={ws} value={ws}>
-                                {ws}
-                              </option>
-                            ))}
+                            {teams.length > 0 ? (
+                              teams.map((t) => (
+                                <option key={t._id || t.id || t.name} value={t._id || t.id}>
+                                  {t.name}
+                                </option>
+                              ))
+                            ) : (
+                              workspaceOptions.map((ws) => (
+                                <option key={ws} value={ws}>
+                                  {ws}
+                                </option>
+                              ))
+                            )}
                           </select>
                           <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
                             expand_more
@@ -254,18 +328,23 @@ export default function CreateUserModal({ isOpen, onClose, onInvite, existingUse
                         </label>
                         <div className="relative">
                           <select
-                            value={item.role}
+                            value={item.roleId || item.role}
                             onChange={(e) => handleRoleChange(index, e.target.value)}
                             className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
                           >
-                            {!availableRoleNames.includes(item.role) && item.role && (
-                              <option value={item.role}>{item.role}</option>
+                            {roles.length > 0 ? (
+                              roles.map((r) => (
+                                <option key={r._id || r.id || r.name} value={r._id || r.id}>
+                                  {r.name}
+                                </option>
+                              ))
+                            ) : (
+                              availableRoleNames.map((r) => (
+                                <option key={r} value={r}>
+                                  {r}
+                                </option>
+                              ))
                             )}
-                            {availableRoleNames.map((r) => (
-                              <option key={r} value={r}>
-                                {r}
-                              </option>
-                            ))}
                           </select>
                           <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
                             expand_more
