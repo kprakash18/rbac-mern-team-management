@@ -12,7 +12,13 @@ import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createTargetedNotifications } from "../notifications/notification.service.js";
 
+import { getCache, setCache, delCachePattern } from "../../config/redis.js";
+
 export async function searchUsers({ query = "", page = 1, limit = 50, status } = {}) {
+  const cacheKey = `users:search:${JSON.stringify({ query, page, limit, status })}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   const filter = {};
   if (status) filter.accountStatus = status.toUpperCase();
   if (query && typeof query === "string" && query.trim()) {
@@ -31,13 +37,16 @@ export async function searchUsers({ query = "", page = 1, limit = 50, status } =
     User.countDocuments(filter),
   ]);
 
-  return {
+  const result = {
     users: await enrichUsersWithWorkspaces(rawUsers),
     total,
     page: pageNum,
     limit: limitNum,
     totalPages: getTotalPages(total, limitNum),
   };
+
+  await setCache(cacheKey, result, 30);
+  return result;
 }
 
 export async function updateUser(userId, data = {}, actorId = null) {
@@ -140,6 +149,11 @@ export async function updateUser(userId, data = {}, actorId = null) {
     targetId: user._id,
     metadata: { name: user.name, email: user.email, accountStatus: user.accountStatus, updates: data },
   });
+
+  await Promise.all([
+    delCachePattern("users:*"),
+    delCachePattern("teams:*"),
+  ]);
 
   return enriched;
 }

@@ -6,6 +6,7 @@ import { createNotification, createTargetedNotifications } from "../notification
 import { can } from "../authorization/authorization.service.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+import { delCachePattern } from "../../config/redis.js";
 
 const VALID_PRIORITIES = ["LOW", "MEDIUM", "HIGH", "URGENT"];
 
@@ -55,6 +56,8 @@ export async function createTask({ teamId, creatorUserId, title, description, as
     teamId,
     metadata: { title: task.title, priority: task.priority },
   });
+
+  await delCachePattern("teams:bootstrap:*");
 
   return task;
 }
@@ -212,6 +215,8 @@ export async function updateTask({ teamId, taskId, updates = {}, callerUserId })
     metadata: { title: updatedTask.title, status: updatedTask.status },
   });
 
+  await delCachePattern("teams:bootstrap:*");
+
   return updatedTask;
 }
 
@@ -228,6 +233,8 @@ export async function deleteTask({ teamId, taskId, callerUserId }) {
     teamId,
     metadata: { title: deletedTask.title },
   });
+
+  await delCachePattern("teams:bootstrap:*");
 
   return { success: true, message: "Task deleted successfully" };
 }
