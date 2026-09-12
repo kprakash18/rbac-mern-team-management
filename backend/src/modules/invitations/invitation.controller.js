@@ -16,9 +16,9 @@ export const invitationController = {
 
   createInvitation: asyncHandler(async (req, res) => {
     const { teamId } = req.params;
-    const { email, roleIds } = req.body;
+    const { email, name, fullName, roleIds } = req.body;
     const invitedByUserId = req.user.id || req.user.sub;
-    const data = await createInvitation({ teamId, email, roleIds, invitedByUserId });
+    const data = await createInvitation({ teamId, email, name: name || fullName, roleIds, invitedByUserId });
     res.status(201).json({ success: true, message: "Invitation created successfully.", data });
   }),
 

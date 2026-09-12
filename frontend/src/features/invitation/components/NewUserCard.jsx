@@ -5,9 +5,11 @@ export default function NewUserCard({ invitation, onJoin }) {
     workspaceName = 'Acme Engineering',
     role = 'Developer',
     email = 'you@company.com',
+    fullName = '',
+    name = '',
   } = invitation || {};
 
-  const [fullName, setFullName] = useState('');
+  const effectiveFullName = fullName || name || (email ? email.split('@')[0] : 'User');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
@@ -20,22 +22,21 @@ export default function NewUserCard({ invitation, onJoin }) {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!fullName.trim() || !isPasswordValid) return;
+    if (!isPasswordValid) return;
     if (onJoin) {
-      onJoin({ email, fullName, password });
+      onJoin({ email, fullName: effectiveFullName, password });
     }
   };
 
   return (
-    <div className="w-full max-w-[480px] bg-surface-container-lowest rounded-xl shadow-xl p-section-gap">
+    <div className="w-full max-w-120 bg-surface-container-lowest rounded-xl shadow-xl p-section-gap">
       <div className="flex flex-col items-center text-center">
         <div className="w-16 h-16 bg-surface-container rounded-xl flex items-center justify-center mb-stack-lg shadow-sm">
           <img
             alt={`${workspaceName} Logo`}
             className="w-10 h-10 object-contain mix-blend-multiply"
             src="/b2b_saas_logo.png"
-            />
-
+          />
         </div>
         <h1 className="font-headline-md text-headline-md text-on-surface">
           Join Workspace
@@ -83,12 +84,10 @@ export default function NewUserCard({ invitation, onJoin }) {
             Full Name
           </label>
           <input
-            className="h-12 px-stack-md rounded-lg bg-surface-container-lowest text-on-surface ring-1 ring-outline-variant focus:ring-2 focus:ring-primary focus:outline-none transition-shadow font-body-md text-body-md"
-            placeholder="Jane Doe"
+            className="h-12 px-stack-md rounded-lg bg-surface-container text-on-surface-variant ring-1 ring-outline-variant/50 cursor-not-allowed font-body-md text-body-md outline-none focus:ring-0"
+            disabled
             type="text"
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
+            value={effectiveFullName}
           />
         </div>
 
@@ -155,7 +154,7 @@ export default function NewUserCard({ invitation, onJoin }) {
         <button
           className="mt-stack-md w-full h-12 bg-primary text-on-primary rounded-lg font-label-md text-label-md shadow-md hover:shadow-lg hover:-translate-y-0.5 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:translate-y-0"
           type="submit"
-          disabled={!fullName.trim() || !isPasswordValid}
+          disabled={!isPasswordValid}
         >
           <span>Join Workspace</span>
           <span className="material-symbols-outlined text-[18px]">

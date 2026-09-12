@@ -27,6 +27,8 @@ export const env = {
   clientUrl: process.env.CLIENT_URL || "http://localhost:5173",
   redisUrl: process.env.REDIS_URL,
   upstashRedisRestUrl: process.env.UPSTASH_REDIS_REST_URL,
-  upstashRedisRestToken: process.env.UPSTASH_REDIS_REST_TOKEN,
+  brevoApiKey: process.env.BREVO_API_KEY,
+  emailFrom: process.env.EMAIL_FROM || "Team Management <codezenith007@gmail.com>",
+  senderEmail: process.env.SENDER_EMAIL || "codezenith007@gmail.com",
 };
 
