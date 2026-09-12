@@ -12,6 +12,7 @@ import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
 import { env } from "../../config/env.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+import { delCachePattern } from "../../config/redis.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -97,6 +98,11 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
         workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
       }).catch(() => {});
 
+      await Promise.all([
+        delCachePattern("teams:*"),
+        delCachePattern("users:*"),
+      ]);
+
       return getMembershipById({ teamId, membershipId: existingMembership._id });
     }
   }
@@ -133,6 +139,11 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
     roleName: targetRole?.name || "Developer",
     workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
   }).catch(() => {});
+
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
 
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
@@ -248,6 +259,11 @@ async function handleMembershipStatusChange({ teamId, membershipId, actorId, new
     teamId,
     result: "SUCCESS",
   });
+
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
 
   return newStatus === "REMOVED" ? { success: true, message: "Member removed from team successfully." } : getMembershipById({ teamId, membershipId: membership._id });
 }

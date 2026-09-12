@@ -5,6 +5,7 @@ import Permission from "../permissions/permission.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
+import { getCache, setCache, delCachePattern } from "../../config/redis.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -43,10 +44,19 @@ export async function createRole({ name, description = "", permissionIds = [], c
     metadata: { name: role.name, permissionsCount: permissionIds.length },
   });
 
+  await Promise.all([
+    delCachePattern("roles:*"),
+    delCachePattern("teams:*"),
+  ]);
+
   return getRoleById(role._id);
 }
 
 export async function listRoles({ status } = {}) {
+  const cacheKey = `roles:list:${status || "all"}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   const filter = {};
   if (status && status.toLowerCase() !== "all") filter.status = status.toUpperCase();
   else if (!status) filter.status = { $ne: "ARCHIVED" };
@@ -83,7 +93,7 @@ export async function listRoles({ status } = {}) {
     }
   }
 
-  return roles.map((role) => {
+  const result = roles.map((role) => {
     const assignedList = roleMembersMap.get(String(role._id)) || [];
     return {
       ...role.toObject(),
@@ -92,6 +102,9 @@ export async function listRoles({ status } = {}) {
       membersCount: assignedList.length,
     };
   });
+
+  await setCache(cacheKey, result, 180);
+  return result;
 }
 
 export async function getRoleById(roleId) {
@@ -167,6 +180,11 @@ export async function updateRole(roleId, { name, description, status, permission
     metadata: { name: role.name, updates: { name, description, permissionIds } },
   });
 
+  await Promise.all([
+    delCachePattern("roles:*"),
+    delCachePattern("teams:*"),
+  ]);
+
   return getRoleById(role._id);
 }
 
@@ -212,6 +230,11 @@ export async function deleteRole(roleId, { reassignToRoleId, reassignedBy } = {}
     targetId: role._id,
     metadata: { name: role.name, reassignedCount },
   });
+
+  await Promise.all([
+    delCachePattern("roles:*"),
+    delCachePattern("teams:*"),
+  ]);
 
   return { success: true, message: "Role archived successfully.", reassignedCount };
 }
