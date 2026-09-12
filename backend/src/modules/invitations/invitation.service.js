@@ -71,6 +71,7 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
 
     const assignedRoles = await Role.find({ _id: { $in: resolvedRoleIds } }).select("name");
     const roleNamesString = assignedRoles.map((r) => r.name).join(", ") || "Team Member";
+    const workspaceUrl = `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`;
     await sendRoleAssignedEmail({ to: normalizedEmail, recipientName: existingUser.name, teamName: team.name, roleName: roleNamesString, workspaceUrl }).catch((err) => {
       console.error("[Invitation Service] Non-fatal role assigned email error:", err.message);
     });
@@ -162,9 +163,7 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
     roleIds: invitation.roleIds,
     status: invitation.status,
     expiresAt: invitation.expiresAt,
-    rawToken,
-    token: rawToken,
-    inviteLink: `${env.clientUrl}/invite?token=${rawToken}`,
+    message: `Invitation email successfully dispatched to ${normalizedEmail}.`,
   };
 }
 

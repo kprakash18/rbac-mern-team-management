@@ -17,10 +17,10 @@ function getTransporter() {
   const smtpHost = clean(process.env.SMTP_HOST);
   const smtpUser = clean(process.env.SMTP_USER);
   const smtpPass = clean(process.env.SMTP_PASS)?.replace(/\s+/g, "");
-  const smtpPort = Number(clean(process.env.SMTP_PORT)) || 587;
   const smtpSecure = clean(process.env.SMTP_SECURE) === "true";
+  const smtpPort = Number(clean(process.env.SMTP_PORT)) || (smtpSecure ? 465 : 587);
 
-  const hasSmtpConfig = (smtpHost || smtpUser) && smtpUser && smtpPass;
+  const hasSmtpConfig = Boolean((smtpHost || smtpUser) && smtpUser && smtpPass);
 
   if (hasSmtpConfig) {
     const isGmail = smtpHost?.includes("gmail") || smtpUser?.includes("@gmail.com");
@@ -37,7 +37,7 @@ function getTransporter() {
     return nodemailer.createTransport({
       host: smtpHost,
       port: smtpPort,
-      secure: smtpSecure,
+      secure: smtpSecure || smtpPort === 465,
       auth: {
         user: smtpUser,
         pass: smtpPass,
@@ -48,6 +48,7 @@ function getTransporter() {
     });
   }
 
+  console.warn("[Email Service] No valid SMTP credentials configured in environment. Operating in mock streamTransport mode.");
   return nodemailer.createTransport({
     streamTransport: true,
     newline: "unix",
