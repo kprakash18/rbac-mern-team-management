@@ -5,17 +5,34 @@ import { getRoleAssignedEmailHtml } from "./templates/role-assigned.template.js"
 const clean = (val) => (typeof val === "string" ? val.replace(/^["']|["']$/g, "").trim() : val);
 
 function parseSender() {
-  const from = clean(env.emailFrom || process.env.EMAIL_FROM || "Team Management System <kethavathprakash2004@gmail.com>");
-  const match = from.match(/^(?:"?([^"]*)"?\s)?(?:<?(.+@[^>]+)>?)$/);
+  const from = clean(env.emailFrom || process.env.EMAIL_FROM || "");
+  const fallbackEmail = clean(env.senderEmail || process.env.SENDER_EMAIL || "codezenith007@gmail.com");
+
+  if (!from) {
+    return {
+      name: "Team Management",
+      email: fallbackEmail,
+    };
+  }
+
+  const match = from.match(/^(?:["']?([^"']*)["']?\s*)?<([^>]+)>$/);
   if (match && match[2]) {
     return {
-      name: match[1]?.trim() || "Team Management System",
+      name: match[1]?.trim() || "Team Management",
       email: match[2]?.trim(),
     };
   }
+
+  if (from.includes("@") && !from.includes(" ")) {
+    return {
+      name: "Team Management",
+      email: from.trim(),
+    };
+  }
+
   return {
-    name: "Team Management System",
-    email: clean(env.senderEmail || process.env.SENDER_EMAIL || "kethavathprakash2004@gmail.com"),
+    name: "Team Management",
+    email: fallbackEmail,
   };
 }
 
