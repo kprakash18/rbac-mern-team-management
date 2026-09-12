@@ -1,10 +1,15 @@
 import Permission from "./permission.model.js";
 import Role from "../roles/role.model.js";
 import { NotFoundError, BadRequestError } from "../../common/errors/index.js";
+import { getCache, setCache } from "../../config/redis.js";
 import VALID_CATEGORIES from "./constants.js";
 import mongoose from "mongoose";
 
 export async function listPermissions({ category, scope } = {}){
+    const cacheKey = `permissions:list:${category || "all"}:${scope || "all"}`;
+    const cached = await getCache(cacheKey);
+    if (cached) return cached;
+
     const queryFilter = {};
 
     if(category){
@@ -24,7 +29,9 @@ export async function listPermissions({ category, scope } = {}){
         }
     }
 
-    return await Permission.find(queryFilter).sort({ category: 1, key: 1 });
+    const result = await Permission.find(queryFilter).sort({ category: 1, key: 1 });
+    await setCache(cacheKey, result, 600);
+    return result;
 }    
 export async function getPermissionById(permissionId) {
   if (!mongoose.Types.ObjectId.isValid(permissionId)) {

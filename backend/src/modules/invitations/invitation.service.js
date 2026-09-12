@@ -15,6 +15,7 @@ import { sendInvitationEmail, sendRoleAssignedEmail } from "../../common/email/e
 import { env } from "../../config/env.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { isValidEmail } from "../authentication/authentication.validation.js";
+import { delCachePattern } from "../../config/redis.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -94,6 +95,11 @@ export async function createInvitation({ teamId, email, roleIds = [], invitedByU
       result: "SUCCESS",
       metadata: { email: normalizedEmail, roleNames: roleNamesString, isDirectAssignment: true },
     });
+
+    await Promise.all([
+      delCachePattern("teams:*"),
+      delCachePattern("users:*"),
+    ]);
 
     return {
       isDirectAssignment: true,
@@ -282,6 +288,11 @@ export async function acceptInvitation({ token, name, password }) {
     result: "SUCCESS",
     metadata: { userId: resolvedUser._id, teamId: targetTeam._id },
   });
+
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
 
   return {
     token: signAccessToken({ sub: resolvedUser._id.toString() }),

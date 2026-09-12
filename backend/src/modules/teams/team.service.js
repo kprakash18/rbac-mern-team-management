@@ -9,6 +9,7 @@ import { logAuditEvent } from "../audit/audit.service.js";
 import { resolvePermissions, isSuperAdmin } from "../authorization/authorization.service.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+import { getCache, setCache, delCachePattern } from "../../config/redis.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -46,11 +47,20 @@ export async function createTeam({ name, description = "", createdBy }) {
     metadata: { name: team.name },
   });
 
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
+
   return getTeamById(team._id);
 }
 
 export async function getUserTeams(userId) {
   if (!isValidId(userId)) throw new BadRequestError("Invalid user ID format.");
+
+  const cacheKey = `teams:user:${userId}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
 
   const memberships = await Membership.find({ userId, status: "ACTIVE" }).select("_id teamId");
   const teams = await Team.find({ _id: { $in: memberships.map((m) => m.teamId) }, status: { $ne: "ARCHIVED" } })
@@ -62,7 +72,7 @@ export async function getUserTeams(userId) {
     .populate("roleId", "name isSystemRole")
     .lean();
 
-  return teams.map((team) => {
+  const result = teams.map((team) => {
     const mem = memberships.find((m) => String(m.teamId) === String(team._id));
     const roles = mem ? memRoles.filter((mr) => String(mr.membershipId) === String(mem._id)).map((mr) => mr.roleId?.name).filter(Boolean) : [];
     return {
@@ -72,9 +82,16 @@ export async function getUserTeams(userId) {
       isTeamAdmin: roles.some((r) => r.toLowerCase().includes("admin")),
     };
   });
+
+  await setCache(cacheKey, result, 60);
+  return result;
 }
 
 export async function listTeams({ status, search, page = 1, limit = 50 } = {}) {
+  const cacheKey = `teams:list:${status || "default"}:${search || ""}:${page}:${limit}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   const query = {};
   if (status && !["all", "ALL"].includes(status)) {
     query.status = status.toUpperCase();
@@ -117,7 +134,9 @@ export async function listTeams({ status, search, page = 1, limit = 50 } = {}) {
     };
   });
 
-  return { teams: enrichedTeams, total, page: pageNum, limit: limitNum, totalPages: getTotalPages(total, limitNum) };
+  const result = { teams: enrichedTeams, total, page: pageNum, limit: limitNum, totalPages: getTotalPages(total, limitNum) };
+  await setCache(cacheKey, result, 60);
+  return result;
 }
 
 export async function getTeamById(teamId) {
@@ -152,6 +171,11 @@ export async function updateTeam(teamId, { name, description, status }) {
     metadata: { name: team.name, description: team.description, status: team.status },
   });
 
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
+
   return getTeamById(team._id);
 }
 
@@ -172,11 +196,21 @@ export async function archiveTeam(teamId, actorId = null) {
     metadata: { name: team.name },
   });
 
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
+
   return { success: true, message: "Team archived successfully." };
 }
 
 export async function getWorkspaceBootstrap({ teamId, userId, actor }) {
   if (!isValidId(teamId) || !isValidId(userId)) throw new BadRequestError("Invalid team ID or user ID format.");
+
+  const cacheKey = `teams:bootstrap:${teamId}:${userId}`;
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") throw new NotFoundError("Team workspace not found.");
 
@@ -191,7 +225,7 @@ export async function getWorkspaceBootstrap({ teamId, userId, actor }) {
     Task.countDocuments({ teamId, status: { $ne: "DONE" } }),
   ]);
 
-  return {
+  const result = {
     team: { id: team._id, name: team.name, description: team.description, status: team.status, createdAt: team.createdAt },
     membership: membership ? { id: membership._id, status: membership.status, joinedAt: membership.joinedAt, roles: membership.roleIds || [] } : null,
     isSuperAdmin: superAdmin,
@@ -199,6 +233,9 @@ export async function getWorkspaceBootstrap({ teamId, userId, actor }) {
     activeGrants,
     stats: { memberCount, activeTaskCount },
   };
+
+  await setCache(cacheKey, result, 60);
+  return result;
 }
 
 export const teamService = {

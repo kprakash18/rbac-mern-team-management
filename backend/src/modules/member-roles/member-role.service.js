@@ -11,6 +11,7 @@ import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createTargetedNotifications } from "../notifications/notification.service.js";
 import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
 import { env } from "../../config/env.js";
+import { delCachePattern } from "../../config/redis.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -79,6 +80,11 @@ export async function assignRoleToMember({ teamId, userId, roleId, expiresAt = n
     metadata: { userId, roleId, expiresAt },
   });
 
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
+
   return getAssignmentById(assignment._id);
 }
 
@@ -93,6 +99,11 @@ export async function updateRoleAssignmentTtl({ teamId, userId, assignmentId, ex
 
   assignment.expiresAt = expiresAt ? new Date(expiresAt) : null;
   await assignment.save();
+
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
 
   return getAssignmentById(assignment._id);
 }
@@ -150,6 +161,11 @@ export async function revokeRoleAssignment({ teamId, userId, assignmentId, revok
     result: "SUCCESS",
     metadata: { userId, roleId: assignment.roleId },
   });
+
+  await Promise.all([
+    delCachePattern("teams:*"),
+    delCachePattern("users:*"),
+  ]);
 
   return { success: true, message: "Role assignment revoked successfully." };
 }
