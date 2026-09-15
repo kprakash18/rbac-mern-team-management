@@ -3,7 +3,12 @@ import { userService } from "./user.service.js";
 
 export const searchUsers = asyncHandler(async (req, res) => {
   const searchParam = req.query.q || req.query.query || "";
-  const result = await userService.searchUsers({ query: searchParam, page: req.query.page, limit: req.query.limit });
+  const result = await userService.searchUsers({
+    query: searchParam,
+    page: req.query.page,
+    limit: req.query.limit,
+    status: req.query.status,
+  });
   res.status(200).json({ success: true, data: result.users, pagination: result });
 });
 

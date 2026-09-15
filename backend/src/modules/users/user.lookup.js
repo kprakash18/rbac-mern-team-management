@@ -17,47 +17,69 @@ export async function enrichUsersWithWorkspaces(users = []) {
 
   const membershipIds = memberships.map((m) => m._id);
 
-  const memberRoles = await MembershipRole.find({
-    membershipId: { $in: membershipIds },
-    revokedAt: null,
-  })
-    .populate("roleId", "name")
-    .lean();
+  const memberRoles = membershipIds.length > 0
+    ? await MembershipRole.find({
+        membershipId: { $in: membershipIds },
+        revokedAt: null,
+      })
+        .populate("roleId", "name")
+        .lean()
+    : [];
+
+  // Group roles by membershipId for O(1) lookup
+  const rolesByMembership = new Map();
+  for (const mr of memberRoles) {
+    const memId = String(mr.membershipId);
+    const roleName = typeof mr.roleId === "object" ? mr.roleId?.name : mr.roleId;
+    if (typeof roleName === "string") {
+      if (!rolesByMembership.has(memId)) {
+        rolesByMembership.set(memId, []);
+      }
+      rolesByMembership.get(memId).push(roleName);
+    }
+  }
+
+  // Group memberships by userId for O(1) lookup
+  const membershipsByUser = new Map();
+  for (const m of memberships) {
+    const uId = String(m.userId);
+    if (!membershipsByUser.has(uId)) {
+      membershipsByUser.set(uId, []);
+    }
+    membershipsByUser.get(uId).push(m);
+  }
 
   return users.map((u) => {
-    const userMemberships = memberships.filter(
-      (m) => String(m.userId) === String(u._id || u.id)
-    );
+    const userIdStr = String(u._id || u.id);
+    const userMemberships = membershipsByUser.get(userIdStr) || [];
 
-    let userIsSuperAdmin = false;
+    let userIsSuperAdmin = Boolean(u.isSuperAdmin);
     let userIsTeamAdmin = false;
 
-    const workspaces = userMemberships
-      .filter((m) => m.teamId && m.teamId.name)
-      .map((m) => {
-        const roles = memberRoles
-          .filter((mr) => String(mr.membershipId) === String(m._id))
-          .map((mr) => (typeof mr.roleId === "object" ? mr.roleId?.name : mr.roleId))
-          .filter((name) => typeof name === "string");
+    const workspaces = [];
+    for (const m of userMemberships) {
+      if (!m.teamId || !m.teamId.name) continue;
 
-        const hasSuperAdmin = roles.includes("Super Admin") || roles.includes("Platform Super Admin");
-        const hasTeamAdmin = roles.includes("Team Admin") || roles.some((r) => r.toLowerCase().includes("admin"));
-        if (hasSuperAdmin) userIsSuperAdmin = true;
-        if (hasTeamAdmin) userIsTeamAdmin = true;
+      const roles = rolesByMembership.get(String(m._id)) || [];
 
-        const primaryRole = hasSuperAdmin
-          ? "Super Admin"
-          : hasTeamAdmin
-          ? "Team Admin"
-          : (roles[0] || "Member");
+      const hasSuperAdmin = roles.includes("Super Admin") || roles.includes("Platform Super Admin");
+      const hasTeamAdmin = roles.includes("Team Admin") || roles.some((r) => r.toLowerCase().includes("admin"));
+      if (hasSuperAdmin) userIsSuperAdmin = true;
+      if (hasTeamAdmin) userIsTeamAdmin = true;
 
-        return {
-          id: m.teamId._id,
-          name: m.teamId.name,
-          role: primaryRole,
-          isTeamAdmin: hasTeamAdmin || hasSuperAdmin,
-        };
+      const primaryRole = hasSuperAdmin
+        ? "Super Admin"
+        : hasTeamAdmin
+        ? "Team Admin"
+        : (roles[0] || "Member");
+
+      workspaces.push({
+        id: m.teamId._id,
+        name: m.teamId.name,
+        role: primaryRole,
+        isTeamAdmin: hasTeamAdmin || hasSuperAdmin,
       });
+    }
 
     return {
       ...u,

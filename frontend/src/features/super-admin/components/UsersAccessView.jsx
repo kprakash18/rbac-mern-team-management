@@ -15,10 +15,28 @@ export default function UsersAccessView() {
   const [inviteSuccessData, setInviteSuccessData] = useState(null);
   const [selectedUserForManage, setSelectedUserForManage] = useState(null);
 
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchUsers = useCallback(async () => {
     try {
       setLoading(true);
-      const res = await api.get('/api/users?limit=200');
+      const params = new URLSearchParams();
+      params.set('limit', '100');
+      if (activeFilter && activeFilter !== 'All') {
+        params.set('status', activeFilter.toUpperCase());
+      }
+      if (debouncedSearch) {
+        params.set('q', debouncedSearch);
+      }
+
+      const res = await api.get(`/api/users?${params.toString()}`);
       const backendUsers = res.data?.data || res.data?.users || [];
       if (Array.isArray(backendUsers)) {
         const mapped = backendUsers.map((u) => {
@@ -69,7 +87,7 @@ export default function UsersAccessView() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeFilter, debouncedSearch]);
 
   useEffect(() => {
     fetchUsers();

@@ -118,9 +118,27 @@ export async function delCache(key) {
 export async function delCachePattern(pattern) {
   if (!isRedisReady()) return false;
   try {
-    const keys = await redisClient.keys(pattern);
-    if (keys.length > 0) {
-      await redisClient.del(...keys);
+    const stream = redisClient.scanStream({
+      match: pattern,
+      count: 100,
+    });
+
+    const pipeline = redisClient.pipeline();
+    let keysFound = 0;
+
+    await new Promise((resolve, reject) => {
+      stream.on("data", (keys) => {
+        if (keys.length > 0) {
+          keysFound += keys.length;
+          keys.forEach((key) => pipeline.del(key));
+        }
+      });
+      stream.on("end", () => resolve());
+      stream.on("error", (err) => reject(err));
+    });
+
+    if (keysFound > 0) {
+      await pipeline.exec();
     }
     return true;
   } catch (err) {

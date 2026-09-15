@@ -22,7 +22,9 @@ export async function authenticate(req, res, next) {
     }
 
     const userId = decoded.sub;
-    const user = await User.findById(userId);
+    const user = await User.findById(userId)
+      .select("name email accountStatus mustChangePassword lastLogoutAt isSuperAdmin")
+      .lean();
 
     if (!user) {
       throw new UnauthorizedError("User account no longer exists.", "USER_NOT_FOUND");
@@ -40,8 +42,9 @@ export async function authenticate(req, res, next) {
     }
 
     if (user.lastLogoutAt && decoded.iat) {
+      const lastLogoutDate = new Date(user.lastLogoutAt);
       const tokenIssuedAtMs = decoded.iat * 1000;
-      if (tokenIssuedAtMs < user.lastLogoutAt.getTime() - 1000) {
+      if (tokenIssuedAtMs < lastLogoutDate.getTime() - 1000) {
         throw new UnauthorizedError(
           "Session has been logged out. Please log in again.",
           "SESSION_REVOKED"
@@ -62,7 +65,12 @@ export async function authenticate(req, res, next) {
       }
     }
 
-    const userIsSuperAdmin = await isSuperAdmin(user._id);
+    const userIsSuperAdmin =
+      user.isSuperAdmin === true
+        ? true
+        : user.isSuperAdmin === false
+        ? false
+        : await isSuperAdmin(user._id);
 
     req.user = {
       id: user._id,
@@ -70,7 +78,7 @@ export async function authenticate(req, res, next) {
       name: user.name,
       accountStatus: user.accountStatus,
       mustChangePassword: Boolean(user.mustChangePassword),
-      isSuperAdmin: userIsSuperAdmin,
+      isSuperAdmin: Boolean(userIsSuperAdmin),
     };
 
     next();
