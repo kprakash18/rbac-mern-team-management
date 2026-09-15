@@ -10,13 +10,7 @@
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
     "test": "node --test --test-concurrency=1 tests/*.test.js",
-    "migrate": "node scripts/migrate-v2.js",
-    "seed": "node src/database/seed/seed.js",
-    "seed:fresh": "node src/database/seed/seed.js --fresh",
-    "seed:system": "node src/database/seed/seed.js --system",
-    "docker:up": "docker compose -f ../docker-compose.yml up -d",
-    "docker:down": "docker compose -f ../docker-compose.yml down",
-    "docker:redis": "docker compose -f ../docker-compose.yml up -d redis"
+    "seed": "node src/database/seed/seed.js"
   },
   "dependencies": {
     "@socket.io/redis-adapter": "^8.3.0",
