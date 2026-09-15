@@ -107,7 +107,7 @@ export default function RolesView() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeFilter, setActiveFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('table');
 
   const [activeMenuId, setActiveMenuId] = useState(null);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
@@ -648,34 +648,34 @@ export default function RolesView() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-5 gap-md">
-        <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col">
-          <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">Total Roles</span>
-          <span className="font-display-title text-[26px] text-on-surface mt-1">{metrics.total}</span>
-          <span className="font-body-sm text-[11px] text-outline mt-0.5">Configured roles</span>
+        <div className="stat-card">
+          <span className="stat-label">Total Roles</span>
+          <span className="stat-value text-on-surface">{metrics.total}</span>
+          <span className="stat-subtext">Configured roles</span>
         </div>
-        <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col">
-          <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">System Roles</span>
-          <span className="font-display-title text-[26px] text-primary mt-1">{metrics.system}</span>
-          <span className="font-body-sm text-[11px] text-outline mt-0.5">Immutable core</span>
+        <div className="stat-card">
+          <span className="stat-label">System Roles</span>
+          <span className="stat-value text-primary">{metrics.system}</span>
+          <span className="stat-subtext">Immutable core</span>
         </div>
-        <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col">
-          <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">Custom Roles</span>
-          <span className="font-display-title text-[26px] text-secondary mt-1">{metrics.custom}</span>
-          <span className="font-body-sm text-[11px] text-outline mt-0.5">Bespoke assignments</span>
+        <div className="stat-card">
+          <span className="stat-label">Custom Roles</span>
+          <span className="stat-value text-secondary">{metrics.custom}</span>
+          <span className="stat-subtext">Bespoke assignments</span>
         </div>
-        <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col">
-          <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">Active Members</span>
-          <span className="font-display-title text-[26px] text-success-text mt-1">{metrics.activeUsers}</span>
-          <span className="font-body-sm text-[11px] text-outline mt-0.5">Assigned identities</span>
+        <div className="stat-card">
+          <span className="stat-label">Active Members</span>
+          <span className="stat-value text-success-text">{metrics.activeUsers}</span>
+          <span className="stat-subtext">Assigned identities</span>
         </div>
-        <div className="bg-card-bg rounded-xl p-md shadow-2xs border border-border-subtle flex flex-col col-span-2 md:col-span-1">
-          <span className="font-label-bold text-[12px] text-on-surface-variant uppercase tracking-wider">Permissions Catalog</span>
-          <span className="font-display-title text-[26px] text-on-surface mt-1">{metrics.totalPerms}</span>
-          <span className="font-body-sm text-[11px] text-outline mt-0.5">Granular action keys</span>
+        <div className="stat-card col-span-2 md:col-span-1">
+          <span className="stat-label">Permissions Catalog</span>
+          <span className="stat-value text-on-surface">{metrics.totalPerms}</span>
+          <span className="stat-subtext">Granular action keys</span>
         </div>
       </div>
 
-      <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-md bg-surface-container-low p-sm rounded-xl border border-border-subtle">
+      <div className="filter-toolbar">
         <div className="flex items-center gap-sm flex-1">
           <div className="relative flex-1 max-w-md">
             <span className="material-symbols-outlined absolute left-3 top-2.5 text-outline text-[18px]">
@@ -699,16 +699,14 @@ export default function RolesView() {
             )}
           </div>
 
-          <div className="hidden sm:flex items-center gap-1 bg-surface-container-lowest p-1 rounded-lg border border-border-subtle">
+          <div className="hidden sm:flex tab-group">
             {['All', 'System', 'Custom', 'Active', 'Disabled', 'Archived'].map((filter) => (
               <button
                 key={filter}
                 type="button"
                 onClick={() => setActiveFilter(filter)}
-                className={`px-2.5 py-1 rounded-md font-label-bold text-[12px] transition-colors cursor-pointer ${
-                  activeFilter === filter
-                    ? 'bg-primary text-on-primary shadow-2xs'
-                    : 'text-on-surface-variant hover:text-on-surface hover:bg-surface-container-low'
+                className={`tab-item ${
+                  activeFilter === filter ? 'tab-item-active' : 'tab-item-inactive'
                 }`}
               >
                 {filter}
@@ -718,12 +716,12 @@ export default function RolesView() {
         </div>
 
         <div className="flex items-center gap-xs justify-end">
-          <div className="flex items-center bg-surface-container-lowest p-1 rounded-lg border border-border-subtle shadow-2xs">
+          <div className="view-toggle">
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                viewMode === 'grid' ? 'bg-primary text-on-primary shadow-2xs' : 'text-outline hover:text-on-surface'
+              className={`view-toggle-btn ${
+                viewMode === 'grid' ? 'view-toggle-active' : 'view-toggle-inactive'
               }`}
               title="Card Grid View"
             >
@@ -732,8 +730,8 @@ export default function RolesView() {
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`p-1.5 rounded-md transition-colors cursor-pointer ${
-                viewMode === 'table' ? 'bg-primary text-on-primary shadow-2xs' : 'text-outline hover:text-on-surface'
+              className={`view-toggle-btn ${
+                viewMode === 'table' ? 'view-toggle-active' : 'view-toggle-inactive'
               }`}
               title="Table View"
             >

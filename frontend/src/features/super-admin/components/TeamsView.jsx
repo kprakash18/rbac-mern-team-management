@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
-import { Toast } from '@/shared/components';
+import { Toast, Pagination } from '@/shared/components';
 import { useToast } from '../../../lib/useToast.js';
 import api from '@/lib/api';
 import TeamRolesModal from './roles/TeamRolesModal.jsx';
@@ -33,6 +33,18 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   const [selectedTeamForRoles, setSelectedTeamForRoles] = useState(null);
   const [teamForOnboarding, setTeamForOnboarding] = useState(null);
   const [memberSearchQuery, setMemberSearchQuery] = useState('');
+  const [debouncedMemberSearch, setDebouncedMemberSearch] = useState('');
+  const [drawerPage, setDrawerPage] = useState(1);
+  const drawerPageSize = 10;
+  const [drawerTotal, setDrawerTotal] = useState(0);
+  const [drawerTotalPages, setDrawerTotalPages] = useState(1);
+
+  const handleOpenMembersDrawer = (team) => {
+    setDrawerPage(1);
+    setMemberSearchQuery('');
+    setDebouncedMemberSearch('');
+    setSelectedTeamForMembers(team);
+  };
 
   const [roleRemovalData, setRoleRemovalData] = useState(null);
   const [roleRemovalLoading, setRoleRemovalLoading] = useState(false);
@@ -107,9 +119,58 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
     }
   }, [showToast]);
 
+  const [loadingMembers, setLoadingMembers] = useState(false);
+
   useEffect(() => {
     fetchTeams();
   }, [fetchTeams]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedMemberSearch(memberSearchQuery.trim());
+      setDrawerPage(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [memberSearchQuery]);
+
+  useEffect(() => {
+    if (!selectedTeamForMembers?.id) return;
+
+    let isMounted = true;
+    setLoadingMembers(true);
+    const params = new URLSearchParams();
+    params.set('page', String(drawerPage));
+    params.set('limit', String(drawerPageSize));
+    if (debouncedMemberSearch) params.set('q', debouncedMemberSearch);
+
+    api.get(`/api/teams/${selectedTeamForMembers.id}/members?${params.toString()}`)
+      .then((res) => {
+        if (!isMounted) return;
+        const memberList = res.data?.data?.members || res.data?.data || [];
+        const pagination = res.data?.pagination || {};
+        const total = pagination.total ?? memberList.length ?? 0;
+        setDrawerTotal(total);
+        setDrawerTotalPages(Math.max(1, pagination.totalPages || Math.ceil(total / drawerPageSize) || 1));
+
+        const formattedMembers = memberList.map((m) => ({
+          id: m.userId?._id || m.userId?.id || m._id,
+          membershipId: m._id,
+          name: m.userId?.name || 'Member',
+          email: m.userId?.email || '',
+          roles: Array.isArray(m.roleIds) ? m.roleIds.map(r => r.name || r) : (m.roles?.map(r => r.name || r) || ['Member']),
+          joinedAt: m.joinedAt,
+        }));
+        setSelectedTeamForMembers((prev) => prev ? { ...prev, members: formattedMembers, membersCount: total } : null);
+      })
+      .catch((err) => {
+        console.warn('Could not load team members:', err);
+      })
+      .finally(() => {
+        if (isMounted) setLoadingMembers(false);
+      });
+
+    return () => { isMounted = false; };
+  }, [selectedTeamForMembers?.id, drawerPage, debouncedMemberSearch]);
 
   const filterTabs = ['All', 'Active', 'Archived'];
 
@@ -142,8 +203,6 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
   const totalItems = filteredTeams.length;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(safeCurrentPage * pageSize, totalItems);
   const paginatedTeams = filteredTeams.slice(
     (safeCurrentPage - 1) * pageSize,
     safeCurrentPage * pageSize
@@ -530,41 +589,39 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
         </p>
       </div>
 
-      <div className="flex items-center justify-between w-full p-md bg-surface-container rounded-xl shadow-sm gap-md flex-wrap">
-        <div className="relative w-80">
-          <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">
-            search
-          </span>
+      <div className="filter-toolbar">
+        <div className="relative w-full sm:w-80">
+          <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
           <input
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full bg-surface border-none rounded-lg pl-10 pr-md py-xs font-body-sm text-body-sm text-on-surface focus:ring-2 focus:ring-primary outline-none transition-all shadow-sm"
+            className="w-full bg-surface border border-border-subtle rounded-lg pl-10 pr-md py-xs font-body-sm text-body-sm text-on-surface focus:ring-2 focus:ring-primary outline-none transition-all shadow-sm"
             placeholder="Search teams by name or description..."
             type="text"
           />
         </div>
 
         <div className="flex items-center gap-xs flex-wrap">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => handleFilterChange(tab)}
-              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors cursor-pointer ${
-                activeFilter === tab
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-surface text-on-surface hover:bg-surface-container-high'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+          <div className="tab-group">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => handleFilterChange(tab)}
+                className={`tab-item ${
+                  activeFilter === tab ? 'tab-item-active' : 'tab-item-inactive'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
 
-          <div className="flex items-center bg-surface p-1 rounded-lg shadow-sm gap-0.5 ml-xs">
+          <div className="view-toggle ml-xs">
             <button
               type="button"
               onClick={() => setViewMode('table')}
-              className={`p-1 rounded-md transition-colors cursor-pointer ${
-                viewMode === 'table' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+              className={`view-toggle-btn ${
+                viewMode === 'table' ? 'view-toggle-active' : 'view-toggle-inactive'
               }`}
               title="Table View"
             >
@@ -573,8 +630,8 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             <button
               type="button"
               onClick={() => setViewMode('grid')}
-              className={`p-1 rounded-md transition-colors cursor-pointer ${
-                viewMode === 'grid' ? 'bg-primary text-on-primary' : 'text-on-surface-variant hover:text-on-surface'
+              className={`view-toggle-btn ${
+                viewMode === 'grid' ? 'view-toggle-active' : 'view-toggle-inactive'
               }`}
               title="Grid Cards View"
             >
@@ -593,11 +650,11 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
       </div>
 
       {viewMode === 'table' ? (
-        <div className="w-full bg-surface-container-lowest rounded-xl shadow-sm border border-border-subtle overflow-hidden">
+        <div className="table-wrapper">
           <div className="w-full overflow-x-auto">
             <table className="w-full text-left border-collapse min-w-[820px]">
               <thead>
-                <tr className="bg-surface-container-low text-on-surface-variant font-label-bold text-label-bold">
+                <tr className="table-head-row">
                   <th className="py-3.5 px-4 font-semibold border-b border-border-subtle min-w-[240px]">Team / Workspace</th>
                   <th className="py-3.5 px-4 font-semibold border-b border-border-subtle w-28">Status</th>
                   <th className="py-3.5 px-4 font-semibold border-b border-border-subtle w-32">Members</th>
@@ -657,7 +714,7 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                         <td className="py-3.5 px-4 whitespace-nowrap">
                           <button
                             type="button"
-                            onClick={() => setSelectedTeamForMembers(team)}
+                            onClick={() => handleOpenMembersDrawer(team)}
                             className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-surface-container hover:bg-surface-container-high text-on-surface text-[12px] font-medium transition-colors cursor-pointer"
                             title="View Members"
                           >
@@ -728,41 +785,20 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             </table>
           </div>
 
-          <div className="w-full flex items-center justify-between p-3.5 px-4 bg-surface-container-low border-t border-border-subtle">
-            <span className="font-body-sm text-body-sm text-on-surface-variant text-[12px]">
-              Showing {startIndex} to {endIndex} of {totalItems} entries
-            </span>
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-                disabled={safeCurrentPage <= 1}
-                className={`px-3 py-1 text-[12px] font-label-bold rounded-lg shadow-2xs transition-colors ${
-                  safeCurrentPage <= 1
-                    ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
-                    : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
-                }`}
-              >
-                Previous
-              </button>
-              <span className="font-label-sm text-on-surface-variant px-1 text-[12px]">
-                Page {safeCurrentPage} of {totalPages}
-              </span>
-              <button
-                onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-                disabled={safeCurrentPage >= totalPages}
-                className={`px-3 py-1 text-[12px] font-label-bold rounded-lg shadow-2xs transition-colors ${
-                  safeCurrentPage >= totalPages
-                    ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
-                    : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
-                }`}
-              >
-                Next
-              </button>
-            </div>
-          </div>
+          <Pagination
+            page={safeCurrentPage}
+            totalPages={totalPages}
+            total={totalItems}
+            limit={pageSize}
+            itemLabel="teams"
+            loading={loading}
+            onPageChange={(p) => setCurrentPage(p)}
+            className="rounded-t-none border-t-0"
+          />
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+        <div>
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {paginatedTeams.map((team) => {
             const isArchived = team.status === 'Archived';
             return (
@@ -803,7 +839,7 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                   <div className="flex items-center justify-between gap-2 min-w-0">
                     <button
                       type="button"
-                      onClick={() => setSelectedTeamForMembers(team)}
+                      onClick={() => handleOpenMembersDrawer(team)}
                       className="inline-flex items-center gap-1.5 px-2 py-1 rounded-md bg-surface-container/60 hover:bg-surface-container text-on-surface-variant hover:text-on-surface text-[12px] font-medium transition-colors cursor-pointer"
                       title="View Members"
                     >
@@ -874,6 +910,17 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
               </div>
             );
           })}
+          </div>
+          <Pagination
+            page={safeCurrentPage}
+            totalPages={totalPages}
+            total={totalItems}
+            limit={pageSize}
+            itemLabel="teams"
+            loading={loading}
+            onPageChange={(p) => setCurrentPage(p)}
+            className="mt-4"
+          />
         </div>
       )}
 
@@ -888,7 +935,7 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
                 <div>
                   <h2 className="font-headline-md text-on-surface">{selectedTeamForMembers.name}</h2>
                   <p className="font-body-sm text-[12px] text-on-surface-variant">
-                    {selectedTeamForMembers.members?.length || selectedTeamForMembers.membersCount || 0} active members assigned
+                    {drawerTotal.toLocaleString()} active members assigned
                   </p>
                 </div>
               </div>
@@ -926,102 +973,115 @@ export default function TeamsView({ onJumpIntoWorkspace, createTrigger }) {
             </div>
 
             <div className="flex-1 overflow-y-auto p-md space-y-sm">
-              {(!selectedTeamForMembers.members || selectedTeamForMembers.members.length === 0) ? (
+              {loadingMembers ? (
+                <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
+                  <span className="material-symbols-outlined text-[32px] animate-spin text-primary">progress_activity</span>
+                  <span className="text-body-sm">Loading workspace members...</span>
+                </div>
+              ) : (!selectedTeamForMembers.members || selectedTeamForMembers.members.length === 0) ? (
                 <div className="p-xl text-center flex flex-col items-center gap-2 text-on-surface-variant">
                   <span className="material-symbols-outlined text-[32px] text-outline">group_off</span>
                   <span className="text-body-sm">No member details available for this workspace.</span>
                 </div>
               ) : (
-                selectedTeamForMembers.members
-                  .filter((m) => {
-                    const q = memberSearchQuery.toLowerCase().trim();
-                    return !q || m.name?.toLowerCase().includes(q) || m.email?.toLowerCase().includes(q);
-                  })
-                  .map((m) => {
-                    const initials = m.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'U';
-                    const memberRoles = m.roles || ['Member'];
+                selectedTeamForMembers.members.map((m) => {
+                  const initials = m.name?.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'U';
+                  const memberRoles = m.roles || ['Member'];
 
-                    return (
-                      <div
-                        key={m.id || m._id || m.email}
-                        className="p-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors flex flex-col gap-sm border border-border-subtle/50"
-                      >
-                        <div className="flex items-center justify-between gap-md">
-                          <div className="flex items-center gap-md min-w-0">
-                            <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary font-label-bold flex items-center justify-center text-label-sm shrink-0">
-                              {initials}
-                            </div>
-                            <div className="flex flex-col min-w-0">
-                              <span className="font-label-bold text-label-bold text-on-surface truncate">{m.name}</span>
-                              <span className="text-on-surface-variant text-[12px] truncate">{m.email}</span>
-                            </div>
+                  return (
+                    <div
+                      key={m.id || m._id || m.email}
+                      className="p-md rounded-xl bg-surface-container-low hover:bg-surface-container transition-colors flex flex-col gap-sm border border-border-subtle/50"
+                    >
+                      <div className="flex items-center justify-between gap-md">
+                        <div className="flex items-center gap-md min-w-0">
+                          <div className="w-9 h-9 rounded-full bg-primary-container text-on-primary font-label-bold flex items-center justify-center text-label-sm shrink-0">
+                            {initials}
                           </div>
-
-                          <div className="relative shrink-0">
-                            <select
-                              value=""
-                              onChange={(e) => {
-                                if (e.target.value) {
-                                  handleAddMemberRole(selectedTeamForMembers, m, e.target.value);
-                                }
-                              }}
-                              className="text-[11px] font-label-bold bg-surface-container-high hover:bg-surface-container text-on-surface px-2 py-1 rounded-md border border-border-subtle cursor-pointer outline-none"
-                              title="Assign another role to this member"
-                            >
-                              <option value="">+ Add Role</option>
-                              {availableRoles
-                                .filter((r) => !memberRoles.includes(r.name))
-                                .map((r) => (
-                                  <option key={r.id || r.name} value={r.name}>
-                                    {r.name}
-                                  </option>
-                                ))}
-                            </select>
+                          <div className="flex flex-col min-w-0">
+                            <span className="font-label-bold text-label-bold text-on-surface truncate">{m.name}</span>
+                            <span className="text-on-surface-variant text-[12px] truncate">{m.email}</span>
                           </div>
                         </div>
 
-                        <div className="flex flex-wrap gap-1.5 pt-1">
-                          {memberRoles.map((roleName) => {
-                            const isTeamAdmin = roleName.toLowerCase().includes('admin');
-                            return (
-                              <span
-                                key={roleName}
-                                className={`px-2 py-0.5 rounded-md font-label-sm text-[11px] shadow-2xs flex items-center gap-1.5 transition-all ${
-                                  isTeamAdmin
-                                    ? 'bg-amber-100 text-amber-900 border border-amber-300 font-medium'
-                                    : 'bg-surface-container-highest text-on-surface border border-border-subtle'
-                                }`}
-                              >
-                                {isTeamAdmin && (
-                                  <span className="material-symbols-outlined text-[12px] text-amber-600">crown</span>
-                                )}
-                                <span>{roleName}</span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleInitiateRemoveMemberRole(selectedTeamForMembers, m, roleName)}
-                                  className="w-3.5 h-3.5 rounded-full hover:bg-black/10 flex items-center justify-center text-outline hover:text-error-text cursor-pointer ml-0.5"
-                                  title={`Remove "${roleName}" role`}
-                                >
-                                  <span className="material-symbols-outlined text-[11px]">close</span>
-                                </button>
-                              </span>
-                            );
-                          })}
+                        <div className="relative shrink-0">
+                          <select
+                            value=""
+                            onChange={(e) => {
+                              if (e.target.value) {
+                                handleAddMemberRole(selectedTeamForMembers, m, e.target.value);
+                              }
+                            }}
+                            className="text-[11px] font-label-bold bg-surface-container-high hover:bg-surface-container text-on-surface px-2 py-1 rounded-md border border-border-subtle cursor-pointer outline-none"
+                            title="Assign another role to this member"
+                          >
+                            <option value="">+ Add Role</option>
+                            {availableRoles
+                              .filter((r) => !memberRoles.includes(r.name))
+                              .map((r) => (
+                                <option key={r.id || r.name} value={r.name}>
+                                  {r.name}
+                                </option>
+                              ))}
+                          </select>
                         </div>
                       </div>
-                    );
-                  })
+
+                      <div className="flex flex-wrap gap-1.5 pt-1">
+                        {memberRoles.map((roleName) => {
+                          const isTeamAdmin = roleName.toLowerCase().includes('admin');
+                          return (
+                            <span
+                              key={roleName}
+                              className={`px-2 py-0.5 rounded-md font-label-sm text-[11px] shadow-2xs flex items-center gap-1.5 transition-all ${
+                                isTeamAdmin
+                                  ? 'bg-amber-100 text-amber-900 border border-amber-300 font-medium'
+                                  : 'bg-surface-container-highest text-on-surface border border-border-subtle'
+                              }`}
+                            >
+                              {isTeamAdmin && (
+                                <span className="material-symbols-outlined text-[12px] text-amber-600">crown</span>
+                              )}
+                              <span>{roleName}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleInitiateRemoveMemberRole(selectedTeamForMembers, m, roleName)}
+                                className="w-3.5 h-3.5 rounded-full hover:bg-black/10 flex items-center justify-center text-outline hover:text-error-text cursor-pointer ml-0.5"
+                                title={`Remove "${roleName}" role`}
+                              >
+                                <span className="material-symbols-outlined text-[11px]">close</span>
+                              </button>
+                            </span>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })
               )}
             </div>
 
-            <div className="p-md border-t border-border-subtle bg-surface-container-low flex justify-end">
-              <button
-                type="button"
-                onClick={() => setSelectedTeamForMembers(null)}
-                className="px-md py-xs bg-primary text-on-primary font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-on-primary-container transition-colors cursor-pointer"
-              >
-                Close
-              </button>
+            <div className="p-3 border-t border-border-subtle bg-surface-container-low flex flex-col gap-2">
+              <Pagination
+                page={drawerPage}
+                totalPages={drawerTotalPages}
+                total={drawerTotal}
+                limit={drawerPageSize}
+                itemLabel="members"
+                loading={loadingMembers}
+                onPageChange={(p) => setDrawerPage(p)}
+                compact={true}
+                className="!bg-transparent !border-0 !p-0 !rounded-none !shadow-none"
+              />
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  onClick={() => setSelectedTeamForMembers(null)}
+                  className="px-md py-xs bg-primary text-on-primary font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-on-primary-container transition-colors cursor-pointer text-[12px]"
+                >
+                  Close
+                </button>
+              </div>
             </div>
           </div>
         </div>

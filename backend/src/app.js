@@ -57,6 +57,8 @@ app.use(
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allowedHeaders: ["Content-Type", "Authorization", "x-team-id"],
+    maxAge: 86400, // Cache preflight OPTIONS for 24 hours in browser
+    optionsSuccessStatus: 200,
   })
 );
 

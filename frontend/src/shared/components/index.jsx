@@ -12,4 +12,5 @@ export { default as UserProfileSettingsModal } from './UserProfileSettingsModal'
 export { default as ErrorBoundary } from './ErrorBoundary';
 export { default as Skeleton, SkeletonCard, SkeletonTable } from './Skeleton';
 export { default as SanitizedText } from './SanitizedText';
+export { default as Pagination } from './Pagination';
 

@@ -16,8 +16,14 @@ export const addMember = asyncHandler(async (req, res) => {
 
 export const getTeamMembers = asyncHandler(async (req, res) => {
   const { teamId } = req.params;
-  const { status, page, limit } = req.query;
-  const result = await membershipService.listTeamMembers({ teamId, status, page, limit });
+  const { status, page, limit, q, search } = req.query;
+  const result = await membershipService.listTeamMembers({
+    teamId,
+    status,
+    page,
+    limit,
+    search: q || search,
+  });
   res.status(200).json({ success: true, data: result.members, pagination: result });
 });
 

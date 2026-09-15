@@ -148,12 +148,23 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
 
-export async function listTeamMembers({ teamId, status, page = 1, limit = 20 } = {}) {
+export async function listTeamMembers({ teamId, status, page = 1, limit = 20, search } = {}) {
   if (!isValidId(teamId)) throw new BadRequestError("Invalid team ID format.");
   const team = await Team.findById(teamId);
   if (!team || team.status === "ARCHIVED") throw new NotFoundError("Team not found.");
 
   const query = { teamId, ...(status ? { status } : { status: { $ne: "REMOVED" } }) };
+
+  if (search && typeof search === "string" && search.trim()) {
+    const matchingUsers = await User.find({
+      $or: [
+        { name: { $regex: search.trim(), $options: "i" } },
+        { email: { $regex: search.trim(), $options: "i" } },
+      ],
+    }).select("_id").lean();
+    query.userId = { $in: matchingUsers.map((u) => u._id) };
+  }
+
   const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [rawMembers, total] = await Promise.all([

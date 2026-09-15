@@ -49,6 +49,27 @@ export async function searchUsers({ query = "", page = 1, limit = 50, status } =
   return result;
 }
 
+export async function getUserStats() {
+  const cacheKey = "users:stats";
+  const cached = await getCache(cacheKey);
+  if (cached) return cached;
+
+  const counts = await User.aggregate([
+    { $group: { _id: "$accountStatus", count: { $sum: 1 } } }
+  ]);
+
+  const stats = { total: 0, active: 0, invited: 0, suspended: 0 };
+  for (const c of counts) {
+    stats.total += c.count;
+    if (c._id === "ACTIVE") stats.active = c.count;
+    else if (c._id === "INVITED") stats.invited = c.count;
+    else if (c._id === "SUSPENDED" || c._id === "DISABLED") stats.suspended += c.count;
+  }
+
+  await setCache(cacheKey, stats, 60);
+  return stats;
+}
+
 export async function updateUser(userId, data = {}, actorId = null) {
   if (!mongoose.Types.ObjectId.isValid(userId)) throw new BadRequestError("Invalid user ID format.");
   const user = await User.findById(userId);

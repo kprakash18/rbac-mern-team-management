@@ -1,7 +1,7 @@
 export function getPaginationParams({
   page = 1,
-  limit = 20,
-  defaultLimit = 20,
+  limit = 10,
+  defaultLimit = 10,
   maxLimit = 100,
 } = {}) {
   const pageNum = Math.max(1, parseInt(page, 10) || 1);

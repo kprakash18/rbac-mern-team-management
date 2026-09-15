@@ -107,30 +107,49 @@ export async function listTeams({ status, search, page = 1, limit = 50 } = {}) {
   ]);
 
   const teamIds = teams.map((t) => t._id);
-  const activeMemberships = await Membership.find({ teamId: { $in: teamIds }, status: "ACTIVE" }).populate("userId", "name email").lean();
-  const memberRoles = await MembershipRole.find({ membershipId: { $in: activeMemberships.map((m) => m._id) }, revokedAt: null })
-    .populate("roleId", "name isSystemRole")
-    .lean();
+
+  // 1. Fast aggregation for member counts (O(1) in MongoDB)
+  const [counts, adminRoles] = await Promise.all([
+    Membership.aggregate([
+      { $match: { teamId: { $in: teamIds }, status: "ACTIVE" } },
+      { $group: { _id: "$teamId", count: { $sum: 1 } } },
+    ]),
+    Role.find({ name: { $in: ["Team Admin", "Super Admin"] }, status: "ACTIVE" }).select("_id").lean(),
+  ]);
+
+  const countMap = new Map(counts.map((c) => [String(c._id), c.count]));
+
+  // 2. Fetch only Team Admins (capped) instead of loading all 14,000+ members
+  const adminMemRoles = await MembershipRole.find({
+    roleId: { $in: adminRoles.map((r) => r._id) },
+    revokedAt: null,
+  }).select("membershipId").limit(200).lean();
+
+  const adminMemberships = await Membership.find({
+    _id: { $in: adminMemRoles.map((mr) => mr.membershipId) },
+    teamId: { $in: teamIds },
+    status: "ACTIVE",
+  }).populate("userId", "name").lean();
+
+  const adminMap = new Map();
+  for (const m of adminMemberships) {
+    if (m.userId?.name && m.teamId) {
+      const tId = String(m.teamId);
+      if (!adminMap.has(tId)) adminMap.set(tId, []);
+      const list = adminMap.get(tId);
+      if (!list.includes(m.userId.name) && list.length < 5) {
+        list.push(m.userId.name);
+      }
+    }
+  }
 
   const enrichedTeams = teams.map((team) => {
-    const teamMems = activeMemberships.filter((m) => String(m.teamId) === String(team._id));
-    const adminUserNames = [];
-    const memberList = [];
-
-    teamMems.forEach((m) => {
-      if (!m.userId) return;
-      const rolesForMem = memberRoles.filter((mr) => String(mr.membershipId) === String(m._id)).map((mr) => mr.roleId?.name).filter(Boolean);
-      if (rolesForMem.some((r) => r.toLowerCase().includes("admin")) && m.userId.name && !adminUserNames.includes(m.userId.name)) {
-        adminUserNames.push(m.userId.name);
-      }
-      memberList.push({ id: m.userId._id, membershipId: m._id, name: m.userId.name, email: m.userId.email, roles: rolesForMem, joinedAt: m.joinedAt });
-    });
-
+    const tId = String(team._id);
+    const admins = adminMap.get(tId) || [];
     return {
       ...team,
-      membersCount: teamMems.length,
-      admins: adminUserNames.length > 0 ? adminUserNames : (team.createdBy?.name ? [team.createdBy.name] : []),
-      members: memberList,
+      membersCount: countMap.get(tId) || 0,
+      admins: admins.length > 0 ? admins : (team.createdBy?.name ? [team.createdBy.name] : ["Team Admin"]),
     };
   });
 

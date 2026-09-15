@@ -2,10 +2,13 @@ import { useState, useEffect, useCallback } from 'react';
 import CreateUserModal from './CreateUserModal';
 import InviteSuccessModal from './InviteSuccessModal';
 import ManageUserModal from './ManageUserModal';
+import { Pagination } from '@/shared/components';
 import api from '@/lib/api';
 
 export default function UsersAccessView() {
   const [users, setUsers] = useState([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
   const [activeFilter, setActiveFilter] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
@@ -20,6 +23,7 @@ export default function UsersAccessView() {
   useEffect(() => {
     const timer = setTimeout(() => {
       setDebouncedSearch(searchQuery.trim());
+      setCurrentPage(1);
     }, 250);
     return () => clearTimeout(timer);
   }, [searchQuery]);
@@ -28,7 +32,9 @@ export default function UsersAccessView() {
     try {
       setLoading(true);
       const params = new URLSearchParams();
-      params.set('limit', '100');
+      params.set('page', String(currentPage));
+      params.set('limit', String(pageSize));
+
       if (activeFilter && activeFilter !== 'All') {
         params.set('status', activeFilter.toUpperCase());
       }
@@ -38,6 +44,11 @@ export default function UsersAccessView() {
 
       const res = await api.get(`/api/users?${params.toString()}`);
       const backendUsers = res.data?.data || res.data?.users || [];
+      const pagination = res.data?.pagination || {};
+
+      setTotalCount(pagination.total || backendUsers.length || 0);
+      setTotalPages(Math.max(1, pagination.totalPages || Math.ceil((pagination.total || 0) / pageSize) || 1));
+
       if (Array.isArray(backendUsers)) {
         const mapped = backendUsers.map((u) => {
           const statusLower = (u.accountStatus || u.status || 'ACTIVE').toLowerCase();
@@ -83,11 +94,11 @@ export default function UsersAccessView() {
         setUsers(mapped);
       }
     } catch (err) {
-      console.warn('Backend users unavailable, fallback:', err);
+      console.warn('Backend users unavailable:', err);
     } finally {
       setLoading(false);
     }
-  }, [activeFilter, debouncedSearch]);
+  }, [currentPage, activeFilter, debouncedSearch, pageSize]);
 
   useEffect(() => {
     fetchUsers();
@@ -198,28 +209,6 @@ export default function UsersAccessView() {
     });
   };
 
-  const filteredUsers = users.filter((u) => {
-    const matchesFilter =
-      activeFilter === 'All' ||
-      u.status.toLowerCase() === activeFilter.toLowerCase() ||
-      u.statusType?.toLowerCase() === activeFilter.toLowerCase();
-    const matchesSearch =
-      !searchQuery ||
-      u.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      u.email.toLowerCase().includes(searchQuery.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
-
-  const totalItems = filteredUsers.length;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  const safeCurrentPage = Math.min(currentPage, totalPages);
-  const startIndex = totalItems === 0 ? 0 : (safeCurrentPage - 1) * pageSize + 1;
-  const endIndex = Math.min(safeCurrentPage * pageSize, totalItems);
-  const paginatedUsers = filteredUsers.slice(
-    (safeCurrentPage - 1) * pageSize,
-    safeCurrentPage * pageSize
-  );
-
   return (
     <div className="flex flex-col w-full h-full max-w-7xl mx-auto px-lg py-xl space-y-xl">
       <div className="flex flex-col space-y-xs">
@@ -227,46 +216,46 @@ export default function UsersAccessView() {
         <p className="font-body-base text-body-base text-on-surface-variant">Global identity and access management.</p>
       </div>
 
-      <div className="flex items-center justify-between w-full p-md bg-surface-container rounded-xl shadow-sm">
-        <div className="relative w-80">
+      <div className="filter-toolbar">
+        <div className="relative w-full sm:w-80">
           <span className="material-symbols-outlined absolute left-sm top-1/2 -translate-y-1/2 text-on-surface-variant">search</span>
           <input
             value={searchQuery}
             onChange={(e) => handleSearchChange(e.target.value)}
-            className="w-full bg-surface border-none rounded-lg pl-10 pr-md py-xs font-body-sm text-body-sm text-on-surface focus:ring-2 focus:ring-primary outline-none transition-all shadow-sm"
+            className="w-full bg-surface border border-border-subtle rounded-lg pl-10 pr-md py-xs font-body-sm text-body-sm text-on-surface focus:ring-2 focus:ring-primary outline-none transition-all shadow-sm"
             placeholder="Search users by name or email..."
             type="text"
           />
         </div>
-        <div className="flex items-center gap-xs">
-          {filterTabs.map((tab) => (
-            <button
-              key={tab}
-              onClick={() => handleFilterChange(tab)}
-              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors cursor-pointer ${
-                activeFilter === tab
-                  ? 'bg-primary text-on-primary'
-                  : 'bg-surface text-on-surface hover:bg-surface-container-high'
-              }`}
-            >
-              {tab}
-            </button>
-          ))}
+        <div className="flex items-center gap-xs flex-wrap">
+          <div className="tab-group">
+            {filterTabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => handleFilterChange(tab)}
+                className={`tab-item ${
+                  activeFilter === tab ? 'tab-item-active' : 'tab-item-inactive'
+                }`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
           <button
             onClick={() => setIsCreateModalOpen(true)}
-            className="ml-md px-md py-xs bg-primary text-on-primary font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-on-primary-container transition-colors flex items-center gap-xs cursor-pointer"
+            className="ml-sm px-md py-xs bg-primary text-on-primary font-label-bold text-label-bold rounded-lg shadow-sm hover:bg-on-primary-container flex items-center transition-colors cursor-pointer"
           >
-            <span className="material-symbols-outlined text-[18px]">add</span>
+            <span className="material-symbols-outlined text-sm">person_add</span>
             &nbsp;Create User
           </button>
         </div>
       </div>
 
-      <div className="w-full bg-surface-container-lowest rounded-xl shadow-sm border border-border-subtle overflow-hidden">
+      <div className="table-wrapper">
         <div className="w-full overflow-x-auto">
           <table className="w-full text-left border-collapse min-w-[850px]">
             <thead>
-              <tr className="bg-surface-container-low text-on-surface-variant font-label-bold text-label-bold">
+              <tr className="table-head-row">
                 <th className="py-3.5 px-4 font-semibold border-b border-border-subtle min-w-[240px]">User</th>
                 <th className="py-3.5 px-4 font-semibold border-b border-border-subtle w-36">Account Status</th>
                 <th className="py-3.5 px-4 font-semibold border-b border-border-subtle min-w-[220px]">Teams &amp; Workspaces</th>
@@ -284,14 +273,14 @@ export default function UsersAccessView() {
                   </div>
                 </td>
               </tr>
-            ) : paginatedUsers.length === 0 ? (
+            ) : users.length === 0 ? (
               <tr>
                 <td colSpan={5} className="py-xl px-lg text-center text-on-surface-variant">
                   No users found matching your search and filter criteria.
                 </td>
               </tr>
             ) : (
-              paginatedUsers.map((user) => (
+              users.map((user) => (
                 <tr key={user.id} className="hover:bg-surface-container-lowest transition-colors border-b border-border-subtle group">
                   <td className="py-lg px-lg">
                     <div className="flex items-center gap-md">
@@ -338,18 +327,18 @@ export default function UsersAccessView() {
                       </span>
                     )}
                     {user.statusType === 'invited' && (
-                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-warning-bg text-warning-text font-label-sm text-label-sm shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-warning-text mr-xs"></span>Invited
+                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-surface-variant text-on-surface-variant font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-outline mr-xs"></span>Invited
                       </span>
                     )}
                     {user.statusType === 'suspended' && (
-                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-error-bg text-error-text font-label-sm text-label-sm shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-error-text mr-xs"></span>Suspended
+                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-warning-bg text-warning-text font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-warning-text mr-xs"></span>Suspended
                       </span>
                     )}
                     {user.statusType === 'disabled' && (
-                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-surface-container-high text-on-surface-variant font-label-sm text-label-sm shadow-sm">
-                        <span className="w-1.5 h-1.5 rounded-full bg-on-surface-variant mr-xs"></span>Disabled
+                      <span className="inline-flex items-center px-sm py-0.5 rounded-full bg-error-bg text-error-text font-label-sm text-label-sm shadow-sm">
+                        <span className="w-1.5 h-1.5 rounded-full bg-error-text mr-xs"></span>Disabled
                       </span>
                     )}
                     {user.mustChangePassword && (
@@ -360,23 +349,21 @@ export default function UsersAccessView() {
                       </div>
                     )}
                   </td>
-                  <td className="py-lg px-lg">
-                    <div className="flex gap-xs flex-wrap">
-                      {user.workspaces.map((ws, i) => (
+                  <td className="py-3.5 px-4 text-on-surface text-[12px] min-w-[220px]">
+                    <div className="flex flex-wrap gap-1.5 max-w-[320px]">
+                      {user.workspaces?.length === 0 && <span className="text-on-surface-variant italic">No workspaces</span>}
+                      {user.workspaces?.map((w, idx) => (
                         <span
-                          key={i}
-                          className={`px-2 py-0.5 rounded-md font-label-sm text-label-sm shadow-2xs flex items-center gap-1.5 ${
-                            ws.isTeamAdmin
-                              ? 'bg-amber-100 text-amber-900 border border-amber-300 font-medium'
-                              : 'bg-surface-container-high text-on-surface border border-border-subtle'
-                          }`}
+                          key={idx}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-surface-container-high border border-border-subtle text-[11px] font-medium"
                         >
-                          {ws.isTeamAdmin && (
+                          <span className="font-semibold">{w.name}</span>
+                          <span className="text-on-surface-variant">({w.role || 'Member'})</span>
+                          {w.isTeamAdmin && (
                             <span className="material-symbols-outlined text-[13px] text-amber-600" title="Team Admin">
-                              crown
+                              shield_person
                             </span>
                           )}
-                          <span className="font-medium">{ws.name}</span>
                         </span>
                       ))}
                     </div>
@@ -396,38 +383,16 @@ export default function UsersAccessView() {
           </tbody>
         </table>
         </div>
-        <div className="w-full flex items-center justify-between p-md bg-surface-container-low border-t border-border-subtle">
-          <span className="font-body-sm text-body-sm text-on-surface-variant">
-            Showing {startIndex} to {endIndex} of {totalItems} entries
-          </span>
-          <div className="flex items-center gap-sm">
-            <button
-              onClick={() => setCurrentPage((prev) => Math.max(1, prev - 1))}
-              disabled={safeCurrentPage <= 1}
-              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors ${
-                safeCurrentPage <= 1
-                  ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
-                  : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
-              }`}
-            >
-              Previous
-            </button>
-            <span className="font-label-sm text-on-surface-variant px-xs">
-              Page {safeCurrentPage} of {totalPages}
-            </span>
-            <button
-              onClick={() => setCurrentPage((prev) => Math.min(totalPages, prev + 1))}
-              disabled={safeCurrentPage >= totalPages}
-              className={`px-md py-xs font-label-bold text-label-bold rounded-lg shadow-sm transition-colors ${
-                safeCurrentPage >= totalPages
-                  ? 'bg-surface text-on-surface-variant opacity-50 cursor-not-allowed'
-                  : 'bg-surface text-on-surface hover:bg-surface-container-high cursor-pointer'
-              }`}
-            >
-              Next
-            </button>
-          </div>
-        </div>
+        <Pagination
+          page={currentPage}
+          totalPages={totalPages}
+          total={totalCount}
+          limit={pageSize}
+          itemLabel="users"
+          loading={loading}
+          onPageChange={(p) => setCurrentPage(p)}
+          className="rounded-t-none border-t-0"
+        />
       </div>
 
       <CreateUserModal

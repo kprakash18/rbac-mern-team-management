@@ -4,7 +4,7 @@ import ManageMemberRoleModal from './ManageMemberRoleModal';
 import api from '@/lib/api';
 import { useApp } from '@/context/useApp';
 import { useToast } from '@/lib/useToast';
-import { ConfirmModal, Toast, SearchInput, Button, Badge, Avatar } from '@/shared/components';
+import { ConfirmModal, Toast, SearchInput, Button, Badge, Avatar, Pagination } from '@/shared/components';
 
 const ROLES_FILTER = ['All Roles', 'Team Admin', 'Developer', 'Viewer', 'Security Auditor'];
 const STATUS_TABS = ['All', 'Active', 'Suspended'];
@@ -33,13 +33,19 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
 
   const [activeTab, setActiveTab] = useState('members');
   const [members, setMembers] = useState([]);
+  const [totalMembers, setTotalMembers] = useState(0);
+  const [totalPages, setTotalPages] = useState(1);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 12;
+
   const [pendingInvitations, setPendingInvitations] = useState([]);
   const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [selectedRole, setSelectedRole] = useState('All Roles');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [viewMode, setViewMode] = useState('grid');
+  const [viewMode, setViewMode] = useState('table');
   const [selectedMember, setSelectedMember] = useState(null);
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
@@ -49,17 +55,35 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
   const [roleEditingMember, setRoleEditingMember] = useState(null);
   const [toast, showToast] = useToast();
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchQuery.trim());
+      setCurrentPage(1);
+    }, 250);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const fetchMembersAndInvitations = useCallback(async () => {
     if (!teamId) return;
     try {
       setLoading(true);
+      const params = new URLSearchParams();
+      params.set('page', String(currentPage));
+      params.set('limit', String(pageSize));
+      if (debouncedSearch) params.set('q', debouncedSearch);
+      if (statusFilter && statusFilter !== 'All') params.set('status', statusFilter.toUpperCase());
+
       const [membersRes, invitesRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members?limit=100`),
+        api.get(`/api/teams/${teamId}/members?${params.toString()}`),
         api.get(`/api/teams/${teamId}/invitations`),
       ]);
 
       if (membersRes.status === 'fulfilled') {
         const raw = membersRes.value.data?.data?.members || membersRes.value.data?.data || [];
+        const pagination = membersRes.value.data?.pagination || {};
+        setTotalMembers(pagination.total ?? raw.length ?? 0);
+        setTotalPages(Math.max(1, pagination.totalPages || Math.ceil((pagination.total || raw.length || 0) / pageSize) || 1));
+
         setMembers(
           raw.map((m) => {
             const u = m.user || m.userId || {};
@@ -104,7 +128,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
     } finally {
       setLoading(false);
     }
-  }, [teamId]);
+  }, [teamId, currentPage, pageSize, debouncedSearch, statusFilter]);
 
   useEffect(() => {
     fetchMembersAndInvitations();
@@ -187,12 +211,8 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
   };
 
   const filteredMembers = members.filter((m) => {
-    const matchSearch =
-      !searchQuery ||
-      [m.name, m.email, m.role, m.department].some((f) => f?.toLowerCase().includes(searchQuery.toLowerCase()));
     const matchRole = selectedRole === 'All Roles' || m.role?.toLowerCase() === selectedRole.toLowerCase();
-    const matchStatus = statusFilter === 'All' || m.status?.toLowerCase() === statusFilter.toLowerCase();
-    return matchSearch && matchRole && matchStatus;
+    return matchRole;
   });
 
   const filteredInvitations = pendingInvitations.filter(
@@ -209,7 +229,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
             Team &amp; Members
           </h1>
           <p className="font-body-sm text-body-sm text-on-surface-variant">
-            {members.length} active team members in workspace
+            {totalMembers.toLocaleString()} active team members in workspace
           </p>
         </div>
 
@@ -239,7 +259,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
           <span className="material-symbols-outlined text-[18px]">group</span>
           <span>Active Members</span>
           <span className={`px-2 py-0.5 rounded-full text-[11px] ${activeTab === 'members' ? 'bg-on-primary/20 text-on-primary' : 'bg-surface-container text-on-surface-variant'}`}>
-            {members.length}
+            {totalMembers.toLocaleString()}
           </span>
         </button>
 
@@ -328,7 +348,7 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
         </div>
       ) : (
         <>
-          <div className="w-full p-3 rounded-xl bg-surface-container-lowest border border-border-subtle shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="filter-toolbar">
             <div className="flex items-center gap-2 flex-1 flex-wrap">
               <SearchInput
                 value={searchQuery}
@@ -339,8 +359,11 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
               />
               <select
                 value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-                className="text-label-sm bg-surface-container-low border border-border-subtle rounded-lg px-3 py-1.5 text-on-surface outline-none"
+                onChange={(e) => {
+                  setSelectedRole(e.target.value);
+                  setCurrentPage(1);
+                }}
+                className="text-label-sm bg-surface-container-lowest border border-border-subtle rounded-lg px-3 py-1.5 text-on-surface outline-none cursor-pointer focus:ring-2 focus:ring-primary shadow-2xs"
               >
                 {ROLES_FILTER.map((role) => (
                   <option key={role} value={role}>{role}</option>
@@ -348,15 +371,18 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1 bg-surface-container-low p-1 rounded-lg border border-border-subtle">
+            <div className="flex items-center gap-2 flex-wrap">
+              <div className="tab-group">
                 {STATUS_TABS.map((tab) => (
                   <button
                     key={tab}
                     type="button"
-                    onClick={() => setStatusFilter(tab)}
-                    className={`px-3 py-1 rounded-md text-label-sm cursor-pointer transition-colors ${
-                      statusFilter === tab ? 'font-label-bold bg-surface-container-lowest text-on-surface shadow-xs' : 'text-on-surface-variant hover:text-on-surface'
+                    onClick={() => {
+                      setStatusFilter(tab);
+                      setCurrentPage(1);
+                    }}
+                    className={`tab-item ${
+                      statusFilter === tab ? 'tab-item-active' : 'tab-item-inactive'
                     }`}
                   >
                     {tab}
@@ -364,18 +390,24 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
                 ))}
               </div>
 
-              <div className="flex items-center border border-border-subtle rounded-lg overflow-hidden bg-surface-container-low">
+              <div className="view-toggle">
                 <button
                   type="button"
                   onClick={() => setViewMode('grid')}
-                  className={`p-1.5 cursor-pointer ${viewMode === 'grid' ? 'bg-surface-container-lowest text-on-surface' : 'text-on-surface-variant'}`}
+                  className={`view-toggle-btn ${
+                    viewMode === 'grid' ? 'view-toggle-active' : 'view-toggle-inactive'
+                  }`}
+                  title="Grid View"
                 >
                   <span className="material-symbols-outlined text-[18px]">grid_view</span>
                 </button>
                 <button
                   type="button"
                   onClick={() => setViewMode('table')}
-                  className={`p-1.5 cursor-pointer ${viewMode === 'table' ? 'bg-surface-container-lowest text-on-surface' : 'text-on-surface-variant'}`}
+                  className={`view-toggle-btn ${
+                    viewMode === 'table' ? 'view-toggle-active' : 'view-toggle-inactive'
+                  }`}
+                  title="Table View"
                 >
                   <span className="material-symbols-outlined text-[18px]">table_rows</span>
                 </button>
@@ -449,10 +481,10 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
               })}
             </div>
           ) : (
-            <div className="w-full bg-surface-container-lowest rounded-xl border border-border-subtle shadow-sm overflow-hidden">
+            <div className="table-wrapper">
               <table className="w-full text-left border-collapse">
                 <thead>
-                  <tr className="border-b border-border-subtle bg-surface-container-low text-[12px] font-semibold text-on-surface-variant">
+                  <tr className="table-head-row">
                     <th className="py-3 px-4">Member</th>
                     <th className="py-3 px-4">Role</th>
                     <th className="py-3 px-4">Department</th>
@@ -526,6 +558,17 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
               </table>
             </div>
           )}
+
+          <Pagination
+            page={currentPage}
+            totalPages={totalPages}
+            total={totalMembers}
+            limit={pageSize}
+            itemLabel="members"
+            loading={loading}
+            onPageChange={(p) => setCurrentPage(p)}
+            className="mt-2"
+          />
         </>
       )}
 

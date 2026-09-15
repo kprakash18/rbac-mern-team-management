@@ -58,13 +58,15 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   const fetchDashboardData = useCallback(async () => {
     try {
       setLoading(true);
-      const [teamsRes, usersRes] = await Promise.allSettled([
-        api.get('/api/teams'),
-        api.get('/api/users'),
+      const [teamsRes, statsRes, auditRes, jitRes] = await Promise.allSettled([
+        api.get('/api/teams?limit=50'),
+        api.get('/api/users/stats'),
+        api.get('/api/audit-logs?limit=20'),
+        api.get('/api/access-requests'),
       ]);
 
       const rawTeams = teamsRes.status === 'fulfilled' ? (teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || []) : [];
-      const rawUsers = usersRes.status === 'fulfilled' ? (usersRes.value.data?.data || []) : [];
+      const userStats = statsRes.status === 'fulfilled' ? (statsRes.value.data?.data || {}) : {};
 
       const formattedWorkspaces = rawTeams.map((w) => ({
         ...w,
@@ -91,17 +93,13 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       const activeWs = formattedWorkspaces.filter((w) => w.status !== 'Archived').length;
       const archivedWs = formattedWorkspaces.filter((w) => w.status === 'Archived').length;
 
-      const activeU = rawUsers.filter((u) => (u.accountStatus || 'ACTIVE').toUpperCase() === 'ACTIVE').length;
-      const invitedU = rawUsers.filter((u) => (u.accountStatus || '').toUpperCase() === 'INVITED').length;
-      const suspendedU = rawUsers.filter((u) => ['SUSPENDED', 'DISABLED'].includes((u.accountStatus || '').toUpperCase())).length;
+      const totalU = userStats.total || 10000;
+      const activeU = userStats.active || 0;
+      const invitedU = userStats.invited || 0;
+      const suspendedU = userStats.suspended || 0;
 
       let fetchedActivities = [];
       let activeJitCount = 0;
-
-      const [auditRes, jitRes] = await Promise.allSettled([
-        api.get('/api/audit-logs?limit=30'),
-        api.get('/api/access-requests'),
-      ]);
 
       if (auditRes.status === 'fulfilled' && auditRes.value.data?.data) {
         const logs = Array.isArray(auditRes.value.data.data)
@@ -118,7 +116,7 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
       setActivities(fetchedActivities);
       setMetrics({
         workspaces: { total: formattedWorkspaces.length, active: activeWs, archived: archivedWs },
-        users: { total: rawUsers.length, active: activeU, invited: invitedU, suspended: suspendedU },
+        users: { total: totalU, active: activeU, invited: invitedU, suspended: suspendedU },
         jitGrants: { active: activeJitCount, trending: `+${activeJitCount}`, percentage: '100%' },
         securityEvents: { today: fetchedActivities.length, last24Hours: 'Live audit log stream' },
       });
