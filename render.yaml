@@ -2,9 +2,9 @@ services:
   # Backend API Web Service
   - type: web
     name: team-management-backend
-    env: node
+    runtime: node
+    plan: starter
     region: oregon
-    plan: standard
     rootDir: backend
     buildCommand: npm install
     startCommand: npm start
@@ -23,18 +23,18 @@ services:
         sync: false # Points to frontend URL
       - key: REDIS_URL
         fromService:
-          type: redis
+          type: keyvalue
           name: team-management-redis
           property: connectionString
 
   # Frontend Static Site
   - type: web
     name: team-management-frontend
-    env: static
+    runtime: static
     region: oregon
     rootDir: frontend
     buildCommand: npm install && npm run build
-    staticPublishPath: dist
+    staticPublishPath: ./dist
     autoDeploy: true
     routes:
       - type: rewrite
@@ -44,10 +44,10 @@ services:
       - key: VITE_API_URL
         sync: false # Points to backend URL
 
-  # Managed Redis Instance for Pub/Sub, Sockets & Caching
-  - type: redis
+  # Managed Redis (Key Value) Instance for Pub/Sub, Sockets & Caching
+  - type: keyvalue
     name: team-management-redis
     region: oregon
-    plan: standard
+    plan: starter
     maxmemoryPolicy: allkeys-lru
     ipAllowList: [] # Internal only
