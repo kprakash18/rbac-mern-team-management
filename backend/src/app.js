@@ -1,10 +1,12 @@
 import express from "express";
 import cors from "cors";
+import compression from "compression";
 import {swaggerDocs} from "./docs/swagger.js";
 import authRouter from "./modules/authentication/authentication.routes.js";
 import authorizationRouter from "./modules/authorization/authorization.routes.js";
 
 import { errorHandler } from "./common/middleware/error-handler.js";
+import { apiRateLimiter } from "./common/middleware/rate-limiter.js";
 import permissionRouter from "./modules/permissions/permission.routes.js";
 import roleRouter from "./modules/roles/role.routes.js";
 import membershipRoleRouter from "./modules/member-roles/member-role.routes.js";
@@ -25,6 +27,8 @@ import chatChannelRouter from "./modules/chat/chat-channel.routes.js";
 import { env } from "./config/env.js";
 
 const app = express();
+
+app.set("trust proxy", 1);
 
 const cleanUrl = (url) => (typeof url === "string" ? url.trim().replace(/\/+$/, "") : "");
 
@@ -55,13 +59,16 @@ app.use(
     allowedHeaders: ["Content-Type", "Authorization", "x-team-id"],
   })
 );
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+
+app.use(compression({ threshold: 1024 }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ extended: true, limit: "1mb" }));
 
 app.get("/health", (req, res) => {
   res.status(200).json({ status: "OK", timestamp: new Date().toISOString() });
 });
 
+app.use("/api", apiRateLimiter);
 app.use("/api-docs", swaggerDocs.serve, swaggerDocs.setup);
 app.use("/api/auth", authRouter);
 app.use("/api/authorization", authorizationRouter);

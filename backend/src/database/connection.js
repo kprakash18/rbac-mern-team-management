@@ -3,9 +3,16 @@ import { closeRedis } from "../config/redis.js";
 
 export async function connectDatabase(uri) {
   try {
-    await mongoose.connect(uri);
+    const options = {
+      maxPoolSize: 100,
+      minPoolSize: 10,
+      socketTimeoutMS: 45000,
+      serverSelectionTimeoutMS: 10000,
+      family: 4,
+    };
+    await mongoose.connect(uri, options);
 
-    console.log("MongoDB connected successfully");
+    console.log("MongoDB connected successfully with connection pool (max: 100, min: 10)");
   } catch (error) {
     console.error("MongoDB connection failed:", error);
     process.exit(1);

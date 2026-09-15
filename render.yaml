@@ -1,0 +1,53 @@
+services:
+  # Backend API Web Service
+  - type: web
+    name: team-management-backend
+    env: node
+    region: oregon
+    plan: standard
+    rootDir: backend
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 5001
+      - key: MONGO_URI
+        sync: false # Set in Render Dashboard
+      - key: JWT_SECRET
+        sync: false # Set in Render Dashboard
+      - key: CLIENT_URL
+        sync: false # Points to frontend URL
+      - key: REDIS_URL
+        fromService:
+          type: redis
+          name: team-management-redis
+          property: connectionString
+
+  # Frontend Static Site
+  - type: web
+    name: team-management-frontend
+    env: static
+    region: oregon
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    staticPublishPath: dist
+    autoDeploy: true
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_URL
+        sync: false # Points to backend URL
+
+  # Managed Redis Instance for Pub/Sub, Sockets & Caching
+  - type: redis
+    name: team-management-redis
+    region: oregon
+    plan: standard
+    maxmemoryPolicy: allkeys-lru
+    ipAllowList: [] # Internal only

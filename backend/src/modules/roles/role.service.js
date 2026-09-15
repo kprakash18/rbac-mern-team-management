@@ -6,6 +6,7 @@ import MembershipRole from "../member-roles/member-role.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { getCache, setCache, delCachePattern } from "../../config/redis.js";
+import { invalidateUserPermissionCache } from "../authorization/authorization.service.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -47,6 +48,7 @@ export async function createRole({ name, description = "", permissionIds = [], c
   await Promise.all([
     delCachePattern("roles:*"),
     delCachePattern("teams:*"),
+    invalidateUserPermissionCache(),
   ]);
 
   return getRoleById(role._id);
@@ -183,6 +185,7 @@ export async function updateRole(roleId, { name, description, status, permission
   await Promise.all([
     delCachePattern("roles:*"),
     delCachePattern("teams:*"),
+    invalidateUserPermissionCache(),
   ]);
 
   return getRoleById(role._id);
@@ -234,6 +237,7 @@ export async function deleteRole(roleId, { reassignToRoleId, reassignedBy } = {}
   await Promise.all([
     delCachePattern("roles:*"),
     delCachePattern("teams:*"),
+    invalidateUserPermissionCache(),
   ]);
 
   return { success: true, message: "Role archived successfully.", reassignedCount };

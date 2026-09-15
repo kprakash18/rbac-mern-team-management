@@ -14,6 +14,11 @@ export function initSocketServer(httpServer) {
       origin: env.clientUrl || "*",
       credentials: true,
     },
+    pingTimeout: 30000,
+    pingInterval: 10000,
+    maxHttpBufferSize: 1e6,
+    transports: ["websocket", "polling"],
+    perMessageDeflate: false,
   });
 
   const redisClients = createRedisPubSubClients();

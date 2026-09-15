@@ -90,6 +90,11 @@ async function legacyCan(userId, teamId, permissionKey, resource = null) {
 
 test.before(async () => {
   await connectDatabase(env.mongoUri);
+  await User.deleteMany({ email: /@test-phase3\.local$/ });
+  await Team.deleteMany({ name: /Test Phase3/ });
+  await Role.deleteMany({ name: /Test Phase3/ });
+  await Permission.deleteMany({ key: /test\.phase3\./ });
+  await AccessGrant.deleteMany({ resource: /test-phase3-/ });
 });
 
 test.after(async () => {

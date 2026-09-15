@@ -6,6 +6,7 @@ import Role from "../roles/role.model.js";
 import RolePermission from "../roles/role-permission.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
+import { getCache, setCache, delCache, delCachePattern } from "../../config/redis.js";
 
 export async function getMembership(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
@@ -44,6 +45,13 @@ export async function resolveRolePermissions(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
     return new Set();
   }
+
+  const cacheKey = `auth:role_perms:${userId}:${teamId}`;
+  const cached = await getCache(cacheKey);
+  if (Array.isArray(cached)) {
+    return new Set(cached);
+  }
+
   const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" });
   if (!membership) return new Set();
 
@@ -90,6 +98,7 @@ export async function resolveRolePermissions(userId, teamId) {
     }
   }
 
+  await setCache(cacheKey, Array.from(permissionKeys), 300);
   return permissionKeys;
 }
 
@@ -183,15 +192,24 @@ export async function isSuperAdmin(userId) {
 
   if (!mongoose.Types.ObjectId.isValid(idStr)) return false;
 
+  const cacheKey = `auth:superadmin:${idStr}`;
+  const cached = await getCache(cacheKey);
+  if (typeof cached === "boolean") {
+    return cached;
+  }
+
   const user = await User.findById(idStr).select("isSuperAdmin accountStatus");
   if (!user || user.accountStatus === "SUSPENDED" || user.accountStatus === "DISABLED") {
+    await setCache(cacheKey, false, 300);
     return false;
   }
 
   if (user.isSuperAdmin === true) {
+    await setCache(cacheKey, true, 300);
     return true;
   }
   if (user.isSuperAdmin === false) {
+    await setCache(cacheKey, false, 300);
     return false;
   }
 
@@ -212,11 +230,13 @@ export async function isSuperAdmin(userId) {
       });
       if (hasRole) {
         await User.updateOne({ _id: idStr }, { $set: { isSuperAdmin: true } });
+        await setCache(cacheKey, true, 300);
         return true;
       }
     }
   }
 
+  await setCache(cacheKey, false, 300);
   return false;
 }
 
@@ -418,6 +438,28 @@ export async function getAllUserPermissions(userId) {
   return results;
 }
 
+export async function invalidateUserPermissionCache(userId = null, teamId = null) {
+  try {
+    if (userId && teamId) {
+      await delCache(`auth:role_perms:${userId}:${teamId}`);
+    } else if (userId) {
+      await Promise.all([
+        delCachePattern(`auth:role_perms:${userId}:*`),
+        delCache(`auth:superadmin:${userId}`),
+      ]);
+    } else if (teamId) {
+      await delCachePattern(`auth:role_perms:*:${teamId}`);
+    } else {
+      await Promise.all([
+        delCachePattern("auth:role_perms:*"),
+        delCachePattern("auth:superadmin:*"),
+      ]);
+    }
+  } catch (err) {
+    // Non-blocking fallback
+  }
+}
+
 export const authorizationService = {
   getMembership,
   getActiveRoleIds,
@@ -430,6 +472,7 @@ export const authorizationService = {
   getAllSuperAdminUserIds,
   getUserActiveRoleNames,
   getAllUserPermissions,
+  invalidateUserPermissionCache,
 };
 
 export default authorizationService;

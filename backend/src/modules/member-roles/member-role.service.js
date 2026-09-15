@@ -5,7 +5,7 @@ import Role from "../roles/role.model.js";
 import Team from "../teams/team.model.js";
 import User from "../users/user.model.js";
 import { BadRequestError, NotFoundError, ConflictError, ForbiddenError } from "../../common/errors/index.js";
-import { isSuperAdmin } from "../authorization/authorization.service.js";
+import { isSuperAdmin, invalidateUserPermissionCache } from "../authorization/authorization.service.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createTargetedNotifications } from "../notifications/notification.service.js";
@@ -83,6 +83,7 @@ export async function assignRoleToMember({ teamId, userId, roleId, expiresAt = n
   await Promise.all([
     delCachePattern("teams:*"),
     delCachePattern("users:*"),
+    invalidateUserPermissionCache(userId, teamId),
   ]);
 
   return getAssignmentById(assignment._id);
@@ -103,6 +104,7 @@ export async function updateRoleAssignmentTtl({ teamId, userId, assignmentId, ex
   await Promise.all([
     delCachePattern("teams:*"),
     delCachePattern("users:*"),
+    invalidateUserPermissionCache(userId, teamId),
   ]);
 
   return getAssignmentById(assignment._id);
@@ -128,7 +130,7 @@ export async function revokeRoleAssignment({ teamId, userId, assignmentId, revok
     });
 
     if (activeAdminCount <= 1) {
-      throw new ConflictError("Cannot revoke the role from the last remaining administrator in this team.", "LAST_ADMIN_CANNOT_BE_REMOVED");
+      throw new ForbiddenError("Cannot revoke the only Team Admin assignment for this team.", "CANNOT_REMOVE_LAST_ADMIN");
     }
   }
 
@@ -165,6 +167,7 @@ export async function revokeRoleAssignment({ teamId, userId, assignmentId, revok
   await Promise.all([
     delCachePattern("teams:*"),
     delCachePattern("users:*"),
+    invalidateUserPermissionCache(userId, teamId),
   ]);
 
   return { success: true, message: "Role assignment revoked successfully." };
