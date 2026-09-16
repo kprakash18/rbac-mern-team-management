@@ -12,7 +12,7 @@ import { logAuditEvent } from "../audit/audit.service.js";
 import { emitToUser, emitToTeam } from "../../realtime/event-emitter.js";
 import { createTargetedNotifications } from "../notifications/notification.service.js";
 
-import { getCache, setCache, delCachePattern } from "../../config/redis.js";
+import { getCache, setCache, delCachePattern, invalidateUserAuthCache } from "../../config/redis.js";
 
 export async function searchUsers({ query = "", page = 1, limit = 50, status } = {}) {
   const cacheKey = `users:search:${JSON.stringify({ query, page, limit, status })}`;
@@ -174,6 +174,7 @@ export async function updateUser(userId, data = {}, actorId = null) {
   await Promise.all([
     delCachePattern("users:*"),
     delCachePattern("teams:*"),
+    invalidateUserAuthCache(userId),
   ]);
 
   return enriched;

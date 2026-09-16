@@ -57,7 +57,9 @@ export async function createTask({ teamId, creatorUserId, title, description, as
     metadata: { title: task.title, priority: task.priority },
   });
 
-  await delCachePattern("teams:bootstrap:*");
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => {
+    console.warn(`[Redis] Failed to invalidate bootstrap cache for team ${teamId}:`, err.message);
+  });
 
   return task;
 }
@@ -215,7 +217,9 @@ export async function updateTask({ teamId, taskId, updates = {}, callerUserId })
     metadata: { title: updatedTask.title, status: updatedTask.status },
   });
 
-  await delCachePattern("teams:bootstrap:*");
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => {
+    console.warn(`[Redis] Failed to invalidate bootstrap cache for team ${teamId}:`, err.message);
+  });
 
   return updatedTask;
 }
@@ -234,7 +238,9 @@ export async function deleteTask({ teamId, taskId, callerUserId }) {
     metadata: { title: deletedTask.title },
   });
 
-  await delCachePattern("teams:bootstrap:*");
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => {
+    console.warn(`[Redis] Failed to invalidate bootstrap cache for team ${teamId}:`, err.message);
+  });
 
   return { success: true, message: "Task deleted successfully" };
 }

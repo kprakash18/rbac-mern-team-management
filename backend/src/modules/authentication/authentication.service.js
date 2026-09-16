@@ -6,6 +6,7 @@ import { disconnectUserSockets } from "../../realtime/event-emitter.js";
 import { isSuperAdmin, getUserActiveRoleNames } from "../authorization/authorization.service.js";
 import { validateLoginInput, validatePasswordChangeInput } from "./authentication.validation.js";
 import { BadRequestError, UnauthorizedError, ForbiddenError, NotFoundError } from "../../common/errors/index.js";
+import { invalidateUserAuthCache } from "../../config/redis.js";
 
 export async function login({ email, password }) {
   const validation = validateLoginInput({ email, password });
@@ -98,6 +99,7 @@ export async function changePassword(userId, { currentPassword, newPassword }) {
   user.passwordChangedAt = new Date();
   if (user.accountStatus === "INVITED") user.accountStatus = "ACTIVE";
   await user.save();
+  await invalidateUserAuthCache(userId);
 
   const accessToken = signAccessToken({ sub: user._id.toString() });
   logAuditEvent({ actorId: user._id, action: "auth.password_changed", targetType: "User", targetId: user._id, result: "SUCCESS" });
@@ -119,6 +121,7 @@ export async function logout(userId) {
   if (!userId) return { message: "Logged out successfully." };
 
   await User.findByIdAndUpdate(userId, { $set: { lastLogoutAt: new Date() } });
+  await invalidateUserAuthCache(userId);
   disconnectUserSockets(userId);
   logAuditEvent({ actorId: userId, action: "auth.logout", targetType: "User", targetId: userId, result: "SUCCESS" });
 

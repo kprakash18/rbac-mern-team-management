@@ -6,7 +6,7 @@ import Role from "../roles/role.model.js";
 import RolePermission from "../roles/role-permission.model.js";
 import Permission from "../permissions/permission.model.js";
 import AccessGrant from "../access/access-grant.model.js";
-import { getCache, setCache, delCache, delCachePattern } from "../../config/redis.js";
+import { getCache, setCache, delCache, delCachePattern, invalidateUserAuthCache } from "../../config/redis.js";
 
 export async function getMembership(userId, teamId) {
   if (!userId || !teamId || !mongoose.Types.ObjectId.isValid(userId) || !mongoose.Types.ObjectId.isValid(teamId)) {
@@ -391,21 +391,20 @@ export async function can(param1, param2, param3, param4 = null, param5 = null) 
 
   if (!teamId || !mongoose.Types.ObjectId.isValid(teamId)) return false;
 
-  const membership = await Membership.findOne({
-    userId: actorId,
-    teamId,
-    status: "ACTIVE",
-  }).select("roleIds");
-
-  if (!membership) {
-    return false;
-  }
-
   const normalizedAction = action.toLowerCase().trim();
 
+  // 1. FAST PATH (99% of requests): Check Redis-cached role permissions.
+  // resolveRolePermissions only contains keys if the user is an ACTIVE member.
   const rolePermissions = await resolveRolePermissions(actorId, teamId);
   if (rolePermissions.has(normalizedAction) || rolePermissions.has("*")) {
     return true;
+  }
+
+  // 2. FALLBACK PATH (JIT / Direct Grants): Explicitly gate on active membership
+  // before evaluating any direct grant, preventing removed/suspended users from bypassing auth.
+  const membership = await getMembership(actorId, teamId);
+  if (!membership) {
+    return false;
   }
 
   return hasValidDirectGrant({
@@ -423,29 +422,36 @@ export async function getAllUserPermissions(userId) {
     status: "ACTIVE",
   }).populate("teamId", "name description status");
 
-  const results = [];
-  for (const membership of memberships) {
-    if (!membership.teamId || membership.teamId.status === "ARCHIVED") {
-      continue;
-    }
-    const teamPermissions = await resolvePermissions(userId, membership.teamId._id);
-    results.push({
-      teamId: membership.teamId._id,
-      teamName: membership.teamId.name,
-      permissions: teamPermissions,
-    });
-  }
+  const activeMemberships = memberships.filter(
+    (m) => m.teamId && m.teamId.status !== "ARCHIVED"
+  );
+
+  const results = await Promise.all(
+    activeMemberships.map(async (membership) => {
+      const teamPermissions = await resolvePermissions(userId, membership.teamId._id);
+      return {
+        teamId: membership.teamId._id,
+        teamName: membership.teamId.name,
+        permissions: teamPermissions,
+      };
+    })
+  );
+
   return results;
 }
 
 export async function invalidateUserPermissionCache(userId = null, teamId = null) {
   try {
     if (userId && teamId) {
-      await delCache(`auth:role_perms:${userId}:${teamId}`);
+      await Promise.all([
+        delCache(`auth:role_perms:${userId}:${teamId}`),
+        invalidateUserAuthCache(userId),
+      ]);
     } else if (userId) {
       await Promise.all([
         delCachePattern(`auth:role_perms:${userId}:*`),
         delCache(`auth:superadmin:${userId}`),
+        invalidateUserAuthCache(userId),
       ]);
     } else if (teamId) {
       await delCachePattern(`auth:role_perms:*:${teamId}`);
@@ -453,6 +459,7 @@ export async function invalidateUserPermissionCache(userId = null, teamId = null
       await Promise.all([
         delCachePattern("auth:role_perms:*"),
         delCachePattern("auth:superadmin:*"),
+        delCachePattern("auth:user:*"),
       ]);
     }
   } catch (err) {

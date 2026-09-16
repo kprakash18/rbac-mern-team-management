@@ -90,6 +90,7 @@ accessRequestSchema.index({
   teamId: 1,
   status: 1,
 });
+accessRequestSchema.index({ teamId: 1, status: 1, createdAt: -1 });
 
 const AccessRequest = mongoose.model(
   "AccessRequest",

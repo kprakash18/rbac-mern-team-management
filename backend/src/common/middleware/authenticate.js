@@ -2,6 +2,7 @@ import { verifyAccessToken } from "../security/jwt.js";
 import User from "../../modules/users/user.model.js";
 import { isSuperAdmin } from "../../modules/authorization/authorization.service.js";
 import { UnauthorizedError, ForbiddenError } from "../errors/index.js";
+import { getCache, setCache } from "../../config/redis.js";
 
 export async function authenticate(req, res, next) {
   try {
@@ -22,12 +23,18 @@ export async function authenticate(req, res, next) {
     }
 
     const userId = decoded.sub;
-    const user = await User.findById(userId)
-      .select("name email accountStatus mustChangePassword lastLogoutAt isSuperAdmin")
-      .lean();
+    const cacheKey = `auth:user:${userId}`;
+    let user = await getCache(cacheKey);
 
     if (!user) {
-      throw new UnauthorizedError("User account no longer exists.", "USER_NOT_FOUND");
+      user = await User.findById(userId)
+        .select("name email accountStatus mustChangePassword lastLogoutAt isSuperAdmin")
+        .lean();
+
+      if (!user) {
+        throw new UnauthorizedError("User account no longer exists.", "USER_NOT_FOUND");
+      }
+      await setCache(cacheKey, user, 60);
     }
 
     if (user.accountStatus === "SUSPENDED") {

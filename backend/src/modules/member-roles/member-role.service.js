@@ -80,11 +80,10 @@ export async function assignRoleToMember({ teamId, userId, roleId, expiresAt = n
     metadata: { userId, roleId, expiresAt },
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-    invalidateUserPermissionCache(userId, teamId),
-  ]);
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return getAssignmentById(assignment._id);
 }
@@ -101,11 +100,8 @@ export async function updateRoleAssignmentTtl({ teamId, userId, assignmentId, ex
   assignment.expiresAt = expiresAt ? new Date(expiresAt) : null;
   await assignment.save();
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-    invalidateUserPermissionCache(userId, teamId),
-  ]);
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return getAssignmentById(assignment._id);
 }
@@ -164,11 +160,10 @@ export async function revokeRoleAssignment({ teamId, userId, assignmentId, revok
     metadata: { userId, roleId: assignment.roleId },
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-    invalidateUserPermissionCache(userId, teamId),
-  ]);
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return { success: true, message: "Role assignment revoked successfully." };
 }

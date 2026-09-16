@@ -6,25 +6,29 @@ import {
   deleteChatMessage,
 } from "./chat.service.js";
 import { getMembership, hasValidDirectGrant } from "../authorization/authorization.service.js";
-import { emitToUser } from "../../realtime/event-emitter.js";
-import { createNotification } from "../notifications/notification.service.js";
+import { createBatchDomainNotifications } from "../notifications/notification.service.js";
 import Membership from "../memberships/membership.model.js";
 import User from "../users/user.model.js";
 
-async function resolveToUserId(rawId) {
-  if (!rawId) return null;
-  const strId = String(rawId);
-  if (!mongoose.Types.ObjectId.isValid(strId)) return strId;
+async function resolveMemberIdsToUserIds(rawIds = []) {
+  if (!Array.isArray(rawIds) || rawIds.length === 0) return [];
+  const validObjectIds = rawIds.filter((id) => id && mongoose.Types.ObjectId.isValid(String(id)));
+  if (validObjectIds.length === 0) return rawIds.map(String);
 
-  const isUser = await User.exists({ _id: strId });
-  if (isUser) return strId;
+  const [existingUsers, memberships] = await Promise.all([
+    User.find({ _id: { $in: validObjectIds } }).select("_id").lean(),
+    Membership.find({ _id: { $in: validObjectIds } }).select("_id userId").lean(),
+  ]);
 
-  const membership = await Membership.findById(strId).select("userId");
-  if (membership && membership.userId) {
-    return String(membership.userId);
-  }
+  const userSet = new Set(existingUsers.map((u) => String(u._id)));
+  const membershipMap = new Map(memberships.map((m) => [String(m._id), String(m.userId)]));
 
-  return strId;
+  return rawIds.map((rawId) => {
+    const strId = String(rawId);
+    if (userSet.has(strId)) return strId;
+    if (membershipMap.has(strId)) return membershipMap.get(strId);
+    return strId;
+  });
 }
 
 async function verifyUserTeamAccess(userId, teamId) {
@@ -221,21 +225,26 @@ export function registerChatHandlers(io, socket) {
 
   async function notifyChannelMembers(teamId, groupId, channelName, rawMemberIds) {
     const memberIds = Array.isArray(rawMemberIds) ? rawMemberIds : [];
-    for (const rawMemberId of memberIds) {
-      const resolvedUserId = await resolveToUserId(rawMemberId);
-      if (resolvedUserId && String(resolvedUserId) !== String(user.id)) {
-        createNotification({
-          recipientId: resolvedUserId,
-          actorId: user.id,
-          type: "CHANNEL_ADDED",
-          teamId,
-          resourceType: "CHANNEL",
-          resourceId: groupId,
-          metadata: { groupId, channelName, actorName: user.name },
-          title: "Added to Channel",
-          message: `You were added to channel #${channelName} by ${user.name}.`,
-        }).catch((err) => console.error("Failed to persist notification:", err));
-      }
+    if (memberIds.length === 0) return;
+    const resolvedUserIds = await resolveMemberIdsToUserIds(memberIds);
+    const notifications = resolvedUserIds
+      .filter((resolvedUserId) => resolvedUserId && String(resolvedUserId) !== String(user.id))
+      .map((resolvedUserId) => ({
+        recipientId: resolvedUserId,
+        actorId: user.id,
+        type: "CHANNEL_ADDED",
+        teamId,
+        resourceType: "CHANNEL",
+        resourceId: groupId,
+        metadata: { groupId, channelName, actorName: user.name },
+        title: "Added to Channel",
+        message: `You were added to channel #${channelName} by ${user.name}.`,
+      }));
+
+    if (notifications.length > 0) {
+      createBatchDomainNotifications(notifications).catch((err) =>
+        console.error("Failed to persist notification batch:", err)
+      );
     }
   }
 

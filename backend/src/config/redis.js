@@ -146,6 +146,15 @@ export async function delCachePattern(pattern) {
   }
 }
 
+export async function invalidateUserAuthCache(userId) {
+  if (!userId) return false;
+  const idStr =
+    typeof userId === "object"
+      ? (userId._id || userId.id || userId).toString()
+      : String(userId);
+  return delCache(`auth:user:${idStr}`);
+}
+
 export async function closeRedis() {
   if (redisClient) {
     try {
@@ -157,3 +166,4 @@ export async function closeRedis() {
     isConnected = false;
   }
 }
+

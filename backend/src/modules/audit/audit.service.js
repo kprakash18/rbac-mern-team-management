@@ -27,13 +27,17 @@ export async function logAuditEvent({
       userAgent: userAgent || null,
     });
 
-    try {
-      const populated = await logDoc.populate([
-        { path: "actorId", select: "name email" },
-        { path: "teamId", select: "name" },
-      ]);
-      emitToAll("audit:new", populated);
-    } catch {}
+    (async () => {
+      try {
+        const populated = await logDoc.populate([
+          { path: "actorId", select: "name email" },
+          { path: "teamId", select: "name" },
+        ]);
+        emitToAll("audit:new", populated);
+      } catch (err) {
+        console.warn("[Audit] Real-time audit broadcast warning:", err.message);
+      }
+    })().catch(() => {});
   } catch (error) {
     console.error("Failed to log audit event:", error);
   }

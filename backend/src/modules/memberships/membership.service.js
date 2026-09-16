@@ -13,6 +13,7 @@ import { env } from "../../config/env.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
 import { delCachePattern } from "../../config/redis.js";
+import { invalidateUserPermissionCache } from "../authorization/authorization.service.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -98,10 +99,10 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
         workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
       }).catch(() => {});
 
-      await Promise.all([
-        delCachePattern("teams:*"),
-        delCachePattern("users:*"),
-      ]);
+      delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+      delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+      delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+      invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
       return getMembershipById({ teamId, membershipId: existingMembership._id });
     }
@@ -140,10 +141,10 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
     workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
   }).catch(() => {});
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-  ]);
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
@@ -168,33 +169,57 @@ export async function listTeamMembers({ teamId, status, page = 1, limit = 20, se
   const { page: pageNum, limit: limitNum, skip } = getPaginationParams({ page, limit, defaultLimit: 20 });
 
   const [rawMembers, total] = await Promise.all([
-    Membership.find(query).populate("userId", "name email accountStatus").sort({ joinedAt: -1 }).skip(skip).limit(limitNum),
+    Membership.find(query).populate("userId", "name email accountStatus").sort({ joinedAt: -1 }).skip(skip).limit(limitNum).lean(),
     Membership.countDocuments(query),
   ]);
 
-  const memberRoles = await MembershipRole.find({ membershipId: { $in: rawMembers.map((m) => m._id) }, revokedAt: null })
-    .populate("roleId", "name isSystemRole description")
-    .lean();
+  const membershipIds = rawMembers.map((m) => m._id);
+  const memberRoles = membershipIds.length > 0
+    ? await MembershipRole.find({ membershipId: { $in: membershipIds }, revokedAt: null })
+        .populate("roleId", "name isSystemRole description")
+        .lean()
+    : [];
 
-  const allRoleIds = memberRoles.map((mr) => mr.roleId?._id).filter(Boolean);
-  const rolePermissions = await RolePermission.find({ roleId: { $in: allRoleIds } })
-    .populate("permissionId", "key description category resource action")
-    .lean();
+  const rolesByMembership = new Map();
+  const allRoleIds = [];
+  for (const mr of memberRoles) {
+    const memId = String(mr.membershipId);
+    if (!rolesByMembership.has(memId)) rolesByMembership.set(memId, []);
+    if (mr.roleId) {
+      rolesByMembership.get(memId).push(mr.roleId);
+      allRoleIds.push(mr.roleId._id);
+    }
+  }
+
+  const rolePermissions = allRoleIds.length > 0
+    ? await RolePermission.find({ roleId: { $in: allRoleIds } })
+        .populate("permissionId", "key description category resource action")
+        .lean()
+    : [];
+
+  const permsByRole = new Map();
+  for (const rp of rolePermissions) {
+    const rId = String(rp.roleId);
+    if (!permsByRole.has(rId)) permsByRole.set(rId, []);
+    const permDesc = rp.permissionId?.description || rp.permissionId?.key;
+    if (permDesc) permsByRole.get(rId).push(permDesc);
+  }
 
   const members = rawMembers.map((m) => {
-    const mObj = m.toObject ? m.toObject() : { ...m };
-    const roles = memberRoles.filter((mr) => String(mr.membershipId) === String(m._id)).map((mr) => mr.roleId).filter(Boolean);
-    const memberRoleIds = roles.map((r) => String(r._id));
-    const permissions = [...new Set(
-      rolePermissions.filter((rp) => memberRoleIds.includes(String(rp.roleId))).map((rp) => rp.permissionId?.description || rp.permissionId?.key).filter(Boolean)
-    )];
+    const memId = String(m._id);
+    const roles = rolesByMembership.get(memId) || [];
+    const permSet = new Set();
+    for (const r of roles) {
+      const rPerms = permsByRole.get(String(r._id)) || [];
+      for (const p of rPerms) permSet.add(p);
+    }
 
     return {
-      ...mObj,
+      ...m,
       roles,
       role: roles[0]?.name || "Developer",
       isTeamAdmin: roles.some((r) => r.name?.toLowerCase().includes("admin")),
-      permissions,
+      permissions: Array.from(permSet),
     };
   });
 
@@ -271,10 +296,10 @@ async function handleMembershipStatusChange({ teamId, membershipId, actorId, new
     result: "SUCCESS",
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-  ]);
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:user:${membership.userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateUserPermissionCache(membership.userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return newStatus === "REMOVED" ? { success: true, message: "Member removed from team successfully." } : getMembershipById({ teamId, membershipId: membership._id });
 }

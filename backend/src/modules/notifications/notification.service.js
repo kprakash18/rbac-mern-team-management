@@ -109,23 +109,20 @@ export async function createTargetedNotifications({
   const uniqueRecipients = [...new Set(rawList.filter(Boolean).map((r) => String(r._id || r.id || r)))].filter(isValidId);
   if (uniqueRecipients.length === 0) return [];
 
-  const created = [];
-  for (const recipientId of uniqueRecipients) {
-    const notif = await createDomainNotification({
-      recipientId,
-      actorId,
-      type,
-      title,
-      message,
-      teamId,
-      resourceType,
-      resourceId,
-      metadata,
-      allowSelfNotification: true,
-    });
-    if (notif) created.push(notif);
-  }
-  return created;
+  const items = uniqueRecipients.map((recipientId) => ({
+    recipientId,
+    actorId,
+    type,
+    title,
+    message,
+    teamId,
+    resourceType,
+    resourceId,
+    metadata,
+    allowSelfNotification: true,
+  }));
+
+  return createBatchDomainNotifications(items);
 }
 
 export async function createBatchDomainNotifications(notifications = []) {
@@ -152,14 +149,16 @@ export async function createBatchDomainNotifications(notifications = []) {
   }, []);
 
   if (validDocs.length === 0) return [];
-  const createdDocs = await Notification.insertMany(validDocs);
+  const createdDocs = await Notification.insertMany(validDocs, { ordered: false });
 
   for (const doc of createdDocs) {
     try {
       emitToUser(doc.recipientId, "notification:new", toNotifPayload(doc));
       getUnreadNotificationCount({ userId: doc.recipientId }).then(({ unreadCount }) => {
         emitToUser(doc.recipientId, "notification:count", { unreadCount });
-      }).catch(() => {});
+      }).catch((err) => {
+        console.warn(`[Notification] Unread count push failed for ${doc.recipientId}:`, err.message);
+      });
     } catch {}
   }
 
@@ -455,21 +454,26 @@ export async function createGlobalBroadcast({ senderId, data }) {
       recipientIds = activeUsers.map((u) => String(u._id));
     }
 
-    for (const recipientId of recipientIds) {
-      if (String(recipientId) !== String(senderId)) {
-        await createDomainNotification({
-          recipientId,
-          actorId: senderId,
-          type: type === "OUTAGE" ? "SECURITY_ALERT" : "SYSTEM",
-          title: `[${type}] ${finalTitle}`,
-          message: finalBody.slice(0, 160),
-          resourceType: "SYSTEM",
-          resourceId: broadcastDoc._id.toString(),
-          metadata: { broadcastId: broadcastDoc._id.toString(), severity: formatted.severity },
-          allowSelfNotification: false,
-        });
+    const validRecipients = recipientIds.filter((id) => isValidId(id) && String(id) !== String(senderId));
+    const notifPayloads = validRecipients.map((recipientId) => ({
+      recipientId,
+      actorId: senderId,
+      type: type === "OUTAGE" ? "SECURITY_ALERT" : "SYSTEM",
+      title: `[${type}] ${finalTitle}`,
+      message: finalBody.slice(0, 160),
+      resourceType: "SYSTEM",
+      resourceId: broadcastDoc._id.toString(),
+      metadata: { broadcastId: broadcastDoc._id.toString(), severity: formatted.severity },
+      allowSelfNotification: false,
+    }));
+
+    (async () => {
+      const CHUNK_SIZE = 500;
+      for (let i = 0; i < notifPayloads.length; i += CHUNK_SIZE) {
+        const chunk = notifPayloads.slice(i, i + CHUNK_SIZE);
+        await createBatchDomainNotifications(chunk);
       }
-    }
+    })().catch((err) => console.error("Failed to dispatch broadcast notification batch:", err));
   } catch (err) {
     console.error("Failed to dispatch in-app notifications for broadcast:", err);
   }

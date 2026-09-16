@@ -48,6 +48,8 @@ membershipSchema.index(
   { unique: true }
 );
 membershipSchema.index({ userId: 1, status: 1 });
+membershipSchema.index({ teamId: 1, status: 1 });
+membershipSchema.index({ teamId: 1, userId: 1, status: 1 });
 
 const Membership = mongoose.model("Membership", membershipSchema);
 

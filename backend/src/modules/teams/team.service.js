@@ -47,10 +47,8 @@ export async function createTeam({ name, description = "", createdBy }) {
     metadata: { name: team.name },
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-  ]);
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:user:${createdBy}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return getTeamById(team._id);
 }
@@ -190,10 +188,9 @@ export async function updateTeam(teamId, { name, description, status }) {
     metadata: { name: team.name, description: team.description, status: team.status },
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-  ]);
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:user:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return getTeamById(team._id);
 }
@@ -215,10 +212,10 @@ export async function archiveTeam(teamId, actorId = null) {
     metadata: { name: team.name },
   });
 
-  await Promise.all([
-    delCachePattern("teams:*"),
-    delCachePattern("users:*"),
-  ]);
+  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern("teams:user:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  delCachePattern(`auth:role_perms:*:${teamId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
 
   return { success: true, message: "Team archived successfully." };
 }
