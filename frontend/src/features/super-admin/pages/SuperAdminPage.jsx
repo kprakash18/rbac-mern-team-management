@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import SuperAdminSidebar from '../shell/SuperAdminSidebar';
 import SuperAdminTopbar from '../shell/SuperAdminTopbar';
 import PlatformMetricsCards from '../components/PlatformMetricsCards';
@@ -13,30 +13,7 @@ import SecurityAuditView from '../components/SecurityAuditView';
 import WorkspaceModal from '../components/WorkspaceModal';
 import { Toast } from '@/shared/components';
 import { useToast } from '../../../lib/useToast';
-import api from '@/lib/api';
-import { getSocket } from '../../../lib/socket';
-
-function formatActivityItem(l) {
-  const actorName = l.actor?.name || l.actorId?.name || 'System Admin';
-  const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'SA';
-  const timeStr = l.createdAt
-    ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-    : 'Just now';
-  return {
-    id: l._id || l.id,
-    time: timeStr,
-    actor: {
-      name: actorName,
-      initials,
-      isSystem: l.actor?.isSystem || false,
-      isError: l.result === 'FAILURE' || l.result === 'FAILED',
-    },
-    action: l.action || 'system.event',
-    target: l.targetId?.name || l.targetIdentifier || l.targetType || (l.teamId?.name ? `${l.teamId.name}` : 'System Resource'),
-    result: (l.result || 'SUCCESS').toUpperCase(),
-    resultType: (l.result || 'success').toLowerCase(),
-  };
-}
+import { useSuperAdminDashboard } from '../hooks/useSuperAdminDashboard';
 
 export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
   const [activeNav, setActiveNav] = useState('dashboard');
@@ -45,127 +22,38 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   const [createTeamTrigger, setCreateTeamTrigger] = useState(0);
   const [editingWorkspace, setEditingWorkspace] = useState(null);
   const [toast, showToast] = useToast(3500);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [activities, setActivities] = useState([]);
-  const [metrics, setMetrics] = useState({
-    workspaces: { total: 0, active: 0, archived: 0 },
-    users: { total: 0, active: 0, invited: 0, suspended: 0 },
-    jitGrants: { active: 0, trending: '0', percentage: '0%' },
-    securityEvents: { today: 0, last24Hours: 'Live stream' },
-  });
-  const [loading, setLoading] = useState(true);
 
-  const fetchDashboardData = useCallback(async () => {
-    try {
-      setLoading(true);
-      const [teamsRes, statsRes, auditRes, jitRes] = await Promise.allSettled([
-        api.get('/api/teams?limit=50'),
-        api.get('/api/users/stats'),
-        api.get('/api/audit-logs?limit=20'),
-        api.get('/api/access-requests'),
-      ]);
-
-      const rawTeams = teamsRes.status === 'fulfilled' ? (teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || []) : [];
-      const userStats = statsRes.status === 'fulfilled' ? (statsRes.value.data?.data || {}) : {};
-
-      const formattedWorkspaces = rawTeams.map((w) => ({
-        ...w,
-        id: w._id || w.id,
-        name: w.name,
-        description: w.description || 'Workspace',
-        status: w.status === 'ACTIVE' ? 'Active' : w.status === 'ARCHIVED' ? 'Archived' : w.status || 'Active',
-        membersCount: w.membersCount || 1,
-        tier: w.tier || 'Standard RBAC',
-      }));
-      setWorkspaces(formattedWorkspaces);
-
-      const params = new URLSearchParams(window.location.search);
-      const targetTeamId = params.get('teamId') || params.get('workspace');
-      if (targetTeamId && onJumpIntoWorkspace) {
-        const matched = formattedWorkspaces.find(
-          (w) => String(w.id) === String(targetTeamId) || String(w._id) === String(targetTeamId)
-        );
-        if (matched) {
-          onJumpIntoWorkspace(matched);
-        }
-      }
-
-      const activeWs = formattedWorkspaces.filter((w) => w.status !== 'Archived').length;
-      const archivedWs = formattedWorkspaces.filter((w) => w.status === 'Archived').length;
-
-      const totalU = userStats.total || 10000;
-      const activeU = userStats.active || 0;
-      const invitedU = userStats.invited || 0;
-      const suspendedU = userStats.suspended || 0;
-
-      let fetchedActivities = [];
-      let activeJitCount = 0;
-
-      if (auditRes.status === 'fulfilled' && auditRes.value.data?.data) {
-        const logs = Array.isArray(auditRes.value.data.data)
-          ? auditRes.value.data.data
-          : auditRes.value.data.data.logs || [];
-        fetchedActivities = logs.map(formatActivityItem);
-      }
-
-      if (jitRes.status === 'fulfilled' && jitRes.value.data?.data) {
-        const jits = Array.isArray(jitRes.value.data.data) ? jitRes.value.data.data : [];
-        activeJitCount = jits.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
-      }
-
-      setActivities(fetchedActivities);
-      setMetrics({
-        workspaces: { total: formattedWorkspaces.length, active: activeWs, archived: archivedWs },
-        users: { total: totalU, active: activeU, invited: invitedU, suspended: suspendedU },
-        jitGrants: { active: activeJitCount, trending: `+${activeJitCount}`, percentage: '100%' },
-        securityEvents: { today: fetchedActivities.length, last24Hours: 'Live audit log stream' },
-      });
-    } catch (err) {
-      console.error('Failed to load platform dashboard data:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [onJumpIntoWorkspace]);
+  const {
+    workspaces,
+    activities,
+    metrics,
+    loading,
+    createWorkspaceCache,
+    updateWorkspaceCache,
+    archiveWorkspaceCache,
+    restoreWorkspaceCache,
+  } = useSuperAdminDashboard();
 
   useEffect(() => {
-    fetchDashboardData();
-
-    const socket = getSocket();
-    if (!socket) return;
-
-    const handleNewActivity = (newLog) => {
-      const formatted = formatActivityItem(newLog);
-      setActivities((prev) => [formatted, ...prev.filter((a) => a.id !== formatted.id)].slice(0, 30));
-      setMetrics((prev) => ({
-        ...prev,
-        securityEvents: {
-          ...prev.securityEvents,
-          today: (prev.securityEvents?.today || 0) + 1,
-        },
-      }));
-    };
-
-    socket.on('audit:new', handleNewActivity);
-    return () => {
-      socket.off('audit:new', handleNewActivity);
-    };
-  }, [fetchDashboardData]);
+    if (!workspaces.length || !onJumpIntoWorkspace) return;
+    const params = new URLSearchParams(window.location.search);
+    const targetTeamId = params.get('teamId') || params.get('workspace');
+    if (targetTeamId) {
+      const matched = workspaces.find(
+        (w) => String(w.id) === String(targetTeamId) || String(w._id) === String(targetTeamId)
+      );
+      if (matched) {
+        onJumpIntoWorkspace(matched);
+      }
+    }
+  }, [workspaces, onJumpIntoWorkspace]);
 
   const handleCreateWorkspace = (newWs) => {
-    setWorkspaces((prev) => {
-      const nextList = [newWs, ...prev];
-      try {
-        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
-      } catch (err) {
-        console.error(err);
-      }
-      return nextList;
-    });
-
+    createWorkspaceCache(newWs);
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
       storedUserWs.unshift({
-        id: newWs.id,
+        id: newWs.id || newWs._id,
         name: newWs.name,
         description: newWs.description,
         icon: newWs.icon || 'engineering',
@@ -179,19 +67,13 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   };
 
   const handleUpdateWorkspace = (updatedWs) => {
-    setWorkspaces((prev) => {
-      const nextList = prev.map((ws) => (ws.id === updatedWs.id ? updatedWs : ws));
-      try {
-        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
-      } catch (err) {
-        console.error(err);
-      }
-      return nextList;
-    });
-
+    updateWorkspaceCache(updatedWs);
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
-      const nextUserWs = storedUserWs.map((ws) => (ws.id === updatedWs.id ? { ...ws, ...updatedWs } : ws));
+      const targetId = updatedWs.id || updatedWs._id;
+      const nextUserWs = storedUserWs.map((ws) =>
+        (ws.id || ws._id) === targetId ? { ...ws, ...updatedWs } : ws
+      );
       localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
     } catch {}
 
@@ -200,27 +82,16 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   };
 
   const handleArchiveWorkspace = (workspaceId) => {
-    let targetName = 'Workspace';
-    setWorkspaces((prev) => {
-      const nextList = prev.map((ws) => {
-        if (ws.id === workspaceId) {
-          targetName = ws.name;
-          return { ...ws, status: 'Archived', archivedAt: new Date().toISOString() };
-        }
-        return ws;
-      });
-      try {
-        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
-      } catch (err) {
-        console.error(err);
-      }
-      return nextList;
-    });
+    const target = workspaces.find((w) => (w.id || w._id) === workspaceId);
+    const targetName = target?.name || 'Workspace';
+    archiveWorkspaceCache(workspaceId);
 
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
       const nextUserWs = storedUserWs.map((ws) =>
-        ws.id === workspaceId ? { ...ws, status: 'Archived', archivedAt: new Date().toISOString() } : ws
+        (ws.id || ws._id) === workspaceId
+          ? { ...ws, status: 'Archived', archivedAt: new Date().toISOString() }
+          : ws
       );
       localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
     } catch {}
@@ -230,27 +101,16 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
   };
 
   const handleRestoreWorkspace = (workspaceId) => {
-    let targetName = 'Workspace';
-    setWorkspaces((prev) => {
-      const nextList = prev.map((ws) => {
-        if (ws.id === workspaceId) {
-          targetName = ws.name;
-          return { ...ws, status: 'Active', archivedAt: null };
-        }
-        return ws;
-      });
-      try {
-        localStorage.setItem('platform_workspaces_list', JSON.stringify(nextList));
-      } catch (err) {
-        console.error(err);
-      }
-      return nextList;
-    });
+    const target = workspaces.find((w) => (w.id || w._id) === workspaceId);
+    const targetName = target?.name || 'Workspace';
+    restoreWorkspaceCache(workspaceId);
 
     try {
       const storedUserWs = JSON.parse(localStorage.getItem('custom_workspaces') || '[]');
       const nextUserWs = storedUserWs.map((ws) =>
-        ws.id === workspaceId ? { ...ws, status: 'Active', archivedAt: null } : ws
+        (ws.id || ws._id) === workspaceId
+          ? { ...ws, status: 'Active', archivedAt: null }
+          : ws
       );
       localStorage.setItem('custom_workspaces', JSON.stringify(nextUserWs));
     } catch {}

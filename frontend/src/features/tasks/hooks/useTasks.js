@@ -1,11 +1,10 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '@/lib/socket';
 import * as tasksApi from '../api/tasksApi';
 
 export function useTasks({ teamId, currentUserId }) {
-  const [tasks, setTasks] = useState([]);
-  const [teamMembers, setTeamMembers] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const queryClient = useQueryClient();
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState('ALL');
   const [assigneeFilter, setAssigneeFilter] = useState('ALL');
@@ -17,48 +16,64 @@ export function useTasks({ teamId, currentUserId }) {
     assignedTo: t.assignedTo?._id || t.assignedTo?.id || t.assignedTo,
   }), []);
 
-  const fetchTasksAndMembers = useCallback(async () => {
-    if (!teamId) return;
-    try {
-      setLoading(true);
-      const [rawTasks, rawMembers] = await Promise.all([
-        tasksApi.getTasks(teamId).catch(() => []),
-        tasksApi.getTeamMembers(teamId, 100).catch(() => []),
-      ]);
+  // 1. TanStack Query for Tasks (2 minutes staleTime)
+  const {
+    data: tasks = [],
+    isLoading: isTasksLoading,
+    isFetching: isTasksFetching,
+    refetch: refetchTasks,
+  } = useQuery({
+    queryKey: ['tasks', teamId],
+    queryFn: async () => {
+      if (!teamId) return [];
+      const raw = await tasksApi.getTasks(teamId);
+      return (raw || []).map(normalizeTask);
+    },
+    enabled: Boolean(teamId),
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 15,
+  });
 
-      const normalizedTasks = rawTasks.map((t) => ({
-        ...t,
-        id: t._id || t.id,
-        remarks: t.remarks || t.description || '',
-        assignedTo: t.assignedTo?._id || t.assignedTo?.id || t.assignedTo,
+  // 2. TanStack Query for Team Members (3 minutes staleTime)
+  const {
+    data: teamMembers = [],
+    isLoading: isMembersLoading,
+  } = useQuery({
+    queryKey: ['team-members-list', teamId],
+    queryFn: async () => {
+      if (!teamId) return [];
+      const rawMembers = await tasksApi.getTeamMembers(teamId, 100);
+      return (rawMembers || []).map((m) => ({
+        id: m.userId?._id || m.user?._id || m.userId || m.id || m._id,
+        name: m.userId?.name || m.user?.name || m.name || 'Member',
+        email: m.userId?.email || m.user?.email || m.email || '',
+        initials: (m.userId?.name || m.user?.name || m.name || 'M')
+          .split(' ')
+          .map((n) => n[0])
+          .join('')
+          .toUpperCase()
+          .slice(0, 2),
       }));
-      setTasks(normalizedTasks);
+    },
+    enabled: Boolean(teamId),
+    staleTime: 1000 * 60 * 3,
+    gcTime: 1000 * 60 * 15,
+  });
 
-      setTeamMembers(
-        rawMembers.map((m) => ({
-          id: m.userId?._id || m.user?._id || m.userId || m.id || m._id,
-          name: m.userId?.name || m.user?.name || m.name || 'Member',
-          email: m.userId?.email || m.user?.email || m.email || '',
-          initials: (m.userId?.name || m.user?.name || m.name || 'M')
-            .split(' ')
-            .map((n) => n[0])
-            .join('')
-            .toUpperCase()
-            .slice(0, 2),
-        }))
-      );
-    } catch (err) {
-      console.error('Failed to load tasks:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [teamId]);
+  // 3. Setter helper for backward compatibility that synchronizes with TanStack cache
+  const setTasks = useCallback(
+    (updater) => {
+      queryClient.setQueryData(['tasks', teamId], (old = []) => {
+        if (typeof updater === 'function') {
+          return updater(old);
+        }
+        return updater;
+      });
+    },
+    [queryClient, teamId]
+  );
 
-  const normalizeRef = useRef(normalizeTask);
-  useEffect(() => {
-    normalizeRef.current = normalizeTask;
-  }, [normalizeTask]);
-
+  // 4. WebSocket synchronization
   useEffect(() => {
     if (!teamId) return;
     const socket = getSocket();
@@ -66,12 +81,12 @@ export function useTasks({ teamId, currentUserId }) {
 
     const handleTaskUpdated = ({ task }) => {
       if (!task) return;
-      const normalized = normalizeRef.current(task);
-      setTasks((prev) => {
+      const normalized = normalizeTask(task);
+      queryClient.setQueryData(['tasks', teamId], (prev = []) => {
         const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
         if (exists) {
           return prev.map((t) =>
-            (t.id === normalized.id || t._id === normalized._id) ? { ...t, ...normalized } : t
+            t.id === normalized.id || t._id === normalized._id ? { ...t, ...normalized } : t
           );
         }
         return prev;
@@ -80,8 +95,8 @@ export function useTasks({ teamId, currentUserId }) {
 
     const handleTaskCreated = ({ task }) => {
       if (!task) return;
-      const normalized = normalizeRef.current(task);
-      setTasks((prev) => {
+      const normalized = normalizeTask(task);
+      queryClient.setQueryData(['tasks', teamId], (prev = []) => {
         const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
         return exists ? prev : [normalized, ...prev];
       });
@@ -89,7 +104,9 @@ export function useTasks({ teamId, currentUserId }) {
 
     const handleTaskDeleted = ({ taskId }) => {
       if (!taskId) return;
-      setTasks((prev) => prev.filter((t) => t.id !== taskId && t._id !== taskId));
+      queryClient.setQueryData(['tasks', teamId], (prev = []) =>
+        prev.filter((t) => t.id !== taskId && t._id !== taskId)
+      );
     };
 
     socket.on('task:updated', handleTaskUpdated);
@@ -101,53 +118,94 @@ export function useTasks({ teamId, currentUserId }) {
       socket.off('task:created', handleTaskCreated);
       socket.off('task:deleted', handleTaskDeleted);
     };
-  }, [teamId]);
+  }, [teamId, queryClient, normalizeTask]);
 
-  useEffect(() => {
-    fetchTasksAndMembers();
-  }, [fetchTasksAndMembers]);
-
-  const quickStatusChange = async (taskId, newStatus) => {
-    try {
-      await tasksApi.updateTask(teamId, taskId, { status: newStatus });
-      setTasks((prev) => prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)));
-    } catch (err) {
-      console.error('Failed to update status:', err);
-      alert(err.response?.data?.error?.message || 'Failed to update task status.');
-    }
-  };
-
-  const removeTask = async (taskId) => {
-    if (!window.confirm('Delete this task?')) return;
-    try {
-      await tasksApi.deleteTask(teamId, taskId);
-      setTasks((prev) => prev.filter((t) => t.id !== taskId && t._id !== taskId));
-    } catch (err) {
-      console.error('Failed to delete task:', err);
-      alert(err.response?.data?.error?.message || 'Failed to delete task.');
-    }
-  };
-
-  const getMember = (id) =>
-    teamMembers.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' };
-
-  const filteredTasks = tasks.filter((t) => {
-    const matchesSearch =
-      !searchQuery ||
-      t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      (t.remarks && t.remarks.toLowerCase().includes(searchQuery.toLowerCase()));
-
-    const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
-    const matchesAssignee = assigneeFilter === 'ALL' || t.assignedTo === currentUserId;
-
-    return matchesSearch && matchesStatus && matchesAssignee;
+  // 5. Optimistic Mutations
+  const updateStatusMutation = useMutation({
+    mutationFn: ({ taskId, newStatus }) => tasksApi.updateTask(teamId, taskId, { status: newStatus }),
+    onMutate: async ({ taskId, newStatus }) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks', teamId] });
+      const previousTasks = queryClient.getQueryData(['tasks', teamId]);
+      queryClient.setQueryData(['tasks', teamId], (old = []) =>
+        old.map((t) => (t.id === taskId || t._id === taskId ? { ...t, status: newStatus } : t))
+      );
+      return { previousTasks };
+    },
+    onError: (err, variables, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(['tasks', teamId], context.previousTasks);
+      }
+      alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to update task status.');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', teamId] });
+    },
   });
+
+  const deleteTaskMutation = useMutation({
+    mutationFn: (taskId) => tasksApi.deleteTask(teamId, taskId),
+    onMutate: async (taskId) => {
+      await queryClient.cancelQueries({ queryKey: ['tasks', teamId] });
+      const previousTasks = queryClient.getQueryData(['tasks', teamId]);
+      queryClient.setQueryData(['tasks', teamId], (old = []) =>
+        old.filter((t) => t.id !== taskId && t._id !== taskId)
+      );
+      return { previousTasks };
+    },
+    onError: (err, taskId, context) => {
+      if (context?.previousTasks) {
+        queryClient.setQueryData(['tasks', teamId], context.previousTasks);
+      }
+      alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to delete task.');
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks', teamId] });
+    },
+  });
+
+  const quickStatusChange = useCallback(
+    (taskId, newStatus) => {
+      updateStatusMutation.mutate({ taskId, newStatus });
+    },
+    [updateStatusMutation]
+  );
+
+  const removeTask = useCallback(
+    (taskId) => {
+      if (!window.confirm('Delete this task?')) return;
+      deleteTaskMutation.mutate(taskId);
+    },
+    [deleteTaskMutation]
+  );
+
+  const getMember = useCallback(
+    (id) => teamMembers.find((m) => m.id === id) || { name: 'Unassigned', initials: 'UN' },
+    [teamMembers]
+  );
+
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((t) => {
+      const matchesSearch =
+        !searchQuery ||
+        t.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (t.remarks && t.remarks.toLowerCase().includes(searchQuery.toLowerCase()));
+
+      const matchesStatus = statusFilter === 'ALL' || t.status === statusFilter;
+      const matchesAssignee = assigneeFilter === 'ALL' || t.assignedTo === currentUserId;
+
+      return matchesSearch && matchesStatus && matchesAssignee;
+    });
+  }, [tasks, searchQuery, statusFilter, assigneeFilter, currentUserId]);
+
+  const loading = isTasksLoading || isMembersLoading;
 
   return {
     tasks,
     setTasks,
     teamMembers,
     loading,
+    isTasksLoading,
+    isTasksFetching,
     searchQuery,
     setSearchQuery,
     statusFilter,
@@ -158,6 +216,6 @@ export function useTasks({ teamId, currentUserId }) {
     getMember,
     quickStatusChange,
     removeTask,
-    refreshTasks: fetchTasksAndMembers,
+    refreshTasks: refetchTasks,
   };
 }

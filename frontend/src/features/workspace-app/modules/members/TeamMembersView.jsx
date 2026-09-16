@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, memo } from 'react';
+import { useQuery, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import InviteTeamMemberModal from './InviteTeamMemberModal';
 import ManageMemberRoleModal from './ManageMemberRoleModal';
 import api from '@/lib/api';
@@ -10,6 +11,7 @@ const ROLES_FILTER = ['All Roles', 'Team Admin', 'Developer', 'Viewer', 'Securit
 const STATUS_TABS = ['All', 'Active', 'Suspended'];
 
 function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
+  const queryClient = useQueryClient();
   const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
@@ -32,14 +34,8 @@ function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
   const canRemoveMember = isTeamAdmin || hasPermission('membership.remove');
 
   const [activeTab, setActiveTab] = useState('members');
-  const [members, setMembers] = useState([]);
-  const [totalMembers, setTotalMembers] = useState(0);
-  const [totalPages, setTotalPages] = useState(1);
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 12;
-
-  const [pendingInvitations, setPendingInvitations] = useState([]);
-  const [loading, setLoading] = useState(true);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
@@ -63,76 +59,90 @@ function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
-  const fetchMembersAndInvitations = useCallback(async () => {
-    if (!teamId) return;
-    try {
-      setLoading(true);
+  // TanStack Query for Team Members
+  const {
+    data: membersData = { members: [], total: 0, totalPages: 1 },
+    isLoading: isMembersLoading,
+  } = useQuery({
+    queryKey: ['team-members', teamId, { page: currentPage, limit: pageSize, q: debouncedSearch, status: statusFilter }],
+    queryFn: async () => {
+      if (!teamId) return { members: [], total: 0, totalPages: 1 };
       const params = new URLSearchParams();
       params.set('page', String(currentPage));
       params.set('limit', String(pageSize));
       if (debouncedSearch) params.set('q', debouncedSearch);
       if (statusFilter && statusFilter !== 'All') params.set('status', statusFilter.toUpperCase());
 
-      const [membersRes, invitesRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members?${params.toString()}`),
-        api.get(`/api/teams/${teamId}/invitations`),
-      ]);
+      const res = await api.get(`/api/teams/${teamId}/members?${params.toString()}`);
+      const raw = res.data?.data?.members || res.data?.data || [];
+      const pagination = res.data?.pagination || {};
+      const total = pagination.total ?? raw.length ?? 0;
+      const totalPages = Math.max(1, pagination.totalPages || Math.ceil((pagination.total || raw.length || 0) / pageSize) || 1);
 
-      if (membersRes.status === 'fulfilled') {
-        const raw = membersRes.value.data?.data?.members || membersRes.value.data?.data || [];
-        const pagination = membersRes.value.data?.pagination || {};
-        setTotalMembers(pagination.total ?? raw.length ?? 0);
-        setTotalPages(Math.max(1, pagination.totalPages || Math.ceil((pagination.total || raw.length || 0) / pageSize) || 1));
+      const formatted = raw.map((m) => {
+        const u = m.user || m.userId || {};
+        const name = u.name || m.name || 'Member';
+        const roleName = m.roles?.[0]?.name || m.role?.name || m.role || 'Member';
+        return {
+          id: m._id || m.id,
+          membershipId: m._id || m.id,
+          userId: u._id || u.id || m.userId,
+          name,
+          email: u.email || m.email || '',
+          role: roleName,
+          teamRole: roleName,
+          permissions: m.permissions || [],
+          department: m.department || 'Engineering',
+          status: m.status === 'ACTIVE' ? 'Active' : m.status === 'SUSPENDED' ? 'Suspended' : m.status || 'Active',
+          joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'Active',
+          ...m,
+        };
+      });
 
-        setMembers(
-          raw.map((m) => {
-            const u = m.user || m.userId || {};
-            const name = u.name || m.name || 'Member';
-            const roleName = m.roles?.[0]?.name || m.role?.name || m.role || 'Member';
-            return {
-              id: m._id || m.id,
-              membershipId: m._id || m.id,
-              userId: u._id || u.id || m.userId,
-              name,
-              email: u.email || m.email || '',
-              role: roleName,
-              teamRole: roleName,
-              permissions: m.permissions || [],
-              department: m.department || 'Engineering',
-              status: m.status === 'ACTIVE' ? 'Active' : m.status === 'SUSPENDED' ? 'Suspended' : m.status || 'Active',
-              joinedDate: m.joinedAt ? new Date(m.joinedAt).toLocaleDateString() : 'Active',
-              ...m,
-            };
-          })
-        );
-      }
+      return { members: formatted, total, totalPages };
+    },
+    enabled: Boolean(teamId),
+    placeholderData: keepPreviousData,
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 15,
+  });
 
-      if (invitesRes.status === 'fulfilled') {
-        const raw = invitesRes.value.data?.data?.invitations || invitesRes.value.data?.data || [];
-        setPendingInvitations(
-          raw.map((inv) => ({
-            id: inv._id || inv.id,
-            email: inv.email,
-            name: inv.email.split('@')[0],
-            role: inv.roleIds?.[0]?.name || 'Invited Member',
-            department: 'Engineering',
-            invitedBy: inv.invitedBy?.name || 'Admin',
-            sentDate: inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'Recent',
-            expiresDate: inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : '1 hour',
-            status: inv.status === 'PENDING' ? 'Pending Acceptance' : inv.status,
-          }))
-        );
-      }
-    } catch (err) {
-      console.error('Failed to load members:', err);
-    } finally {
-      setLoading(false);
-    }
-  }, [teamId, currentPage, pageSize, debouncedSearch, statusFilter]);
+  // TanStack Query for Invitations
+  const {
+    data: pendingInvitations = [],
+  } = useQuery({
+    queryKey: ['team-invitations', teamId],
+    queryFn: async () => {
+      if (!teamId) return [];
+      const res = await api.get(`/api/teams/${teamId}/invitations`);
+      const raw = res.data?.data?.invitations || res.data?.data || [];
+      return raw.map((inv) => ({
+        id: inv._id || inv.id,
+        email: inv.email,
+        name: inv.email.split('@')[0],
+        role: inv.roleIds?.[0]?.name || 'Invited Member',
+        department: 'Engineering',
+        invitedBy: inv.invitedBy?.name || 'Admin',
+        sentDate: inv.createdAt ? new Date(inv.createdAt).toLocaleDateString() : 'Recent',
+        expiresDate: inv.expiresAt ? new Date(inv.expiresAt).toLocaleDateString() : '1 hour',
+        status: inv.status === 'PENDING' ? 'Pending Acceptance' : inv.status,
+      }));
+    },
+    enabled: Boolean(teamId),
+    staleTime: 1000 * 60 * 2,
+    gcTime: 1000 * 60 * 15,
+  });
 
-  useEffect(() => {
-    fetchMembersAndInvitations();
-  }, [fetchMembersAndInvitations]);
+  const members = membersData.members;
+  const totalMembers = membersData.total;
+  const totalPages = membersData.totalPages;
+  const loading = isMembersLoading;
+
+  const invalidateTeamData = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ['team-members', teamId] });
+    queryClient.invalidateQueries({ queryKey: ['team-members-list', teamId] });
+    queryClient.invalidateQueries({ queryKey: ['team-invitations', teamId] });
+  }, [queryClient, teamId]);
 
   const handleToggleSuspendMember = async (memberId) => {
     const target = members.find((m) => m.id === memberId || m.membershipId === memberId);
@@ -144,12 +154,9 @@ function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
     try {
       await api.patch(`/api/teams/${teamId}/members/${mId}/${action}`);
       const newStatus = action === 'reactivate' ? 'Active' : 'Suspended';
-      setMembers((prev) =>
-        prev.map((m) => (m.id === memberId || m.membershipId === memberId ? { ...m, status: newStatus } : m))
-      );
       if (selectedMember?.id === memberId) setSelectedMember((prev) => ({ ...prev, status: newStatus }));
       showToast(`Member status updated to ${newStatus}.`);
-      fetchMembersAndInvitations();
+      invalidateTeamData();
     } catch (err) {
       showToast(err.response?.data?.error?.message || 'Failed to update member status.', 'error');
     }
@@ -160,32 +167,30 @@ function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
     if (!target || !teamId) return;
     try {
       await api.delete(`/api/teams/${teamId}/members/${target.membershipId || target.id}`);
-      setMembers((prev) => prev.filter((m) => m.id !== memberId && m.membershipId !== memberId));
       setConfirmRemovalMember(null);
       setIsDrawerOpen(false);
       setSelectedMember(null);
       showToast('Member removed from the workspace.');
+      invalidateTeamData();
     } catch (err) {
       showToast(err.response?.data?.error?.message || 'Failed to remove member.', 'error');
     }
   };
 
   const handleSaveMemberRole = (updatedMember) => {
-    setMembers((prev) => prev.map((m) => (m.id === updatedMember.id ? updatedMember : m)));
     if (selectedMember?.id === updatedMember.id) setSelectedMember(updatedMember);
     setRoleEditingMember(null);
     showToast(`Role updated for ${updatedMember.name}.`);
-    fetchMembersAndInvitations();
+    invalidateTeamData();
   };
 
   const handleConfirmRevokeInvite = async (inviteId) => {
     if (!teamId) return;
     try {
       await api.delete(`/api/teams/${teamId}/invitations/${inviteId}`);
-      setPendingInvitations((prev) => prev.filter((inv) => inv.id !== inviteId));
       setConfirmRevokeInvite(null);
       showToast('Invitation revoked.');
-      fetchMembersAndInvitations();
+      invalidateTeamData();
     } catch (err) {
       showToast(err.response?.data?.error?.message || 'Failed to revoke invitation.', 'error');
     }
@@ -204,7 +209,7 @@ function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
       setIsInviteModalOpen(false);
       setActiveTab('invitations');
       showToast(`Invitation sent to ${email}.`);
-      fetchMembersAndInvitations();
+      invalidateTeamData();
     } catch (err) {
       showToast(err.response?.data?.error?.message || 'Failed to send invitation.', 'error');
     }
