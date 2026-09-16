@@ -1,4 +1,5 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import SuperAdminSidebar from '../shell/SuperAdminSidebar';
 import SuperAdminTopbar from '../shell/SuperAdminTopbar';
 import PlatformMetricsCards from '../components/PlatformMetricsCards';
@@ -16,12 +17,34 @@ import { useToast } from '../../../lib/useToast';
 import { useSuperAdminDashboard } from '../hooks/useSuperAdminDashboard';
 
 export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
-  const [activeNav, setActiveNav] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { section: paramSection } = useParams();
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [isCreateWorkspaceModalOpen, setIsCreateWorkspaceModalOpen] = useState(false);
   const [createTeamTrigger, setCreateTeamTrigger] = useState(0);
   const [editingWorkspace, setEditingWorkspace] = useState(null);
   const [toast, showToast] = useToast(3500);
+
+  const activeNav = useMemo(() => {
+    if (paramSection) return paramSection;
+    const path = location.pathname;
+    if (path.includes('/users-access') || path.includes('/users')) return 'users-access';
+    if (path.includes('/teams') || path.includes('/workspaces')) return 'teams';
+    if (path.includes('/roles-rbac') || path.includes('/roles')) return 'roles-rbac';
+    if (path.includes('/jit-access') || path.includes('/jit')) return 'jit-access';
+    if (path.includes('/system-broadcasts') || path.includes('/broadcasts')) return 'system-broadcasts';
+    if (path.includes('/security-audit') || path.includes('/audit')) return 'security-audit';
+    return 'dashboard';
+  }, [paramSection, location.pathname]);
+
+  const handleSelectNav = useCallback(
+    (navId) => {
+      navigate(`/admin/${navId}`);
+    },
+    [navigate]
+  );
 
   const {
     workspaces,
@@ -123,7 +146,7 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
     <div className="font-body-base text-on-surface bg-surface min-h-screen">
       <SuperAdminSidebar
         activeNav={activeNav}
-        onSelectNav={setActiveNav}
+        onSelectNav={handleSelectNav}
         isOpen={isSidebarOpen}
         onToggle={() => setIsSidebarOpen((prev) => !prev)}
         onLogout={onLogout}
@@ -134,11 +157,11 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
           isSidebarOpen={isSidebarOpen}
           currentUser={currentUser}
           onCreateTeam={() => {
-            setActiveNav('teams');
+            handleSelectNav('teams');
             setCreateTeamTrigger((prev) => prev + 1);
           }}
-          onBroadcast={() => setActiveNav('system-broadcasts')}
-          onSelectNav={setActiveNav}
+          onBroadcast={() => handleSelectNav('system-broadcasts')}
+          onSelectNav={handleSelectNav}
           onLogout={onLogout}
         />
 

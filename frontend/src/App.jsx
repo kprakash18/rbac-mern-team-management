@@ -1,5 +1,5 @@
 import { lazy, Suspense } from 'react';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Routes, Route, Navigate, useNavigate, useParams } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { AppProvider } from './context/AppContext.jsx';
 import { useApp } from './context/useApp';
@@ -24,10 +24,85 @@ function PageFallback() {
   );
 }
 
+function WorkspaceAppWrapper() {
+  const { teamId } = useParams();
+  const { authUser, activeWorkspace, isSuperAdmin, logout, clearWorkspace } = useApp();
+  const navigate = useNavigate();
+
+  const isTeamAdmin = Boolean(
+    isSuperAdmin ||
+    activeWorkspace?.isTeamAdmin ||
+    activeWorkspace?.role === 'Team Admin' ||
+    activeWorkspace?.role?.toLowerCase().includes('admin')
+  );
+
+  const resolvedWorkspace = activeWorkspace || { _id: teamId, id: teamId, name: 'Workspace' };
+
+  return (
+    <WorkspaceApp
+      workspace={resolvedWorkspace}
+      currentUser={{
+        ...authUser,
+        isTeamAdmin,
+        isSuperAdmin,
+        teamRoleTitle: isSuperAdmin ? 'Super Admin' : resolvedWorkspace?.role || 'Developer',
+        teamRole: isSuperAdmin ? 'Super Admin' : resolvedWorkspace?.role || 'Developer',
+      }}
+      onLogout={isSuperAdmin ? () => { clearWorkspace(); navigate('/workspaces'); } : logout}
+    />
+  );
+}
+
+function SuperAdminWrapper() {
+  const { authUser, logout, selectWorkspace } = useApp();
+  const navigate = useNavigate();
+
+  return (
+    <SuperAdminPage
+      currentUser={authUser}
+      onLogout={logout}
+      onJumpIntoWorkspace={(ws) => {
+        selectWorkspace(ws);
+        navigate(`/workspace/${ws._id || ws.id}/dashboard`);
+      }}
+    />
+  );
+}
+
+function RootRedirect() {
+  const { authUser, activeWorkspace, isSuperAdmin } = useApp();
+
+  if (!authUser) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const isSuspended = Boolean(
+    authUser?.accountStatus === 'SUSPENDED' ||
+    authUser?.status === 'Suspended' ||
+    authUser?.status?.toLowerCase() === 'suspended' ||
+    authUser?.statusType?.toLowerCase() === 'suspended'
+  );
+  if (isSuspended) {
+    return <Navigate to="/suspended" replace />;
+  }
+
+  if (authUser?.mustChangePassword) {
+    return <Navigate to="/change-password" replace />;
+  }
+
+  if (isSuperAdmin && !activeWorkspace) {
+    return <Navigate to="/admin/dashboard" replace />;
+  }
+
+  if (activeWorkspace) {
+    return <Navigate to={`/workspace/${activeWorkspace._id || activeWorkspace.id}/dashboard`} replace />;
+  }
+
+  return <Navigate to="/workspaces" replace />;
+}
 
 function AppRoutes() {
-  const { authUser, activeWorkspace, isSuperAdmin, login, logout, updateAuthUser, selectWorkspace, clearWorkspace } =
-    useApp();
+  const { authUser, login, logout, updateAuthUser, selectWorkspace } = useApp();
   const navigate = useNavigate();
 
   const isSuspended = Boolean(
@@ -39,119 +114,142 @@ function AppRoutes() {
 
   return (
     <Routes>
+      {/* Public / Invitation Routes */}
       <Route path="/invite" element={<AcceptInvitationPage />} />
 
-      {!authUser && <Route path="*" element={<LoginPage onLoginSuccess={login} />} />}
+      {/* Unauthenticated Routes */}
+      <Route
+        path="/login"
+        element={
+          authUser ? (
+            <RootRedirect />
+          ) : (
+            <LoginPage
+              onLoginSuccess={(user) => {
+                login(user);
+                if (user?.isSuperAdmin) {
+                  navigate('/admin/dashboard');
+                } else {
+                  navigate('/workspaces');
+                }
+              }}
+            />
+          )
+        }
+      />
 
-      {authUser && isSuspended && (
-        <Route
-          path="*"
-          element={<SuspendedAccountPage user={authUser} onLogout={logout} />}
-        />
-      )}
+      {/* Account Status Guards */}
+      <Route
+        path="/suspended"
+        element={
+          authUser && isSuspended ? (
+            <SuspendedAccountPage user={authUser} onLogout={logout} />
+          ) : (
+            <RootRedirect />
+          )
+        }
+      />
 
-      {authUser?.mustChangePassword && (
-        <Route
-          path="*"
-          element={
+      <Route
+        path="/change-password"
+        element={
+          authUser ? (
             <ForceChangePasswordPage
               user={authUser}
-              onPasswordChanged={updateAuthUser}
+              onPasswordChanged={(updated) => {
+                updateAuthUser(updated);
+                navigate('/');
+              }}
               onCancel={logout}
             />
-          }
-        />
-      )}
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
 
-      {authUser && !authUser.mustChangePassword && activeWorkspace && (
-        <>
-          <Route
-            path="/change-password"
-            element={
-              <ForceChangePasswordPage
-                user={authUser}
-                onPasswordChanged={(updated) => {
-                  updateAuthUser(updated);
-                  navigate('/');
-                }}
-                onCancel={logout}
-              />
-            }
-          />
-          <Route
-            path="*"
-            element={
-              <WorkspaceApp
-                workspace={activeWorkspace}
-                currentUser={{
-                  ...authUser,
-                  isTeamAdmin: Boolean(
-                    isSuperAdmin ||
-                    activeWorkspace?.isTeamAdmin ||
-                    activeWorkspace?.role === 'Team Admin' ||
-                    activeWorkspace?.role?.toLowerCase().includes('admin')
-                  ),
-                  isSuperAdmin: isSuperAdmin,
-                  teamRoleTitle: isSuperAdmin ? 'Super Admin' : activeWorkspace?.role || 'Developer',
-                  teamRole: isSuperAdmin ? 'Super Admin' : activeWorkspace?.role || 'Developer',
-                }}
-                onLogout={isSuperAdmin ? clearWorkspace : logout}
-              />
-            }
-          />
-        </>
-      )}
-
-      {authUser && !authUser.mustChangePassword && !activeWorkspace && (
-        <>
-          <Route
-            path="/workspaces"
-            element={
-              <WorkspacePage
-                currentUser={authUser}
-                onWorkspaceSelected={selectWorkspace}
-                onLogout={logout}
-              />
-            }
-          />
-          <Route
-            path="/workspace"
-            element={
-              <WorkspacePage
-                currentUser={authUser}
-                onWorkspaceSelected={selectWorkspace}
-                onLogout={logout}
-              />
-            }
-          />
-        </>
-      )}
-
-      {authUser && !authUser.mustChangePassword && isSuperAdmin && !activeWorkspace && (
-        <Route
-          path="*"
-          element={
-            <SuperAdminPage
-              currentUser={authUser}
-              onLogout={logout}
-              onJumpIntoWorkspace={selectWorkspace}
-            />
-          }
-        />
-      )}
-
-      {authUser && !authUser.mustChangePassword && !isSuperAdmin && !activeWorkspace && (
-        <Route
-          path="*"
-          element={
+      {/* Workspace Selection Hub */}
+      <Route
+        path="/workspaces"
+        element={
+          !authUser ? (
+            <Navigate to="/login" replace />
+          ) : isSuspended ? (
+            <Navigate to="/suspended" replace />
+          ) : authUser.mustChangePassword ? (
+            <Navigate to="/change-password" replace />
+          ) : (
             <WorkspacePage
               currentUser={authUser}
-              onWorkspaceSelected={selectWorkspace}
+              onWorkspaceSelected={(ws) => {
+                selectWorkspace(ws);
+                navigate(`/workspace/${ws._id || ws.id}/dashboard`);
+              }}
               onLogout={logout}
             />
-          }
-        />
-      )}
+          )
+        }
+      />
+
+      {/* Workspace Multi-Page Nested Routes */}
+      <Route
+        path="/workspace/:teamId/:view"
+        element={
+          !authUser ? (
+            <Navigate to="/login" replace />
+          ) : isSuspended ? (
+            <Navigate to="/suspended" replace />
+          ) : authUser.mustChangePassword ? (
+            <Navigate to="/change-password" replace />
+          ) : (
+            <WorkspaceAppWrapper />
+          )
+        }
+      />
+      <Route
+        path="/workspace/:teamId"
+        element={
+          !authUser ? (
+            <Navigate to="/login" replace />
+          ) : isSuspended ? (
+            <Navigate to="/suspended" replace />
+          ) : (
+            <WorkspaceAppWrapper />
+          )
+        }
+      />
+
+      {/* Super Admin Multi-Page Nested Routes */}
+      <Route
+        path="/admin/:section"
+        element={
+          !authUser ? (
+            <Navigate to="/login" replace />
+          ) : isSuspended ? (
+            <Navigate to="/suspended" replace />
+          ) : authUser.mustChangePassword ? (
+            <Navigate to="/change-password" replace />
+          ) : (
+            <SuperAdminWrapper />
+          )
+        }
+      />
+      <Route
+        path="/admin"
+        element={
+          !authUser ? (
+            <Navigate to="/login" replace />
+          ) : isSuspended ? (
+            <Navigate to="/suspended" replace />
+          ) : (
+            <Navigate to="/admin/dashboard" replace />
+          )
+        }
+      />
+
+      {/* Root & Fallback */}
+      <Route path="/" element={<RootRedirect />} />
+      <Route path="*" element={<RootRedirect />} />
     </Routes>
   );
 }

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
@@ -16,7 +17,10 @@ import TeamSettingsModal from '../modules/announcements/TeamSettingsModal';
 import WorkspaceAuditLogView from '../modules/audit/WorkspaceAuditLogView';
 
 export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
-  const [activeView, setActiveView] = useState('dashboard');
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { teamId: paramTeamId, view: paramView } = useParams();
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [announcements, setAnnouncements] = useState([]);
   const [activeBulletins, setActiveBulletins] = useState([]);
@@ -36,6 +40,22 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       setCurrentWorkspace(workspace);
     }
   }, [workspace]);
+
+  const teamId = currentWorkspace?._id || currentWorkspace?.id || paramTeamId;
+
+  // Derive active view from URL parameter or pathname
+  const activeView = useMemo(() => {
+    if (paramView) return paramView;
+    const path = location.pathname;
+    if (path.includes('/tasks')) return 'tasks';
+    if (path.includes('/team-members') || path.includes('/members')) return 'team-members';
+    if (path.includes('/chat')) return 'chat';
+    if (path.includes('/jit-request') || path.includes('/jit')) return 'jit-request';
+    if (path.includes('/my-permissions') || path.includes('/permissions')) return 'my-permissions';
+    if (path.includes('/announcements') || path.includes('/bulletins')) return 'announcements';
+    if (path.includes('/audit-log') || path.includes('/audit')) return 'audit-log';
+    return 'dashboard';
+  }, [paramView, location.pathname]);
 
   const handleSaveTeamSettings = useCallback((updated) => {
     setCurrentWorkspace(updated);
@@ -101,10 +121,10 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const unreadAnnouncementsCount = announcements.filter((a) => !a.isRead).length;
 
   const fetchActiveBulletins = useCallback(async () => {
-    const teamId = currentWorkspace?._id || currentWorkspace?.id;
+    const tId = currentWorkspace?._id || currentWorkspace?.id;
     try {
       const res = await api.get('/api/notifications/bulletins/active', {
-        params: teamId ? { teamId } : {},
+        params: tId ? { teamId: tId } : {},
       });
       if (res.data?.success) {
         setActiveBulletins(res.data.data || []);
@@ -204,9 +224,9 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     if (targetView === 'logout') {
       onLogout?.();
     } else {
-      setActiveView(targetView);
+      navigate(`/workspace/${teamId}/${targetView}`);
     }
-  }, [onLogout]);
+  }, [navigate, teamId, onLogout]);
 
   const renderView = () => {
     switch (activeView) {
@@ -274,7 +294,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       <WorkspaceAppSidebar
         currentUser={user}
         activeView={activeView}
-        onSelectView={setActiveView}
+        onSelectView={handleNavigate}
         unreadAnnouncementsCount={unreadAnnouncementsCount}
         isCollapsed={isSidebarCollapsed}
         onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
@@ -287,8 +307,8 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
             currentUser={user}
             onOpenTeamSettings={() => setIsTeamSettingsOpen(true)}
             unreadAnnouncementsCount={unreadAnnouncementsCount}
-            onAnnouncementsClick={() => setActiveView('announcements')}
-            onSelectTab={(tab) => setActiveView(tab)}
+            onAnnouncementsClick={() => handleNavigate('announcements')}
+            onSelectTab={handleNavigate}
             onLogout={onLogout}
           />
         )}
@@ -313,7 +333,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
             <div className="flex items-center gap-3 shrink-0 ml-3">
               <button
                 type="button"
-                onClick={() => setActiveView('announcements')}
+                onClick={() => handleNavigate('announcements')}
                 className="text-[12px] font-bold text-amber-300 hover:text-white underline cursor-pointer"
               >
                 View Notice

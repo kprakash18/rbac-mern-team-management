@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useApp } from '@/context/useApp';
 import { useMyTeams } from '../hooks/useMyTeams';
 
@@ -8,6 +9,7 @@ export default function WorkspaceSwitcherDropdown({
   placement = 'bottom-left',
   trigger,
 }) {
+  const navigate = useNavigate();
   const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -31,14 +33,14 @@ export default function WorkspaceSwitcherDropdown({
 
   const handleSelect = (ws) => {
     setIsOpen(false);
-    if ((ws.id || ws._id) !== currentId) {
-      selectWorkspace(ws);
-    }
+    selectWorkspace(ws);
+    navigate(`/workspace/${ws.id || ws._id}/dashboard`);
   };
 
   const handleGoToHub = () => {
     setIsOpen(false);
     clearWorkspace();
+    navigate('/workspaces');
   };
 
   const filtered = workspaces.filter((w) =>
