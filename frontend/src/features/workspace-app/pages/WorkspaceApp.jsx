@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
@@ -37,7 +37,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     }
   }, [workspace]);
 
-  const handleSaveTeamSettings = (updated) => {
+  const handleSaveTeamSettings = useCallback((updated) => {
     setCurrentWorkspace(updated);
     try {
       localStorage.setItem('active_workspace', JSON.stringify(updated));
@@ -51,17 +51,17 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
       console.error(err);
     }
     setIsTeamSettingsOpen(false);
-  };
+  }, []);
 
   const [directMessageTarget, setDirectMessageTarget] = useState(null);
   const [isDirectMessageOpen, setIsDirectMessageOpen] = useState(false);
   const [isDirectMessageMinimized, setIsDirectMessageMinimized] = useState(false);
 
-  const handleOpenDirectMessage = (member) => {
+  const handleOpenDirectMessage = useCallback((member) => {
     setDirectMessageTarget(member);
     setIsDirectMessageOpen(true);
     setIsDirectMessageMinimized(false);
-  };
+  }, []);
 
   const { hasPermission: appHasPermission, workspacePermissions, refreshPermissions } = useApp();
 
@@ -78,16 +78,26 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     currentUser?.teamRoleTitle ||
     (isTeamAdmin ? 'Team Admin' : 'Developer');
 
-  const user = {
-    ...(currentUser || {}),
-    isTeamAdmin,
-    teamRoleTitle,
-    teamRole: teamRoleTitle,
-    role: teamRoleTitle,
-    permissions: workspacePermissions,
-    hasPermission: appHasPermission,
-    refreshPermissions,
-  };
+  const user = useMemo(
+    () => ({
+      ...(currentUser || {}),
+      isTeamAdmin,
+      teamRoleTitle,
+      teamRole: teamRoleTitle,
+      role: teamRoleTitle,
+      permissions: workspacePermissions,
+      hasPermission: appHasPermission,
+      refreshPermissions,
+    }),
+    [
+      currentUser,
+      isTeamAdmin,
+      teamRoleTitle,
+      workspacePermissions,
+      appHasPermission,
+      refreshPermissions,
+    ]
+  );
   const unreadAnnouncementsCount = announcements.filter((a) => !a.isRead).length;
 
   const fetchActiveBulletins = useCallback(async () => {
@@ -174,29 +184,29 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
     validBulletins[0] ||
     (pinnedAnnouncement && !dismissedBannerIds.includes(pinnedAnnouncement.id) ? pinnedAnnouncement : null);
 
-  const handleAddAnnouncement = (newAnn) => {
+  const handleAddAnnouncement = useCallback((newAnn) => {
     setAnnouncements((prev) => [newAnn, ...prev]);
-  };
+  }, []);
 
-  const handleMarkRead = (id) => {
+  const handleMarkRead = useCallback((id) => {
     setAnnouncements((prev) =>
       prev.map((a) => (a.id === id ? { ...a, isRead: true } : a))
     );
-  };
+  }, []);
 
-  const handleAcknowledge = (id) => {
+  const handleAcknowledge = useCallback((id) => {
     setAnnouncements((prev) =>
       prev.map((a) => (a.id === id ? { ...a, isAcknowledged: true, isRead: true } : a))
     );
-  };
+  }, []);
 
-  const handleNavigate = (targetView) => {
+  const handleNavigate = useCallback((targetView) => {
     if (targetView === 'logout') {
       onLogout?.();
     } else {
       setActiveView(targetView);
     }
-  };
+  }, [onLogout]);
 
   const renderView = () => {
     switch (activeView) {

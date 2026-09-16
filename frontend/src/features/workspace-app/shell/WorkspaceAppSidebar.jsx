@@ -1,3 +1,5 @@
+import { memo } from 'react';
+
 const WORKSPACE_APP_NAV = [
   { id: 'dashboard', label: 'Dashboard', icon: 'dashboard' },
   { id: 'tasks', label: 'Tasks & Sprints', icon: 'task_alt' },
@@ -8,7 +10,7 @@ const WORKSPACE_APP_NAV = [
   { id: 'audit-log', label: 'Audit Log', icon: 'receipt_long' },
 ];
 
-export default function WorkspaceAppSidebar({
+function WorkspaceAppSidebar({
   currentUser,
   activeView,
   onSelectView,
@@ -135,3 +137,5 @@ export default function WorkspaceAppSidebar({
     </aside>
   );
 }
+
+export default memo(WorkspaceAppSidebar);

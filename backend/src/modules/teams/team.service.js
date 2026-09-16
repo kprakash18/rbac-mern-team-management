@@ -5,6 +5,7 @@ import MembershipRole from "../member-roles/member-role.model.js";
 import Role from "../roles/role.model.js";
 import AccessGrant from "../access/access-grant.model.js";
 import Task from "../tasks/task.model.js";
+import AuditLog from "../audit/audit-log.model.js";
 import { logAuditEvent } from "../audit/audit.service.js";
 import { resolvePermissions, isSuperAdmin } from "../authorization/authorization.service.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
@@ -231,23 +232,61 @@ export async function getWorkspaceBootstrap({ teamId, userId, actor }) {
   if (!team || team.status === "ARCHIVED") throw new NotFoundError("Team workspace not found.");
 
   const superAdmin = actor?.isSuperAdmin ?? (await isSuperAdmin(userId));
-  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" }).populate("roleIds", "name description permissions isSystemRole");
+  const membership = await Membership.findOne({ userId, teamId, status: "ACTIVE" }).populate(
+    "roleIds",
+    "name description permissions isSystemRole"
+  );
   if (!membership && !superAdmin) throw new NotFoundError("Active team membership not found for this workspace.");
 
-  const [permissions, activeGrants, memberCount, activeTaskCount] = await Promise.all([
+  const [
+    permissions,
+    activeGrants,
+    memberCount,
+    activeTaskCount,
+    taskCount,
+    completedTaskCount,
+    recentActivity,
+  ] = await Promise.all([
     resolvePermissions(userId, teamId),
-    AccessGrant.find({ userId, teamId, status: "ACTIVE", $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }] }),
+    AccessGrant.find({
+      userId,
+      teamId,
+      status: "ACTIVE",
+      $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
+    }),
     Membership.countDocuments({ teamId, status: "ACTIVE" }),
     Task.countDocuments({ teamId, status: { $ne: "DONE" } }),
+    Task.countDocuments({ teamId }),
+    Task.countDocuments({ teamId, status: "DONE" }),
+    AuditLog.find({ teamId })
+      .sort({ createdAt: -1 })
+      .limit(10)
+      .populate("actorId", "name")
+      .lean(),
   ]);
 
   const result = {
     team: { id: team._id, name: team.name, description: team.description, status: team.status, createdAt: team.createdAt },
-    membership: membership ? { id: membership._id, status: membership.status, joinedAt: membership.joinedAt, roles: membership.roleIds || [] } : null,
+    membership: membership
+      ? { id: membership._id, status: membership.status, joinedAt: membership.joinedAt, roles: membership.roleIds || [] }
+      : null,
     isSuperAdmin: superAdmin,
     permissions: superAdmin ? ["*"] : permissions,
     activeGrants,
-    stats: { memberCount, activeTaskCount },
+    stats: {
+      memberCount,
+      activeTaskCount,
+      taskCount,
+      completedTaskCount,
+      activeJitCount: activeGrants.length,
+    },
+    recentActivity: recentActivity.map((l) => ({
+      id: l._id,
+      actor: l.actorId?.name || "Teammate",
+      actorId: l.actorId?._id || l.actorId,
+      action: l.action || "Performed action",
+      createdAt: l.createdAt,
+    })),
   };
 
   await setCache(cacheKey, result, 60);

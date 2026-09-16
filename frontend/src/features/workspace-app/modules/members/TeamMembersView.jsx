@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, memo } from 'react';
 import InviteTeamMemberModal from './InviteTeamMemberModal';
 import ManageMemberRoleModal from './ManageMemberRoleModal';
 import api from '@/lib/api';
@@ -9,7 +9,7 @@ import { ConfirmModal, Toast, SearchInput, Button, Badge, Avatar, Pagination } f
 const ROLES_FILTER = ['All Roles', 'Team Admin', 'Developer', 'Viewer', 'Security Auditor'];
 const STATUS_TABS = ['All', 'Active', 'Suspended'];
 
-export default function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
+function TeamMembersView({ currentUser, workspace, onOpenDirectMessage }) {
   const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
@@ -725,3 +725,5 @@ export default function TeamMembersView({ currentUser, workspace, onOpenDirectMe
     </div>
   );
 }
+
+export default memo(TeamMembersView);

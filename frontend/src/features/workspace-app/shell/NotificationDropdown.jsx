@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
 
@@ -129,15 +129,15 @@ function resolveTargetTab(notif) {
   return 'dashboard';
 }
 
-export default function NotificationDropdown({ currentUser, onSelectTab }) {
+function NotificationDropdown({ currentUser, onSelectTab }) {
   const userId = currentUser?._id || currentUser?.id || '';
   const [isOpen, setIsOpen] = useState(false);
   const [filterTab, setFilterTab] = useState('all');
-  const [unreadCount, setUnreadCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef(null);
 
   const storageKey = `workspace_user_notifications_${userId}`;
+  const lastFetchRef = useRef(0);
 
   const [notifications, setNotifications] = useState(() => {
     try {
@@ -147,14 +147,7 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     return [];
   });
 
-  const fetchUnreadCount = useCallback(async () => {
-    try {
-      const res = await api.get('/api/notifications/unread-count');
-      if (typeof res.data?.data?.unreadCount === 'number') {
-        setUnreadCount(res.data.data.unreadCount);
-      }
-    } catch {}
-  }, []);
+  const [unreadCount, setUnreadCount] = useState(() => notifications.filter((n) => !n.readAt).length);
 
   const fetchNotifications = useCallback(async () => {
     setIsLoading(true);
@@ -177,9 +170,17 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
           metadata: n.metadata || {},
         }));
         setNotifications(formatted);
-        try {
-          localStorage.setItem(storageKey, JSON.stringify(formatted));
-        } catch {}
+
+        const persist = () => {
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(formatted));
+          } catch {}
+        };
+        if (typeof requestIdleCallback === 'function') {
+          requestIdleCallback(persist);
+        } else {
+          setTimeout(persist, 0);
+        }
 
         if (typeof res.data?.data?.unreadCount === 'number') {
           setUnreadCount(res.data.data.unreadCount);
@@ -187,6 +188,7 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
           setUnreadCount(formatted.filter((n) => !n.readAt).length);
         }
       }
+      lastFetchRef.current = Date.now();
     } catch (err) {
       console.warn('Backend notifications unavailable:', err);
     } finally {
@@ -195,25 +197,12 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
   }, [storageKey]);
 
   useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        setNotifications(parsed);
-        setUnreadCount(parsed.filter((n) => !n.readAt).length);
-      } else {
-        setNotifications([]);
-        setUnreadCount(0);
-      }
-    } catch {
-      setNotifications([]);
-      setUnreadCount(0);
-    }
     fetchNotifications();
-  }, [userId, storageKey, fetchNotifications]);
+  }, [userId, fetchNotifications]);
 
+  const STALE_MS = 30_000;
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && Date.now() - lastFetchRef.current > STALE_MS) {
       fetchNotifications();
     }
   }, [isOpen, fetchNotifications]);
@@ -241,7 +230,7 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
       socket.off('notification:count', onCountUpdate);
       socket.off('access:changed', onNewNotif);
     };
-  }, [fetchNotifications, fetchUnreadCount]);
+  }, [fetchNotifications]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -259,9 +248,16 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     const clamped = nextList.slice(0, 100);
     setNotifications(clamped);
     setUnreadCount(clamped.filter((n) => !n.readAt).length);
-    try {
-      localStorage.setItem(storageKey, JSON.stringify(clamped));
-    } catch {}
+    const persist = () => {
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(clamped));
+      } catch {}
+    };
+    if (typeof requestIdleCallback === 'function') {
+      requestIdleCallback(persist);
+    } else {
+      setTimeout(persist, 0);
+    }
   };
 
 
@@ -511,3 +507,5 @@ export default function NotificationDropdown({ currentUser, onSelectTab }) {
     </div>
   );
 }
+
+export default memo(NotificationDropdown);

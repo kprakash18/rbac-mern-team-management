@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import api from '@/lib/api';
 import { getStorage, setStorage } from '@/lib/storage';
 import { getSocket } from '@/lib/socket';
@@ -14,7 +14,7 @@ const FALLBACK_GENERAL = {
   isDefault: true,
 };
 
-export default function ChatView({ currentUser, workspace }) {
+function ChatView({ currentUser, workspace }) {
   const { activeWorkspace, hasPermission: hasPermissionContext } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id || '';
@@ -759,3 +759,5 @@ export default function ChatView({ currentUser, workspace }) {
     </div>
   );
 }
+
+export default memo(ChatView);

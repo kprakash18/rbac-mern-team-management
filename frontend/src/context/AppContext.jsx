@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { AppContext } from './AppContext.js';
 import { getStorage, setStorage, removeStorage } from '../lib/storage.js';
 import { connectSocket, disconnectSocket, getSocket } from '../lib/socket.js';
@@ -10,6 +10,7 @@ const STORAGE_KEYS = {
 };
 
 const SUPER_ADMIN_ROLE = 'Platform Super Admin';
+const PERMISSIONS_REFRESH_DEBOUNCE_MS = 200;
 
 export function AppProvider({ children }) {
   const [authUser, setAuthUser] = useState(() => getStorage(STORAGE_KEYS.AUTH));
@@ -140,11 +141,15 @@ export function AppProvider({ children }) {
     setActiveWorkspace(null);
   }, []);
 
-  const isSuperAdmin = Boolean(
-    authUser?.isSuperAdmin ||
-    authUser?.role === SUPER_ADMIN_ROLE ||
-    authUser?.roles?.includes('Super Admin') ||
-    authUser?.roles?.includes('Platform Super Admin')
+  const isSuperAdmin = useMemo(
+    () =>
+      Boolean(
+        authUser?.isSuperAdmin ||
+        authUser?.role === SUPER_ADMIN_ROLE ||
+        authUser?.roles?.includes('Super Admin') ||
+        authUser?.roles?.includes('Platform Super Admin')
+      ),
+    [authUser?.isSuperAdmin, authUser?.role, authUser?.roles]
   );
 
   const [workspacePermissions, setWorkspacePermissions] = useState([]);
@@ -181,14 +186,26 @@ export function AppProvider({ children }) {
     refreshPermissions();
   }, [refreshPermissions]);
 
+  const refreshDebounceTimer = useRef(null);
+
   useEffect(() => {
     const socket = getSocket();
     if (!socket) return;
 
+    const debouncedRefresh = () => {
+      if (refreshDebounceTimer.current) {
+        clearTimeout(refreshDebounceTimer.current);
+      }
+      refreshDebounceTimer.current = setTimeout(() => {
+        refreshPermissions();
+        refreshDebounceTimer.current = null;
+      }, PERMISSIONS_REFRESH_DEBOUNCE_MS);
+    };
+
     const handleAccessUpdate = (data) => {
       const currentTeamId = activeWorkspace?._id || activeWorkspace?.id;
       if (!data?.teamId || String(data.teamId) === String(currentTeamId)) {
-        refreshPermissions();
+        debouncedRefresh();
       }
     };
 
@@ -204,6 +221,9 @@ export function AppProvider({ children }) {
       socket.off('role:assigned', handleAccessUpdate);
       socket.off('role:revoked', handleAccessUpdate);
       socket.off('team:permissions_updated', handleAccessUpdate);
+      if (refreshDebounceTimer.current) {
+        clearTimeout(refreshDebounceTimer.current);
+      }
     };
   }, [activeWorkspace?._id, activeWorkspace?.id, refreshPermissions]);
 
@@ -214,22 +234,37 @@ export function AppProvider({ children }) {
     return workspacePermissions.includes(permKey) || workspacePermissions.includes('*');
   }, [isSuperAdmin, activeWorkspace, workspacePermissions]);
 
+  const contextValue = useMemo(
+    () => ({
+      authUser,
+      activeWorkspace,
+      isSuperAdmin,
+      workspacePermissions,
+      hasPermission,
+      refreshPermissions,
+      login,
+      logout,
+      updateAuthUser,
+      selectWorkspace,
+      clearWorkspace,
+    }),
+    [
+      authUser,
+      activeWorkspace,
+      isSuperAdmin,
+      workspacePermissions,
+      hasPermission,
+      refreshPermissions,
+      login,
+      logout,
+      updateAuthUser,
+      selectWorkspace,
+      clearWorkspace,
+    ]
+  );
+
   return (
-    <AppContext.Provider
-      value={{
-        authUser,
-        activeWorkspace,
-        isSuperAdmin,
-        workspacePermissions,
-        hasPermission,
-        refreshPermissions,
-        login,
-        logout,
-        updateAuthUser,
-        selectWorkspace,
-        clearWorkspace,
-      }}
-    >
+    <AppContext.Provider value={contextValue}>
       {children}
     </AppContext.Provider>
   );

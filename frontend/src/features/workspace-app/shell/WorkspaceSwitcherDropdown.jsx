@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
-import api from '@/lib/api';
 import { useApp } from '@/context/useApp';
+import { useMyTeams } from '../hooks/useMyTeams';
 
 export default function WorkspaceSwitcherDropdown({
   currentWorkspace,
@@ -10,49 +10,12 @@ export default function WorkspaceSwitcherDropdown({
 }) {
   const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
   const [isOpen, setIsOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const dropdownRef = useRef(null);
 
+  const { data: workspaces = [], isLoading: loading } = useMyTeams({ isSuperAdmin, enabled: isOpen });
+
   const currentId = currentWorkspace?._id || currentWorkspace?.id;
-
-  useEffect(() => {
-    if (!isOpen) return;
-
-    let isMounted = true;
-    async function loadWorkspaces() {
-      setLoading(true);
-      try {
-        const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
-        const res = await api.get(endpoint);
-        const rawTeams = res.data?.data?.teams || res.data?.data || [];
-        const formatted = rawTeams.map((t) => ({
-          ...t,
-          id: t._id || t.id,
-          name: t.name,
-          role: t.role || (t.isTeamAdmin ? 'Team Admin' : 'Developer'),
-          isTeamAdmin: Boolean(
-            t.isTeamAdmin || t.role === 'Team Admin' || t.role?.toLowerCase().includes('admin')
-          ),
-          icon: t.icon || 'domain',
-          iconBgColor: t.iconBgColor || 'bg-primary/10 text-primary',
-        }));
-        if (isMounted) {
-          setWorkspaces(formatted);
-        }
-      } catch (err) {
-        console.warn('Failed to load teams for switcher:', err);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    }
-
-    loadWorkspaces();
-    return () => {
-      isMounted = false;
-    };
-  }, [isOpen, isSuperAdmin]);
 
   useEffect(() => {
     function handleClickOutside(e) {

@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import NotificationDropdown from './NotificationDropdown';
 import { UserProfileSettingsModal } from '@/shared/components';
 import { useApp } from '@/context/AppContext';
-import api from '@/lib/api';
+import { useMyTeams } from '../hooks/useMyTeams';
 
-export default function WorkspaceAppTopbar({
+function WorkspaceAppTopbar({
   workspace,
   currentUser,
   onAnnouncementsClick,
@@ -15,8 +15,9 @@ export default function WorkspaceAppTopbar({
   const { selectWorkspace, clearWorkspace, isSuperAdmin } = useApp();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
   const menuRef = useRef(null);
+
+  const { data: workspaces = [] } = useMyTeams({ isSuperAdmin, enabled: isMenuOpen });
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -27,35 +28,6 @@ export default function WorkspaceAppTopbar({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    if (!isMenuOpen) return;
-    let isMounted = true;
-    async function loadWorkspaces() {
-      try {
-        const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
-        const res = await api.get(endpoint);
-        const rawTeams = res.data?.data?.teams || res.data?.data || [];
-        const formatted = rawTeams.map((t) => ({
-          ...t,
-          id: t._id || t.id,
-          name: t.name,
-          role: t.role || (t.isTeamAdmin ? 'Team Admin' : 'Developer'),
-          isTeamAdmin: Boolean(
-            t.isTeamAdmin || t.role === 'Team Admin' || t.role?.toLowerCase().includes('admin')
-          ),
-          icon: t.icon || 'domain',
-        }));
-        if (isMounted) setWorkspaces(formatted);
-      } catch (err) {
-        console.warn('Failed to load workspaces:', err);
-      }
-    }
-    loadWorkspaces();
-    return () => {
-      isMounted = false;
-    };
-  }, [isMenuOpen, isSuperAdmin]);
 
   const userName = currentUser?.name || 'Workspace User';
   const userEmail = currentUser?.email || '';
@@ -262,3 +234,5 @@ export default function WorkspaceAppTopbar({
     </>
   );
 }
+
+export default memo(WorkspaceAppTopbar);

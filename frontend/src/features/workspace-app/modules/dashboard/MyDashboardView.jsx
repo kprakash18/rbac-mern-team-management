@@ -1,15 +1,18 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import NotificationDropdown from '../../shell/NotificationDropdown';
 import { UserProfileSettingsModal } from '@/shared/components';
 import { useApp } from '@/context/useApp';
+import { useMyTeams } from '../../hooks/useMyTeams';
 import api from '@/lib/api';
 
-export default function MyDashboardView({ currentUser, workspace, onNavigate }) {
+function MyDashboardView({ currentUser, workspace, onNavigate }) {
   const { selectWorkspace, clearWorkspace, isSuperAdmin, workspacePermissions } = useApp();
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
-  const [workspaces, setWorkspaces] = useState([]);
   const userMenuRef = useRef(null);
+
+  const { data: workspaces = [] } = useMyTeams({ isSuperAdmin, enabled: isUserMenuOpen });
 
   const [loading, setLoading] = useState(true);
   const [metrics, setMetrics] = useState({
@@ -24,6 +27,15 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
   const teamId = workspace?._id || workspace?.id;
 
+  const { data: catalogPermissions = [] } = useQuery({
+    queryKey: ['permissions', 'catalog'],
+    queryFn: async () => {
+      const res = await api.get('/api/permissions');
+      return res.data?.data?.permissions || res.data?.data || [];
+    },
+    staleTime: 15 * 60 * 1000,
+  });
+
   const fetchDashboardMetrics = useCallback(async () => {
     if (!teamId) {
       setLoading(false);
@@ -32,31 +44,20 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
 
     try {
       setLoading(true);
-      const [membersRes, tasksRes, jitRes, auditRes, permsCatalogRes] = await Promise.allSettled([
-        api.get(`/api/teams/${teamId}/members?limit=100`),
-        api.get(`/api/teams/${teamId}/tasks?limit=100`),
-        api.get(`/api/teams/${teamId}/access-requests?limit=50`),
-        api.get(`/api/teams/${teamId}/audit-logs?limit=10`),
-        api.get('/api/permissions'),
-      ]);
 
-      const members = membersRes.status === 'fulfilled' ? (membersRes.value.data?.data?.members || membersRes.value.data?.data || []) : [];
-      const tasks = tasksRes.status === 'fulfilled' ? (tasksRes.value.data?.data?.tasks || tasksRes.value.data?.data || []) : [];
-      const jitRequests = jitRes.status === 'fulfilled' ? (Array.isArray(jitRes.value.data?.data) ? jitRes.value.data.data : []) : [];
-      const auditLogs = auditRes.status === 'fulfilled' ? (Array.isArray(auditRes.value.data?.data) ? auditRes.value.data.data : auditRes.value.data?.data?.logs || []) : [];
-      const catalogPerms = permsCatalogRes.status === 'fulfilled' ? (permsCatalogRes.value.data?.data?.permissions || permsCatalogRes.value.data?.data || []) : [];
+      const bootstrapRes = await api.get(`/api/teams/${teamId}/bootstrap`);
+      const { stats, recentActivity } = bootstrapRes.data?.data || {};
 
-      const activeJits = jitRequests.filter((j) => j.status === 'APPROVED' || j.status === 'ACTIVE').length;
-      const completedTasks = tasks.filter((t) => t.status === 'DONE').length;
-
-      const formattedActivities = auditLogs.slice(0, 10).map((l) => {
-        const actorName = l.actor?.name || l.actorId?.name || 'Teammate';
+      const formattedActivities = (recentActivity || []).map((l) => {
+        const actorName = l.actor || 'Teammate';
         const initials = actorName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase() || 'TM';
-        const timeStr = l.createdAt ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Recently';
+        const timeStr = l.createdAt
+          ? new Date(l.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          : 'Recently';
         return {
-          id: l._id || l.id,
+          id: l.id,
           actor: actorName,
-          actorId: l.actorId?._id || l.actorId,
+          actorId: l.actorId,
           initials,
           action: l.action || 'Performed action',
           time: timeStr,
@@ -64,8 +65,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
         };
       });
 
-      const totalCatalogCount = Array.isArray(catalogPerms) && catalogPerms.length > 0 ? catalogPerms.length : 39;
-
+      const totalCatalogCount = catalogPermissions?.length > 0 ? catalogPermissions.length : 39;
       const effectivePermsCount = Array.isArray(workspacePermissions) && workspacePermissions.length > 0
         ? workspacePermissions.filter((p) => p !== '*').length
         : (currentUser?.permissions?.length || 0);
@@ -77,10 +77,10 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
       setMetrics({
         capabilitiesCount: userCapabilitiesCount,
         totalCapabilities: totalCatalogCount,
-        activeJitCount: activeJits,
-        activeMembersCount: Array.isArray(members) ? members.length : 0,
-        tasksCount: Array.isArray(tasks) ? tasks.length : 0,
-        completedTasksCount: completedTasks,
+        activeJitCount: stats?.activeJitCount || 0,
+        activeMembersCount: stats?.memberCount || 0,
+        tasksCount: stats?.taskCount || 0,
+        completedTasksCount: stats?.completedTaskCount || 0,
       });
       setActivities(formattedActivities);
     } catch (err) {
@@ -88,7 +88,7 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     } finally {
       setLoading(false);
     }
-  }, [teamId, isSuperAdmin, workspacePermissions, currentUser]);
+  }, [teamId, isSuperAdmin, workspacePermissions, currentUser, catalogPermissions]);
 
   useEffect(() => {
     fetchDashboardMetrics();
@@ -103,35 +103,6 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
-
-  useEffect(() => {
-    if (!isUserMenuOpen) return;
-    let isMounted = true;
-    async function loadWorkspaces() {
-      try {
-        const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
-        const res = await api.get(endpoint);
-        const rawTeams = res.data?.data?.teams || res.data?.data || [];
-        const formatted = rawTeams.map((t) => ({
-          ...t,
-          id: t._id || t.id,
-          name: t.name,
-          role: t.role || (t.isTeamAdmin ? 'Team Admin' : 'Developer'),
-          isTeamAdmin: Boolean(
-            t.isTeamAdmin || t.role === 'Team Admin' || t.role?.toLowerCase().includes('admin')
-          ),
-          icon: t.icon || 'domain',
-        }));
-        if (isMounted) setWorkspaces(formatted);
-      } catch (err) {
-        console.warn('Failed to load workspaces:', err);
-      }
-    }
-    loadWorkspaces();
-    return () => {
-      isMounted = false;
-    };
-  }, [isUserMenuOpen, isSuperAdmin]);
 
   const userName = currentUser?.name || 'Team Member';
   const displayName = userName.includes(' ') ? userName.split(' ')[0] : userName;
@@ -537,3 +508,5 @@ export default function MyDashboardView({ currentUser, workspace, onNavigate }) 
     </div>
   );
 }
+
+export default memo(MyDashboardView);

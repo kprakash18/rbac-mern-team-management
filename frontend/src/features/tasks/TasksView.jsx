@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, memo } from 'react';
 import { useApp } from '@/context/useApp';
 import { Button, Tabs, LoadingState, SearchInput, EmptyState } from '@/shared/components';
 import { useTasks } from './hooks/useTasks';
@@ -7,7 +7,7 @@ import TaskRow from './components/TaskRow';
 import TaskModal from './components/TaskModal';
 import { STATUS_TABS } from './constants/taskConstants';
 
-export default function TasksView({ currentUser, workspace }) {
+function TasksView({ currentUser, workspace }) {
   const { activeWorkspace, hasPermission: appHasPermission } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
   const currentUserId = currentUser?._id || currentUser?.id;
@@ -265,3 +265,5 @@ export default function TasksView({ currentUser, workspace }) {
     </div>
   );
 }
+
+export default memo(TasksView);
