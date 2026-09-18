@@ -91,6 +91,16 @@ accessRequestSchema.index({
   status: 1,
 });
 accessRequestSchema.index({ teamId: 1, status: 1, createdAt: -1 });
+accessRequestSchema.index({ requesterId: 1, teamId: 1, status: 1, createdAt: -1 });
+accessRequestSchema.index({ approvalLevel: 1, status: 1, createdAt: -1 });
+accessRequestSchema.index({ teamId: 1, approvalLevel: 1, status: 1, createdAt: -1 });
+accessRequestSchema.index({
+  targetUserId: 1,
+  teamId: 1,
+  permissionId: 1,
+  resource: 1,
+  status: 1,
+});
 
 const AccessRequest = mongoose.model(
   "AccessRequest",

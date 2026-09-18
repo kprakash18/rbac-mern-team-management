@@ -45,6 +45,8 @@ const chatChannelSchema = new mongoose.Schema(
 );
 
 chatChannelSchema.index({ teamId: 1, name: 1 }, { unique: true });
+chatChannelSchema.index({ teamId: 1, isArchived: 1, isDefault: -1, createdAt: 1 });
+chatChannelSchema.index({ teamId: 1, memberIds: 1, isArchived: 1 });
 
 const ChatChannel = mongoose.model("ChatChannel", chatChannelSchema);
 

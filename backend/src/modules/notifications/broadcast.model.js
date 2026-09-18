@@ -99,6 +99,9 @@ const broadcastSchema = new mongoose.Schema(
 
 broadcastSchema.index({ status: 1, startsAt: 1, expiresAt: 1 });
 broadcastSchema.index({ teamId: 1, status: 1, startsAt: 1, expiresAt: 1 });
+broadcastSchema.index({ status: 1, type: 1, createdAt: -1 });
+broadcastSchema.index({ scope: 1, status: 1, createdAt: -1 });
+broadcastSchema.index({ senderId: 1, createdAt: -1 });
 
 const Broadcast = mongoose.model("Broadcast", broadcastSchema);
 export default Broadcast;

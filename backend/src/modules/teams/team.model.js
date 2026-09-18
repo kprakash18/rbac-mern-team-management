@@ -33,6 +33,8 @@ teamSchema.index(
   { name: 1 },
   { unique: true, partialFilterExpression: { status: "ACTIVE" } }
 );
+teamSchema.index({ status: 1, createdAt: -1 });
+teamSchema.index({ createdBy: 1, createdAt: -1 });
 
 const Team = mongoose.model("Team", teamSchema);
 

@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { paginationMeta, sendCreated, sendSuccess } from "../../common/http/response.js";
 import * as accessService from "./access.service.js";
 import Membership from "../memberships/membership.model.js";
 import MembershipRole from "../member-roles/member-role.model.js";
@@ -21,7 +22,7 @@ export const createAccessRequestController = asyncHandler(async (req, res) => {
     durationMinutes,
   });
 
-  res.status(201).json({ success: true, data: accessRequest });
+  sendCreated(res, { data: accessRequest });
 });
 
 export const getAllAccessRequestsController = asyncHandler(async (req, res) => {
@@ -30,15 +31,9 @@ export const getAllAccessRequestsController = asyncHandler(async (req, res) => {
     viewerId: req.user.id,
   });
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     data: result.requests,
-    meta: {
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-      totalPages: result.totalPages,
-    },
+    meta: paginationMeta(result),
   });
 });
 
@@ -71,15 +66,9 @@ export const getAccessRequestsByTeamController = asyncHandler(async (req, res) =
     viewerIsAdmin,
   });
 
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     data: result.requests,
-    meta: {
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-      totalPages: result.totalPages,
-    },
+    meta: paginationMeta(result),
   });
 });
 
@@ -88,7 +77,7 @@ export const getAccessRequestByIdController = asyncHandler(async (req, res) => {
     teamId: req.params.teamId,
     requestId: req.params.requestId,
   });
-  res.status(200).json({ success: true, data: request });
+  sendSuccess(res, { data: request });
 });
 
 export const updateAccessRequestController = asyncHandler(async (req, res) => {
@@ -98,7 +87,7 @@ export const updateAccessRequestController = asyncHandler(async (req, res) => {
     requesterId: req.user.id,
     updates: req.body,
   });
-  res.status(200).json({ success: true, data: request });
+  sendSuccess(res, { data: request });
 });
 
 export const deleteAccessRequestController = asyncHandler(async (req, res) => {
@@ -107,7 +96,7 @@ export const deleteAccessRequestController = asyncHandler(async (req, res) => {
     requestId: req.params.requestId,
     requesterId: req.user.id,
   });
-  res.status(200).json({ success: true, message: result.message });
+  sendSuccess(res, { message: result.message });
 });
 
 export const approveAccessRequestController = asyncHandler(async (req, res) => {
@@ -117,7 +106,7 @@ export const approveAccessRequestController = asyncHandler(async (req, res) => {
     reviewerId: req.user.id,
     durationHours: req.body?.durationHours,
   });
-  res.status(200).json({ success: true, data: result.request, grant: result.grant });
+  sendSuccess(res, { data: result.request, extra: { grant: result.grant } });
 });
 
 export const rejectAccessRequestController = asyncHandler(async (req, res) => {
@@ -127,7 +116,7 @@ export const rejectAccessRequestController = asyncHandler(async (req, res) => {
     reviewerId: req.user.id,
     reason: req.body?.reason,
   });
-  res.status(200).json({ success: true, data: request });
+  sendSuccess(res, { data: request });
 });
 
 export const revokeAccessGrantController = asyncHandler(async (req, res) => {
@@ -136,7 +125,7 @@ export const revokeAccessGrantController = asyncHandler(async (req, res) => {
     grantId: req.params.grantId,
     revokedBy: req.user.id,
   });
-  res.status(200).json({ success: true, message: result.message });
+  sendSuccess(res, { message: result.message });
 });
 
 export const revokeByRequestIdController = asyncHandler(async (req, res) => {
@@ -145,5 +134,5 @@ export const revokeByRequestIdController = asyncHandler(async (req, res) => {
     requestId: req.params.requestId,
     revokedBy: req.user.id,
   });
-  res.status(200).json({ success: true, message: result.message });
+  sendSuccess(res, { message: result.message });
 });

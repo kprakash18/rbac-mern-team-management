@@ -1,5 +1,6 @@
 import { membershipRoleService } from "./member-role.service.js";
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendCreated, sendSuccess } from "../../common/http/response.js";
 
 export const assignRole = asyncHandler(async (req, res) => {
   const { teamId, userId } = req.params;
@@ -13,7 +14,7 @@ export const assignRole = asyncHandler(async (req, res) => {
     assignedBy: req.user.id,
   });
 
-  res.status(201).json({ success: true, data: assignment });
+  sendCreated(res, { data: assignment });
 });
 
 export const updateAssignment = asyncHandler(async (req, res) => {
@@ -27,7 +28,7 @@ export const updateAssignment = asyncHandler(async (req, res) => {
     expiresAt,
   });
 
-  res.status(200).json({ success: true, data: updated });
+  sendSuccess(res, { data: updated });
 });
 
 export const revokeAssignment = asyncHandler(async (req, res) => {
@@ -40,14 +41,14 @@ export const revokeAssignment = asyncHandler(async (req, res) => {
     revokedBy: req.user.id,
   });
 
-  res.status(200).json(result);
+  sendSuccess(res, { message: result.message, data: result.data });
 });
 
 export const getMemberRoles = asyncHandler(async (req, res) => {
   const { teamId, userId } = req.params;
   const roles = await membershipRoleService.listMemberRoles({ teamId, userId });
 
-  res.status(200).json({ success: true, data: roles, count: roles.length });
+  sendSuccess(res, { data: roles, extra: { count: roles.length } });
 });
 
 export const membershipRoleController = {

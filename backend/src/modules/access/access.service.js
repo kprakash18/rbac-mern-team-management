@@ -14,6 +14,7 @@ import { createNotification } from "../notifications/notification.service.js";
 import { can, isSuperAdmin, getAllSuperAdminUserIds } from "../authorization/authorization.service.js";
 import { BadRequestError, NotFoundError, ForbiddenError, ConflictError } from "../../common/errors/index.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
+import { invalidateMembershipAccess } from "../../platform/cache/cache-invalidation.service.js";
 
 const POPULATE_FIELDS = [
   { path: "requesterId targetUserId reviewedBy", select: "name email" },
@@ -279,6 +280,10 @@ export async function deleteAccessRequest({ teamId, requestId, requesterId }) {
     emitToUser(request.requesterId, "access_request:resolved", { requestId: request._id, teamId: effectiveTeamId, status: "REVOKED" });
     emitToUser(request.targetUserId || request.requesterId, "access:changed", { teamId: effectiveTeamId, reason: "GRANT_REVOKED" });
     emitToTeam(effectiveTeamId, "access_request:resolved", { requestId: request._id, status: "REVOKED" });
+    invalidateMembershipAccess({
+      userId: request.targetUserId || request.requesterId,
+      teamId: effectiveTeamId,
+    });
 
     if (String(request.requesterId) !== String(requesterId)) {
       createNotification({
@@ -417,6 +422,7 @@ export async function approveAccessRequest({ teamId, requestId, reviewerId, dura
     emitToUser(request.requesterId, "access_request:resolved", { requestId: updatedRequest._id, teamId: effectiveTeamId, status: "APPROVED", expiresAt: finalExpiresAt });
     emitToUser(targetUserId, "access:changed", { teamId: effectiveTeamId, reason: "GRANT_APPROVED" });
     emitToTeam(effectiveTeamId, "access_request:resolved", { requestId: updatedRequest._id, status: "APPROVED" });
+    invalidateMembershipAccess({ userId: targetUserId, teamId: effectiveTeamId });
 
     createNotification({
       recipientId: request.requesterId,
@@ -523,6 +529,7 @@ export async function revokeByRequestId({ teamId, requestId, revokedBy }) {
   emitToUser(request.requesterId, "access_request:resolved", { requestId: request._id, teamId: effectiveTeamId, status: "REVOKED" });
   emitToTeam(effectiveTeamId, "access_request:resolved", { requestId: request._id, status: "REVOKED" });
   emitToTeam(effectiveTeamId, "access_grant:revoked", { grantId: grant._id, requestId: request._id, userId: grant.userId });
+  invalidateMembershipAccess({ userId: grant.userId, teamId: effectiveTeamId });
 
   createNotification({
     recipientId: request.requesterId,
@@ -563,6 +570,7 @@ export async function revokeAccessGrant({ teamId, grantId, revokedBy }) {
   emitToUser(grant.userId, "access_grant:revoked", { grantId: grant._id, teamId: effectiveTeamId, permissionId: grant.permissionId });
   emitToUser(grant.userId, "access:changed", { teamId: effectiveTeamId, reason: "GRANT_REVOKED" });
   emitToTeam(effectiveTeamId, "access_grant:revoked", { grantId: grant._id, userId: grant.userId });
+  invalidateMembershipAccess({ userId: grant.userId, teamId: effectiveTeamId });
 
   createNotification({
     recipientId: grant.userId,

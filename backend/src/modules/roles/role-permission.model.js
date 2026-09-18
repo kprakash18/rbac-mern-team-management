@@ -29,6 +29,7 @@ rolePermissionSchema.index(
   { roleId: 1, permissionId: 1 },
   { unique: true }
 );
+rolePermissionSchema.index({ permissionId: 1, roleId: 1 });
 
 const RolePermission = mongoose.model(
   "RolePermission",

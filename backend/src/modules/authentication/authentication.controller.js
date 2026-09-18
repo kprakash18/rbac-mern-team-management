@@ -5,12 +5,12 @@ import {
   logout,
 } from "./authentication.service.js";
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendSuccess } from "../../common/http/response.js";
 
 export const loginController = asyncHandler(async (req, res) => {
   const { email, password } = req.body;
   const result = await login({ email, password });
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: "Login successful.",
     data: result,
   });
@@ -18,8 +18,7 @@ export const loginController = asyncHandler(async (req, res) => {
 
 export const meController = asyncHandler(async (req, res) => {
   const user = await getCurrentUser(req.user.id);
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     data: { user },
   });
 });
@@ -27,8 +26,7 @@ export const meController = asyncHandler(async (req, res) => {
 export const changePasswordController = asyncHandler(async (req, res) => {
   const { currentPassword, newPassword } = req.body;
   const result = await changePassword(req.user.id, { currentPassword, newPassword });
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: result.message,
     data: {
       user: result.user,
@@ -39,8 +37,7 @@ export const changePasswordController = asyncHandler(async (req, res) => {
 
 export const logoutController = asyncHandler(async (req, res) => {
   const result = await logout(req.user.id);
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     message: result.message,
   });
 });

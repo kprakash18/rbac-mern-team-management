@@ -100,6 +100,9 @@ accessGrantSchema.index({
   resource: 1,
   expiresAt: 1,
 });
+accessGrantSchema.index({ accessRequestId: 1, status: 1 });
+accessGrantSchema.index({ teamId: 1, status: 1, expiresAt: 1 });
+accessGrantSchema.index({ userId: 1, status: 1, expiresAt: 1 });
 
 const AccessGrant = mongoose.model(
   "AccessGrant",

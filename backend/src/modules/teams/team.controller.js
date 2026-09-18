@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendCreated, sendSuccess } from "../../common/http/response.js";
 import { teamService } from "./team.service.js";
 
 export const createTeam = asyncHandler(async (req, res) => {
@@ -7,32 +8,32 @@ export const createTeam = asyncHandler(async (req, res) => {
     description: req.body.description,
     createdBy: req.user.id,
   });
-  res.status(201).json({ success: true, data: team });
+  sendCreated(res, { data: team });
 });
 
 export const getMyTeams = asyncHandler(async (req, res) => {
   const teams = await teamService.getUserTeams(req.user.id);
-  res.status(200).json({ success: true, data: teams });
+  sendSuccess(res, { data: teams });
 });
 
 export const getTeams = asyncHandler(async (req, res) => {
   const result = await teamService.listTeams(req.query);
-  res.status(200).json({ success: true, data: result.teams, pagination: result });
+  sendSuccess(res, { data: result.teams, pagination: result });
 });
 
 export const getTeamById = asyncHandler(async (req, res) => {
   const team = await teamService.getTeamById(req.params.teamId);
-  res.status(200).json({ success: true, data: team });
+  sendSuccess(res, { data: team });
 });
 
 export const updateTeam = asyncHandler(async (req, res) => {
   const updated = await teamService.updateTeam(req.params.teamId, req.body);
-  res.status(200).json({ success: true, data: updated });
+  sendSuccess(res, { data: updated });
 });
 
 export const archiveTeam = asyncHandler(async (req, res) => {
   const result = await teamService.archiveTeam(req.params.teamId);
-  res.status(200).json(result);
+  sendSuccess(res, { message: result.message, data: result.data });
 });
 
 export const getWorkspaceBootstrap = asyncHandler(async (req, res) => {
@@ -41,7 +42,7 @@ export const getWorkspaceBootstrap = asyncHandler(async (req, res) => {
     userId: req.user.id,
     actor: req.user,
   });
-  res.status(200).json({ success: true, data: bootstrapData });
+  sendSuccess(res, { data: bootstrapData });
 });
 
 export const teamController = {

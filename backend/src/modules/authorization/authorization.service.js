@@ -62,39 +62,42 @@ export async function resolveRolePermissions(userId, teamId) {
       membershipId: membership._id,
       revokedAt: null,
       $or: [{ expiresAt: null }, { expiresAt: { $gt: new Date() } }],
-    }).select("roleId");
+    }).select("roleId").lean();
     roleIds = membershipRoles.map((mr) => mr.roleId);
   }
 
   if (!roleIds || roleIds.length === 0) return new Set();
 
-  const roles = await Role.find({
-    _id: { $in: roleIds },
-    status: "ACTIVE",
-  }).select("permissions");
+  const [roles, rolePermissions] = await Promise.all([
+    Role.find({ _id: { $in: roleIds }, status: "ACTIVE" }).select("permissions").lean(),
+    RolePermission.find({ roleId: { $in: roleIds } }).populate("permissionId", "key").lean(),
+  ]);
 
   const permissionKeys = new Set();
-  const rolesNeedingFallback = [];
+  const permObjectIds = [];
 
   for (const role of roles) {
     if (Array.isArray(role.permissions) && role.permissions.length > 0) {
       for (const perm of role.permissions) {
-        permissionKeys.add(perm);
+        if (typeof perm === "string" && (perm.includes(".") || perm === "*")) {
+          permissionKeys.add(perm);
+        } else if (perm) {
+          permObjectIds.push(perm);
+        }
       }
-    } else {
-      rolesNeedingFallback.push(role._id);
     }
   }
 
-  if (rolesNeedingFallback.length > 0) {
-    const rolePermissions = await RolePermission.find({
-      roleId: { $in: rolesNeedingFallback },
-    }).populate("permissionId", "key");
+  for (const rp of rolePermissions) {
+    if (rp.permissionId?.key) {
+      permissionKeys.add(rp.permissionId.key);
+    }
+  }
 
-    for (const rp of rolePermissions) {
-      if (rp.permissionId?.key) {
-        permissionKeys.add(rp.permissionId.key);
-      }
+  if (permObjectIds.length > 0) {
+    const resolvedPerms = await Permission.find({ _id: { $in: permObjectIds } }).select("key").lean();
+    for (const p of resolvedPerms) {
+      if (p.key) permissionKeys.add(p.key);
     }
   }
 

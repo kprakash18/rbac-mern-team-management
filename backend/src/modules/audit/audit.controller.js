@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendSuccess } from "../../common/http/response.js";
 import { getAuditLogs } from "./audit.service.js";
 
 export const getTeamAuditLogs = asyncHandler(async (req, res) => {
@@ -9,7 +10,7 @@ export const getTeamAuditLogs = asyncHandler(async (req, res) => {
     page,
     limit,
   });
-  res.status(200).json({ success: true, data: auditData });
+  sendSuccess(res, { data: auditData });
 });
 
 export const getAllAuditLogs = asyncHandler(async (req, res) => {
@@ -20,5 +21,5 @@ export const getAllAuditLogs = asyncHandler(async (req, res) => {
     page,
     limit,
   });
-  res.status(200).json({ success: true, data: auditData });
+  sendSuccess(res, { data: auditData });
 });

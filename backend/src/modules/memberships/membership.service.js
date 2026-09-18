@@ -12,8 +12,7 @@ import { sendRoleAssignedEmail } from "../../common/email/email.service.js";
 import { env } from "../../config/env.js";
 import { BadRequestError, NotFoundError, ConflictError } from "../../common/errors/index.js";
 import { getPaginationParams, getTotalPages } from "../../common/utils/index.js";
-import { delCachePattern } from "../../config/redis.js";
-import { invalidateUserPermissionCache } from "../authorization/authorization.service.js";
+import { invalidateMembershipAccess } from "../../platform/cache/cache-invalidation.service.js";
 
 const isValidId = (id) => id && mongoose.Types.ObjectId.isValid(id);
 
@@ -99,10 +98,7 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
         workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
       }).catch(() => {});
 
-      delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-      delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-      delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-      invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+      invalidateMembershipAccess({ userId, teamId });
 
       return getMembershipById({ teamId, membershipId: existingMembership._id });
     }
@@ -141,10 +137,7 @@ export async function addMemberToTeam({ teamId, userId, roleId, roleName, addedB
     workspaceUrl: `${env.clientUrl || "http://localhost:5173"}/workspaces?teamId=${teamId}`,
   }).catch(() => {});
 
-  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  delCachePattern(`teams:user:${userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  invalidateUserPermissionCache(userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateMembershipAccess({ userId, teamId });
 
   return getMembershipById({ teamId, membershipId: newMembership._id });
 }
@@ -296,10 +289,7 @@ async function handleMembershipStatusChange({ teamId, membershipId, actorId, new
     result: "SUCCESS",
   });
 
-  delCachePattern(`teams:bootstrap:${teamId}:*`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  delCachePattern(`teams:user:${membership.userId}`).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  delCachePattern("teams:list:*").catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
-  invalidateUserPermissionCache(membership.userId, teamId).catch((err) => console.warn("[Redis] Cache invalidation warning:", err.message));
+  invalidateMembershipAccess({ userId: membership.userId, teamId });
 
   return newStatus === "REMOVED" ? { success: true, message: "Member removed from team successfully." } : getMembershipById({ teamId, membershipId: membership._id });
 }

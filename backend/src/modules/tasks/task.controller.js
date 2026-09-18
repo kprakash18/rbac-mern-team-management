@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { paginationMeta, sendCreated, sendSuccess } from "../../common/http/response.js";
 import * as taskService from "./task.service.js";
 
 export const createTaskController = asyncHandler(async (req, res) => {
@@ -13,7 +14,7 @@ export const createTaskController = asyncHandler(async (req, res) => {
     dueDate,
     remarks,
   });
-  res.status(201).json({ success: true, data: task });
+  sendCreated(res, { data: task });
 });
 
 export const getTasksByTeamController = asyncHandler(async (req, res) => {
@@ -21,15 +22,9 @@ export const getTasksByTeamController = asyncHandler(async (req, res) => {
     teamId: req.params.teamId,
     query: req.query,
   });
-  res.status(200).json({
-    success: true,
+  sendSuccess(res, {
     data: result.tasks,
-    meta: {
-      total: result.total,
-      page: result.page,
-      limit: result.limit,
-      totalPages: result.totalPages,
-    },
+    meta: paginationMeta(result),
   });
 });
 
@@ -38,7 +33,7 @@ export const getTaskByIdController = asyncHandler(async (req, res) => {
     teamId: req.params.teamId,
     taskId: req.params.taskId,
   });
-  res.status(200).json({ success: true, data: task });
+  sendSuccess(res, { data: task });
 });
 
 export const updateTaskController = asyncHandler(async (req, res) => {
@@ -48,13 +43,14 @@ export const updateTaskController = asyncHandler(async (req, res) => {
     updates: req.body,
     callerUserId: req.user.id,
   });
-  res.status(200).json({ success: true, data: task });
+  sendSuccess(res, { data: task });
 });
 
 export const deleteTaskController = asyncHandler(async (req, res) => {
   const result = await taskService.deleteTask({
     teamId: req.params.teamId,
     taskId: req.params.taskId,
+    callerUserId: req.user.id,
   });
-  res.status(200).json({ success: true, message: result.message });
+  sendSuccess(res, { message: result.message });
 });

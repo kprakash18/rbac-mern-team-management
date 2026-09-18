@@ -6,6 +6,7 @@ import authRouter from "./modules/authentication/authentication.routes.js";
 import authorizationRouter from "./modules/authorization/authorization.routes.js";
 
 import { errorHandler } from "./common/middleware/error-handler.js";
+import { requestMetadata } from "./common/middleware/request-metadata.js";
 import { apiRateLimiter } from "./common/middleware/rate-limiter.js";
 import permissionRouter from "./modules/permissions/permission.routes.js";
 import roleRouter from "./modules/roles/role.routes.js";
@@ -29,6 +30,7 @@ import { env } from "./config/env.js";
 const app = express();
 
 app.set("trust proxy", 1);
+app.use(requestMetadata);
 
 const cleanUrl = (url) => (typeof url === "string" ? url.trim().replace(/\/+$/, "") : "");
 
@@ -56,7 +58,7 @@ app.use(
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "x-team-id"],
+    allowedHeaders: ["Content-Type", "Authorization", "x-team-id", "x-request-id"],
     maxAge: 86400, // Cache preflight OPTIONS for 24 hours in browser
     optionsSuccessStatus: 200,
   })

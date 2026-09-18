@@ -1,16 +1,24 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendCreated, sendSuccess } from "../../common/http/response.js";
+import { BadRequestError, ConflictError, NotFoundError } from "../../common/errors/index.js";
+import { can } from "../authorization/authorization.service.js";
 import * as channelService from "./chat-channel.service.js";
 
 export const getChannelsController = asyncHandler(async (req, res) => {
   const { teamId } = req.params;
   const userId = req.user.id;
-  const isAdmin = req.user.isTeamAdmin || req.user.role === "Platform Super Admin";
+  const isAdmin = Boolean(
+    req.context?.isSuperAdmin ||
+    req.user.isSuperAdmin ||
+    (await can(userId, teamId, "membership.read")) ||
+    (await can(userId, teamId, "team.update"))
+  );
 
   const channels = isAdmin
     ? await channelService.getAllChannels(teamId)
     : await channelService.getChannelsForUser({ teamId, userId });
 
-  res.status(200).json({ success: true, data: channels });
+  sendSuccess(res, { data: channels });
 });
 
 export const createChannelController = asyncHandler(async (req, res, next) => {
@@ -19,7 +27,7 @@ export const createChannelController = asyncHandler(async (req, res, next) => {
   const { name, topic, memberIds = [] } = req.body;
 
   if (!name || !name.trim()) {
-    return res.status(400).json({ success: false, message: "Channel name is required." });
+    throw new BadRequestError("Channel name is required.", "CHANNEL_NAME_REQUIRED");
   }
 
   try {
@@ -30,13 +38,13 @@ export const createChannelController = asyncHandler(async (req, res, next) => {
       createdBy,
       memberIds,
     });
-    res.status(201).json({ success: true, data: channel });
+    sendCreated(res, { data: channel });
   } catch (error) {
     if (error.code === 11000) {
-      return res.status(409).json({
-        success: false,
-        message: "A channel with that name already exists in this team.",
-      });
+      throw new ConflictError(
+        "A channel with that name already exists in this team.",
+        "CHANNEL_NAME_CONFLICT"
+      );
     }
     next(error);
   }
@@ -47,15 +55,15 @@ export const addMembersController = asyncHandler(async (req, res) => {
   const { memberIds = [] } = req.body;
 
   if (!Array.isArray(memberIds) || memberIds.length === 0) {
-    return res.status(400).json({ success: false, message: "memberIds array is required." });
+    throw new BadRequestError("memberIds array is required.", "MEMBER_IDS_REQUIRED");
   }
 
   const channel = await channelService.addMembersToChannel({ channelId, teamId, memberIds });
   if (!channel) {
-    return res.status(404).json({ success: false, message: "Channel not found." });
+    throw new NotFoundError("Channel not found.", "CHANNEL_NOT_FOUND");
   }
 
-  res.status(200).json({ success: true, data: channel });
+  sendSuccess(res, { data: channel });
 });
 
 export const deleteChannelController = asyncHandler(async (req, res) => {
@@ -63,11 +71,11 @@ export const deleteChannelController = asyncHandler(async (req, res) => {
   const deleted = await channelService.deleteChannel({ channelId, teamId });
 
   if (!deleted) {
-    return res.status(400).json({
-      success: false,
-      message: "Channel not found or the default #general channel cannot be deleted.",
-    });
+    throw new BadRequestError(
+      "Channel not found or the default #general channel cannot be deleted.",
+      "CHANNEL_DELETE_NOT_ALLOWED"
+    );
   }
 
-  res.status(200).json({ success: true, message: "Channel deleted." });
+  sendSuccess(res, { message: "Channel deleted." });
 });

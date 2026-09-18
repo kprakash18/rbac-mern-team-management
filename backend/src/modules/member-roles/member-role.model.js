@@ -49,6 +49,8 @@ membershipRoleSchema.index(
   { unique: true , partialFilterExpression: {revokedAt: null} }
 );
 membershipRoleSchema.index({ membershipId: 1, revokedAt: 1 });
+membershipRoleSchema.index({ roleId: 1, revokedAt: 1, expiresAt: 1 });
+membershipRoleSchema.index({ membershipId: 1, revokedAt: 1, expiresAt: 1 });
 
 const MembershipRole = mongoose.model(
   "MembershipRole",

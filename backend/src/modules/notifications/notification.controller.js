@@ -1,4 +1,5 @@
 import { asyncHandler } from "../../common/utils/async-handler.js";
+import { sendCreated, sendSuccess } from "../../common/http/response.js";
 import * as notificationService from "./notification.service.js";
 
 export const getMyNotificationsController = asyncHandler(async (req, res) => {
@@ -8,12 +9,12 @@ export const getMyNotificationsController = asyncHandler(async (req, res) => {
     page: req.query.page,
     limit: req.query.limit,
   });
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const getUnreadCountController = asyncHandler(async (req, res) => {
   const data = await notificationService.getUnreadNotificationCount({ userId: req.user.id });
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const markNotificationAsReadController = asyncHandler(async (req, res) => {
@@ -21,12 +22,12 @@ export const markNotificationAsReadController = asyncHandler(async (req, res) =>
     notificationId: req.params.notificationId,
     userId: req.user.id,
   });
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const markAllNotificationsAsReadController = asyncHandler(async (req, res) => {
   const data = await notificationService.markAllNotificationsAsRead(req.user.id);
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const deleteNotificationController = asyncHandler(async (req, res) => {
@@ -34,7 +35,7 @@ export const deleteNotificationController = asyncHandler(async (req, res) => {
     notificationId: req.params.notificationId,
     userId: req.user.id,
   });
-  res.status(200).json({ success: true, data: { deleted: Boolean(result) } });
+  sendSuccess(res, { data: { deleted: Boolean(result) } });
 });
 
 export const createTeamBroadcastController = asyncHandler(async (req, res) => {
@@ -50,22 +51,22 @@ export const createTeamBroadcastController = asyncHandler(async (req, res) => {
     startsAt,
     expiresAt,
   });
-  res.status(201).json({ success: true, data: broadcast, message: "Broadcast dispatched to team members successfully." });
+  sendCreated(res, { data: broadcast, message: "Broadcast dispatched to team members successfully." });
 });
 
 export const getTeamBroadcastsController = asyncHandler(async (req, res) => {
   const data = await notificationService.getTeamBroadcasts({ teamId: req.params.teamId });
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const getActiveBulletinsController = asyncHandler(async (req, res) => {
   const data = await notificationService.getActiveSystemBulletins({ teamId: req.query.teamId || null });
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const getAllBroadcastsController = asyncHandler(async (req, res) => {
   const data = await notificationService.getAllBroadcasts(req.query);
-  res.status(200).json({ success: true, data });
+  sendSuccess(res, { data });
 });
 
 export const createGlobalBroadcastController = asyncHandler(async (req, res) => {
@@ -73,7 +74,7 @@ export const createGlobalBroadcastController = asyncHandler(async (req, res) => 
     senderId: req.user.id,
     data: req.body,
   });
-  res.status(201).json({ success: true, data, message: "System broadcast published successfully." });
+  sendCreated(res, { data, message: "System broadcast published successfully." });
 });
 
 export const updateBroadcastController = asyncHandler(async (req, res) => {
@@ -82,7 +83,7 @@ export const updateBroadcastController = asyncHandler(async (req, res) => {
     updates: req.body,
     senderId: req.user.id,
   });
-  res.status(200).json({ success: true, data, message: "System broadcast updated successfully." });
+  sendSuccess(res, { data, message: "System broadcast updated successfully." });
 });
 
 export const deleteBroadcastController = asyncHandler(async (req, res) => {
@@ -90,5 +91,5 @@ export const deleteBroadcastController = asyncHandler(async (req, res) => {
     broadcastId: req.params.broadcastId,
     senderId: req.user.id,
   });
-  res.status(200).json({ success: true, data, message: "System broadcast deleted successfully." });
+  sendSuccess(res, { data, message: "System broadcast deleted successfully." });
 });
