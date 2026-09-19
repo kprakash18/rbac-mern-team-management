@@ -1,42 +1,20 @@
-import { useState, useEffect } from 'react';
-import api from '@/lib/api';
 import { useApp } from '@/context/useApp';
+import { usePermissionCatalog } from '@/features/permissions/hooks/usePermissionCatalog';
+import { useWorkspaceBootstrap } from '../../hooks/useWorkspaceBootstrap';
 
 export default function MyPermissionsView({ currentUser, workspace }) {
-  const { activeWorkspace } = useApp();
+  const { activeWorkspace, isSuperAdmin, workspacePermissions } = useApp();
   const teamId = workspace?._id || workspace?.id || activeWorkspace?._id || activeWorkspace?.id;
-  const [grantedKeys, setGrantedKeys] = useState([]);
-  const [allPermissions, setAllPermissions] = useState([]);
-  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function loadPermissions() {
-      if (!teamId) return;
-      try {
-        setLoading(true);
-        const [myPermsRes, allPermsRes] = await Promise.allSettled([
-          api.get(`/api/authorization/permissions?teamId=${teamId}`),
-          api.get('/api/permissions'),
-        ]);
+  const { data: allPermissions = [], isLoading: isCatalogLoading } = usePermissionCatalog();
+  const { data: bootstrapData, isLoading: isBootstrapLoading } = useWorkspaceBootstrap(teamId, {
+    enabled: Boolean(teamId && !isSuperAdmin),
+  });
 
-        if (myPermsRes.status === 'fulfilled') {
-          const keys = myPermsRes.value.data?.data?.permissions || [];
-          setGrantedKeys(keys);
-        }
-
-        if (allPermsRes.status === 'fulfilled') {
-          const perms = allPermsRes.value.data?.data?.permissions || allPermsRes.value.data?.data || [];
-          setAllPermissions(perms);
-        }
-      } catch (err) {
-        console.error('Failed to load permissions:', err);
-      } finally {
-        setLoading(false);
-      }
-    }
-
-    loadPermissions();
-  }, [teamId]);
+  const grantedKeys = isSuperAdmin
+    ? ['*']
+    : bootstrapData?.permissions || workspacePermissions || [];
+  const loading = isCatalogLoading || (!isSuperAdmin && isBootstrapLoading);
 
   const categoriesMap = {};
   allPermissions.forEach((p) => {

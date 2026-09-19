@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { lazy, Suspense, useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import api from '@/lib/api';
 import { getSocket } from '@/lib/socket';
@@ -6,15 +6,25 @@ import WorkspaceAppSidebar from '../shell/WorkspaceAppSidebar';
 import WorkspaceAppTopbar from '../shell/WorkspaceAppTopbar';
 import { useApp } from '@/context/useApp';
 import DirectMessageSidebar from '../shell/DirectMessageSidebar';
-import MyDashboardView from '../modules/dashboard/MyDashboardView';
-import MyPermissionsView from '../modules/dashboard/MyPermissionsView';
-import TasksView from '@/features/tasks';
-import TeamMembersView from '../modules/members/TeamMembersView';
-import ChatView from '../modules/chat/ChatView';
-import JitRequestView from '@/features/jit-access';
-import AnnouncementsView from '../modules/announcements/AnnouncementsView';
 import TeamSettingsModal from '../modules/announcements/TeamSettingsModal';
-import WorkspaceAuditLogView from '../modules/audit/WorkspaceAuditLogView';
+import { SkeletonCard } from '@/shared/components';
+
+const MyDashboardView = lazy(() => import('../modules/dashboard/MyDashboardView'));
+const MyPermissionsView = lazy(() => import('../modules/dashboard/MyPermissionsView'));
+const TasksView = lazy(() => import('@/features/tasks'));
+const TeamMembersView = lazy(() => import('../modules/members/TeamMembersView'));
+const ChatView = lazy(() => import('../modules/chat/ChatView'));
+const JitRequestView = lazy(() => import('@/features/jit-access'));
+const AnnouncementsView = lazy(() => import('../modules/announcements/AnnouncementsView'));
+const WorkspaceAuditLogView = lazy(() => import('../modules/audit/WorkspaceAuditLogView'));
+
+function ViewFallback() {
+  return (
+    <div className="w-full max-w-7xl mx-auto px-margin-mobile lg:px-margin-desktop py-lg">
+      <SkeletonCard lines={6} />
+    </div>
+  );
+}
 
 export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
   const navigate = useNavigate();
@@ -353,7 +363,7 @@ export default function WorkspaceApp({ workspace, currentUser, onLogout }) {
         )}
 
         <main className="w-full bg-surface flex-1 min-w-0 overflow-x-hidden">
-          {renderView()}
+          <Suspense fallback={<ViewFallback />}>{renderView()}</Suspense>
         </main>
       </div>
 

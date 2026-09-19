@@ -6,7 +6,7 @@ export const queryClient = new QueryClient({
       staleTime: 1000 * 60 * 3, // 3 minutes data freshness
       gcTime: 1000 * 60 * 15, // 15 minutes garbage collection
       retry: 1,
-      refetchOnWindowFocus: true,
+      refetchOnWindowFocus: false,
       refetchOnReconnect: true,
     },
     mutations: {

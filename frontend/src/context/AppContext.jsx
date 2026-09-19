@@ -1,8 +1,12 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { AppContext } from './AppContext.js';
 import { getStorage, setStorage, removeStorage } from '../lib/storage.js';
 import { connectSocket, disconnectSocket, getSocket } from '../lib/socket.js';
 import api from '../lib/api.js';
+import { queryKeys } from '../lib/queryKeys.js';
+import { usePermissionCatalog } from '../features/permissions/hooks/usePermissionCatalog.js';
+import { useWorkspaceBootstrap } from '../features/workspace-app/hooks/useWorkspaceBootstrap.js';
 
 const STORAGE_KEYS = {
   AUTH: 'auth_session',
@@ -13,6 +17,7 @@ const SUPER_ADMIN_ROLE = 'Platform Super Admin';
 const PERMISSIONS_REFRESH_DEBOUNCE_MS = 200;
 
 export function AppProvider({ children }) {
+  const queryClient = useQueryClient();
   const [authUser, setAuthUser] = useState(() => getStorage(STORAGE_KEYS.AUTH));
   const [activeWorkspace, setActiveWorkspace] = useState(() => getStorage(STORAGE_KEYS.WORKSPACE));
 
@@ -152,39 +157,34 @@ export function AppProvider({ children }) {
     [authUser?.isSuperAdmin, authUser?.role, authUser?.roles]
   );
 
-  const [workspacePermissions, setWorkspacePermissions] = useState([]);
+  const activeTeamId = activeWorkspace?._id || activeWorkspace?.id;
+
+  const { data: permissionCatalog = [] } = usePermissionCatalog({
+    enabled: Boolean(authUser?.token && isSuperAdmin),
+  });
+
+  const { data: workspaceBootstrap } = useWorkspaceBootstrap(activeTeamId, {
+    enabled: Boolean(authUser?.token && activeTeamId && !isSuperAdmin),
+  });
+
+  const workspacePermissions = useMemo(() => {
+    if (!authUser?.token) return [];
+    if (isSuperAdmin) {
+      const keys = permissionCatalog.map((p) => p.key).filter(Boolean);
+      return keys.includes('*') ? keys : [...keys, '*'];
+    }
+    return workspaceBootstrap?.permissions || [];
+  }, [authUser?.token, isSuperAdmin, permissionCatalog, workspaceBootstrap?.permissions]);
 
   const refreshPermissions = useCallback(async () => {
     if (isSuperAdmin) {
-      try {
-        const res = await api.get('/api/permissions');
-        const perms = res.data?.data?.permissions || res.data?.data || [];
-        const allKeys = perms.map((p) => p.key).concat('*');
-        setWorkspacePermissions(allKeys);
-        return;
-      } catch {
-        setWorkspacePermissions(['*']);
-        return;
-      }
-    }
-
-    const teamId = activeWorkspace?._id || activeWorkspace?.id;
-    if (!teamId || !authUser?.token) {
-      setWorkspacePermissions([]);
+      await queryClient.invalidateQueries({ queryKey: queryKeys.permissions.catalog() });
       return;
     }
-    try {
-      const res = await api.get(`/api/authorization/permissions?teamId=${teamId}`);
-      const perms = res.data?.data?.permissions || res.data?.data?.effectivePermissions || [];
-      setWorkspacePermissions(perms);
-    } catch (err) {
-      console.warn('[Permissions] Failed to fetch workspace permissions:', err.message);
+    if (activeTeamId) {
+      await queryClient.invalidateQueries({ queryKey: queryKeys.workspace.bootstrap(activeTeamId) });
     }
-  }, [isSuperAdmin, activeWorkspace?._id, activeWorkspace?.id, authUser?.token]);
-
-  useEffect(() => {
-    refreshPermissions();
-  }, [refreshPermissions]);
+  }, [activeTeamId, isSuperAdmin, queryClient]);
 
   const refreshDebounceTimer = useRef(null);
 

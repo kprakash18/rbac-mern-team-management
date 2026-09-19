@@ -1,458 +1,72 @@
-import { useState, useEffect } from 'react';
-import {
-  WORKSPACE_ROLES_MAP,
-  DEFAULT_WORKSPACE,
-} from '@/constants';
-import api from '@/lib/api';
+import CreateUserAssignmentsSection from './create-user/CreateUserAssignmentsSection';
+import CreateUserAuthoritySection from './create-user/CreateUserAuthoritySection';
+import CreateUserIdentitySection from './create-user/CreateUserIdentitySection';
+import CreateUserModalFrame from './create-user/CreateUserModalFrame';
+import { useCreateUserForm } from './create-user/useCreateUserForm';
 
 export default function CreateUserModal({ isOpen, onClose, onInvite, existingUsers = [] }) {
-  const [fullName, setFullName] = useState('');
-  const [email, setEmail] = useState('');
-  const [teams, setTeams] = useState([]);
-  const [roles, setRoles] = useState([]);
-  const [assignments, setAssignments] = useState([
-    {
-      teamId: '',
-      workspace: '',
-      roleId: '',
-      role: 'Developer',
-      isTeamAdmin: false,
-    },
-  ]);
-  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    Promise.allSettled([
-      api.get('/api/teams?status=ACTIVE'),
-      api.get('/api/roles?status=all'),
-    ]).then(([teamsRes, rolesRes]) => {
-      let activeTeams = [];
-      let activeRoles = [];
-      if (teamsRes.status === 'fulfilled') {
-        const list = teamsRes.value.data?.data?.teams || teamsRes.value.data?.data || [];
-        if (Array.isArray(list) && list.length > 0) {
-          activeTeams = list.filter((t) => t.status !== 'ARCHIVED');
-          setTeams(activeTeams);
-        }
-      }
-      if (rolesRes.status === 'fulfilled') {
-        const roleList = rolesRes.value.data?.data?.roles || rolesRes.value.data?.data || [];
-        if (Array.isArray(roleList) && roleList.length > 0) {
-          activeRoles = roleList;
-          setRoles(activeRoles);
-        }
-      }
-
-      setAssignments([
-        {
-          tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
-          teamId: activeTeams[0]?._id || activeTeams[0]?.id || '',
-          workspace: activeTeams[0]?.name || DEFAULT_WORKSPACE,
-          roleId: activeRoles[0]?._id || activeRoles[0]?.id || '',
-          role: activeRoles[0]?.name || 'Developer',
-          isTeamAdmin: false,
-        },
-      ]);
-    });
-  }, [isOpen]);
-
-  const workspaceOptions = teams.length > 0
-    ? teams.map((t) => t.name)
-    : Object.keys(WORKSPACE_ROLES_MAP);
-
-  const availableRoleNames = roles.length > 0
-    ? Array.from(new Set(roles.map((r) => r.name)))
-    : ['Admin', 'Developer', 'Viewer', 'Editor', 'Manager'];
-
-  const createInitialAssignment = () => {
-    const firstTeam = teams[0];
-    const firstRole = roles[0];
-    return {
-      tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
-      teamId: firstTeam?._id || firstTeam?.id || '',
-      workspace: firstTeam ? firstTeam.name : (workspaceOptions[0] || DEFAULT_WORKSPACE),
-      roleId: firstRole?._id || firstRole?.id || '',
-      role: firstRole?.name || 'Developer',
-      isTeamAdmin: false,
-    };
-  };
-
-  const resetForm = () => {
-    setFullName('');
-    setEmail('');
-    setAssignments([createInitialAssignment()]);
-    setIsSuperAdmin(false);
-  };
-
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
-
-  const matchedUser = existingUsers.find(
-    (u) => u.email.toLowerCase() === email.trim().toLowerCase()
-  );
-
-  const isExistingUser = Boolean(matchedUser);
-
-  const handleEmailChange = (newEmail) => {
-    setEmail(newEmail);
-    const match = existingUsers.find(
-      (u) => u.email.toLowerCase() === newEmail.trim().toLowerCase()
-    );
-    if (match && match.name) {
-      setFullName(match.name);
-    }
-  };
+  const form = useCreateUserForm({ existingUsers, isOpen, onClose, onInvite });
 
   if (!isOpen) return null;
 
-  const handleAddAssignment = () => {
-    const assignedTeamIds = assignments.map((a) => a.teamId || a.workspace);
-    const nextTeam =
-      teams.find((t) => !assignedTeamIds.includes(t._id || t.id) && !assignedTeamIds.includes(t.name)) ||
-      teams[0];
-    const defaultRole = roles[0];
-
-    setAssignments((prev) => [
-      ...prev,
-      {
-        tempId: 'asg-' + Math.random().toString(36).slice(2, 9),
-        teamId: nextTeam?._id || nextTeam?.id || '',
-        workspace: nextTeam?.name || workspaceOptions[0] || 'Engineering Core',
-        roleId: defaultRole?._id || defaultRole?.id || '',
-        role: defaultRole?.name || 'Developer',
-        isTeamAdmin: false,
-      },
-    ]);
-  };
-
-  const handleRemoveAssignment = (index) => {
-    if (assignments.length <= 1) return;
-    setAssignments((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleWorkspaceChange = (index, selectedVal) => {
-    const matchedTeam = teams.find(
-      (t) => String(t._id || t.id) === String(selectedVal) || t.name === selectedVal
-    );
-    const newWorkspaceName = matchedTeam ? matchedTeam.name : selectedVal;
-    const teamId = matchedTeam ? (matchedTeam._id || matchedTeam.id) : undefined;
-    const availableRoles = WORKSPACE_ROLES_MAP[newWorkspaceName] || ['Viewer'];
-
-    setAssignments((prev) =>
-      prev.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              teamId: teamId || item.teamId,
-              workspace: newWorkspaceName,
-              role: availableRoles.includes(item.role) ? item.role : (roles[0]?.name || availableRoles[0]),
-              roleId: roles.find((r) => r.name === (availableRoles.includes(item.role) ? item.role : (roles[0]?.name || availableRoles[0])))?._id || item.roleId,
-            }
-          : item
-      )
-    );
-  };
-
-  const handleRoleChange = (index, selectedVal) => {
-    const matchedRole = roles.find(
-      (r) => String(r._id || r.id) === String(selectedVal) || r.name === selectedVal
-    );
-    const roleName = matchedRole ? matchedRole.name : selectedVal;
-    const roleId = matchedRole ? (matchedRole._id || matchedRole.id) : undefined;
-
-    setAssignments((prev) =>
-      prev.map((item, i) =>
-        i === index
-          ? {
-              ...item,
-              roleId: roleId || item.roleId,
-              role: roleName,
-            }
-          : item
-      )
-    );
-  };
-
-  const handleTeamAdminChange = (index, isTeamAdmin) => {
-    setAssignments((prev) =>
-      prev.map((item, i) => (i === index ? { ...item, isTeamAdmin } : item))
-    );
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    if (onInvite) {
-      const primaryAssignment = assignments[0] || {};
-      const primaryTeamId = primaryAssignment.teamId || teams.find((t) => t.name === primaryAssignment.workspace)?._id || teams[0]?._id;
-      const matchedTeam = teams.find((t) => String(t._id || t.id) === String(primaryTeamId)) || teams[0];
-      const primaryRoleId = primaryAssignment.roleId || roles.find((r) => r.name === primaryAssignment.role)?._id || roles[0]?._id;
-      const matchedRole = roles.find((r) => String(r._id || r.id) === String(primaryRoleId)) || roles[0];
-
-      onInvite({
-        fullName,
-        email,
-        assignments: assignments.map((a) => {
-          const tMatch = teams.find((t) => String(t._id || t.id) === String(a.teamId) || t.name?.toLowerCase() === a.workspace?.toLowerCase());
-          const rMatch = roles.find((r) => String(r._id || r.id) === String(a.roleId) || r.name?.toLowerCase() === a.role?.toLowerCase());
-          return {
-            ...a,
-            teamId: tMatch?._id || tMatch?.id,
-            workspace: tMatch?.name || a.workspace,
-            roleId: rMatch?._id || rMatch?.id,
-            role: rMatch?.name || a.role,
-          };
-        }),
-        teamId: matchedTeam?._id || matchedTeam?.id,
-        roleId: matchedRole?._id || matchedRole?.id,
-        workspace: matchedTeam?.name || primaryAssignment.workspace,
-        role: matchedRole?.name || primaryAssignment.role,
-        isTeamAdmin: assignments.some((a) => a.isTeamAdmin),
-        isSuperAdmin,
-        isExistingUser,
-      });
-    }
-    resetForm();
-    onClose();
-  };
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-surface/50 backdrop-blur-sm p-4">
-      <div className="relative w-full max-w-145 bg-surface-container-lowest rounded-xl shadow-xl border border-border-subtle flex flex-col max-h-[90vh]">
-        <div className="flex items-center justify-between p-lg border-b border-border-subtle">
-          <div className="flex items-center gap-sm">
-            <div className="w-8 h-8 rounded-lg bg-surface-container flex items-center justify-center text-on-surface">
-              <span className="material-symbols-outlined text-[20px]">person_add</span>
-            </div>
-            <h2 className="font-headline-md text-headline-md text-on-surface m-0">
-              Create &amp; Invite User to Platform
-            </h2>
-          </div>
-          <button
-            onClick={handleClose}
-            className="w-8 h-8 rounded-full flex items-center justify-center text-on-surface-variant hover:bg-surface-container hover:text-on-surface transition-colors cursor-pointer"
-          >
-            <span className="material-symbols-outlined text-[20px]">close</span>
-          </button>
-        </div>
-
-        <div className="p-lg overflow-y-auto flex flex-col gap-xl">
-          <div className="flex flex-col gap-md">
-            <div className="flex items-center justify-between">
-              <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
-                User Identity Details
-              </h3>
-              {isExistingUser ? (
-                <span className="bg-secondary-container text-on-secondary-container px-2 py-0.5 rounded-full font-label-sm text-[10px] flex items-center gap-1 shadow-sm font-semibold">
-                  <span className="material-symbols-outlined text-[12px]">how_to_reg</span> Existing User — Will add cross-workspace access
-                </span>
-              ) : (
-                <span className="bg-success-bg text-success-text px-2 py-0.5 rounded-full font-label-sm text-[10px] flex items-center gap-1">
-                  <span className="material-symbols-outlined text-[12px]">check_circle</span> New User Available
-                </span>
-              )}
-            </div>
-            <div className="flex flex-col gap-sm">
-              <label className="font-label-sm text-label-sm text-on-surface-variant">Full Name</label>
-              <input
-                value={fullName}
-                onChange={(e) => setFullName(e.target.value)}
-                className="w-full h-10 px-sm bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                placeholder="e.g. Alice Vance"
-                type="text"
-              />
-            </div>
-            <div className="flex flex-col gap-sm">
-              <label className="font-label-sm text-label-sm text-on-surface-variant">Email Address</label>
-              <input
-                value={email}
-                onChange={(e) => handleEmailChange(e.target.value)}
-                className="w-full h-10 px-sm bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent transition-all"
-                placeholder="e.g. user@company.com"
-                type="email"
-              />
-            </div>
-          </div>
-
-          <div className="h-px bg-border-subtle w-full"></div>
-
-          <div className="flex flex-col gap-md">
-            <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
-              Workspace &amp; Role Assignment
-            </h3>
-
-            <div className="flex flex-col gap-md">
-              {assignments.map((item, index) => {
-                return (
-                  <div
-                    key={item.tempId || item.workspace || index}
-                    className="p-3.5 rounded-xl bg-surface-container-low/60 border border-border-subtle flex flex-col gap-2.5"
-                  >
-
-                    <div className="flex gap-md items-end">
-                      <div className="flex-1 flex flex-col gap-sm relative">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant">
-                          Assign to Workspace {assignments.length > 1 ? `${index + 1}` : ''}
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={item.teamId || item.workspace}
-                            onChange={(e) => handleWorkspaceChange(index, e.target.value)}
-                            className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                          >
-                            {teams.length > 0 ? (
-                              teams.map((t) => (
-                                <option key={t._id || t.id || t.name} value={t._id || t.id}>
-                                  {t.name}
-                                </option>
-                              ))
-                            ) : (
-                              workspaceOptions.map((ws) => (
-                                <option key={ws} value={ws}>
-                                  {ws}
-                                </option>
-                              ))
-                            )}
-                          </select>
-                          <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                            expand_more
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex-1 flex flex-col gap-sm relative">
-                        <label className="font-label-sm text-label-sm text-on-surface-variant">
-                          Assigned Role
-                        </label>
-                        <div className="relative">
-                          <select
-                            value={item.roleId || item.role}
-                            onChange={(e) => handleRoleChange(index, e.target.value)}
-                            className="w-full h-10 pl-sm pr-10 bg-surface-container-lowest border border-border-subtle rounded-lg font-body-base text-on-surface appearance-none focus:outline-none focus:ring-2 focus:ring-primary focus:border-transparent cursor-pointer"
-                          >
-                            {roles.length > 0 ? (
-                              roles.map((r) => (
-                                <option key={r._id || r.id || r.name} value={r._id || r.id}>
-                                  {r.name}
-                                </option>
-                              ))
-                            ) : (
-                              availableRoleNames.map((r) => (
-                                <option key={r} value={r}>
-                                  {r}
-                                </option>
-                              ))
-                            )}
-                          </select>
-                          <span className="material-symbols-outlined absolute right-sm top-1/2 -translate-y-1/2 text-on-surface-variant pointer-events-none text-[20px]">
-                            expand_more
-                          </span>
-                        </div>
-                      </div>
-
-                      {assignments.length > 1 && (
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveAssignment(index)}
-                          className="h-10 w-10 flex items-center justify-center text-on-surface-variant hover:text-error hover:bg-error-bg rounded-lg transition-colors cursor-pointer"
-                          title="Remove assignment"
-                        >
-                          <span className="material-symbols-outlined text-[20px]">delete</span>
-                        </button>
-                      )}
-                    </div>
-
-                    <div className="pt-2 border-t border-border-subtle/80 flex items-center justify-between">
-                      <label className="flex items-center gap-2 text-[12px] font-medium text-on-surface cursor-pointer select-none">
-                        <input
-                          type="checkbox"
-                          checked={Boolean(item.isTeamAdmin)}
-                          onChange={(e) => handleTeamAdminChange(index, e.target.checked)}
-                          className="w-4 h-4 rounded border-border-subtle text-primary focus:ring-primary accent-primary cursor-pointer"
-                        />
-                        <span className="flex items-center gap-1.5">
-                          <span className="material-symbols-outlined text-[16px] text-amber-500">crown</span>
-                          <span className="font-semibold text-on-surface">
-                            Assign as Team Admin for {item.workspace}
-                          </span>
-                        </span>
-                      </label>
-                      {item.isTeamAdmin && (
-                        <span className="text-[10px] bg-amber-500/10 text-amber-700 border border-amber-500/20 px-2 py-0.5 rounded-full font-bold">
-                          Full Workspace Control
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-
-            <button
-              type="button"
-              onClick={handleAddAssignment}
-              className="self-start text-primary font-label-bold text-label-sm hover:underline flex items-center gap-xs mt-xs cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">add</span> Assign to another workspace
-            </button>
-          </div>
-
-          <div className="h-px bg-border-subtle w-full"></div>
-
-          <div className="flex flex-col gap-md">
-            <h3 className="font-label-bold text-label-bold uppercase tracking-wider text-[11px] text-on-surface-variant">
-              Platform Authority
-            </h3>
-            <div className="flex items-start gap-sm bg-warning-bg border border-warning-text/20 p-md rounded-lg">
-              <input
-                checked={isSuperAdmin}
-                onChange={(e) => setIsSuperAdmin(e.target.checked)}
-                className="mt-1 w-4 h-4 rounded border-border-subtle text-primary focus:ring-primary cursor-pointer accent-primary"
-                id="superadmin"
-                type="checkbox"
-              />
-              <div className="flex flex-col">
-                <label
-                  className="font-label-bold text-body-base text-on-surface cursor-pointer flex items-center gap-xs"
-                  htmlFor="superadmin"
-                >
-                  Grant Platform Super Admin Privileges{' '}
-                  <span className="material-symbols-outlined text-warning-text text-[16px]">local_police</span>
-                </label>
-                <p className="font-body-sm text-body-sm text-on-surface-variant mt-1">
-                  Gives unrestricted wildcard access to platform settings &amp; all teams. Proceed with caution.
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-secondary-container/50 text-on-secondary-container p-sm rounded-lg flex items-start gap-sm">
-            <span className="material-symbols-outlined text-[18px] mt-0.5 text-secondary">lock</span>
-            <p className="font-body-sm text-[12px] leading-relaxed">
-              A 24-hour single-use secure link will be generated. The user will set their own secret permanent password upon joining the platform.
-            </p>
-          </div>
-        </div>
-
+    <CreateUserModalFrame
+      onClose={form.handleClose}
+      footer={(
         <div className="p-lg border-t border-border-subtle flex items-center justify-end gap-sm bg-surface-container-low rounded-b-xl">
           <button
             type="button"
-            onClick={handleClose}
+            onClick={form.handleClose}
             className="px-md h-10 rounded-lg font-label-bold text-label-sm text-on-surface border border-border-subtle bg-surface-container-lowest hover:bg-surface-container-high transition-colors cursor-pointer"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={handleSubmit}
+            onClick={form.handleSubmit}
             className="px-md h-10 rounded-lg font-label-bold text-label-sm text-on-primary bg-primary hover:opacity-90 transition-opacity flex items-center gap-xs shadow-sm cursor-pointer"
           >
             <span className="material-symbols-outlined text-[18px]">send</span> Send Invite &amp; Assign
           </button>
         </div>
+      )}
+    >
+      <CreateUserIdentitySection
+        email={form.email}
+        fullName={form.fullName}
+        isExistingUser={form.isExistingUser}
+        onEmailChange={form.handleEmailChange}
+        onFullNameChange={form.setFullName}
+      />
+
+      <div className="h-px bg-border-subtle w-full"></div>
+
+      <CreateUserAssignmentsSection
+        assignments={form.assignments}
+        availableRoleNames={form.availableRoleNames}
+        roles={form.roles}
+        teams={form.teams}
+        workspaceOptions={form.workspaceOptions}
+        onAddAssignment={form.handleAddAssignment}
+        onRemove={form.handleRemoveAssignment}
+        onRoleChange={form.handleRoleChange}
+        onTeamAdminChange={form.handleTeamAdminChange}
+        onWorkspaceChange={form.handleWorkspaceChange}
+      />
+
+      <div className="h-px bg-border-subtle w-full"></div>
+
+      <CreateUserAuthoritySection
+        isSuperAdmin={form.isSuperAdmin}
+        onChange={form.setIsSuperAdmin}
+      />
+
+      <div className="bg-secondary-container/50 text-on-secondary-container p-sm rounded-lg flex items-start gap-sm">
+        <span className="material-symbols-outlined text-[18px] mt-0.5 text-secondary">lock</span>
+        <p className="font-body-sm text-[12px] leading-relaxed">
+          A 24-hour single-use secure link will be generated. The user will set their own secret permanent password upon joining the platform.
+        </p>
       </div>
-    </div>
+    </CreateUserModalFrame>
   );
 }

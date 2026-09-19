@@ -34,6 +34,18 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('scheduler')) {
+              return 'vendor-react';
+            }
+            if (id.includes('@tanstack')) {
+              return 'vendor-query';
+            }
+            if (id.includes('socket.io-client') || id.includes('engine.io-client')) {
+              return 'vendor-realtime';
+            }
+            if (id.includes('lucide-react')) {
+              return 'vendor-icons';
+            }
             return 'vendor';
           }
         },

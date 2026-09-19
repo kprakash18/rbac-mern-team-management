@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useCallback } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 import { getSocket } from '@/lib/socket';
 
 export function formatActivityItem(l) {
@@ -34,7 +35,7 @@ export function useSuperAdminDashboard() {
     isLoading: isWorkspacesLoading,
     refetch: refetchWorkspaces,
   } = useQuery({
-    queryKey: ['super-admin', 'workspaces'],
+    queryKey: queryKeys.superAdmin.workspaces(),
     queryFn: async () => {
       const res = await api.get('/api/teams?limit=50');
       return res.data?.data?.teams || res.data?.data || [];
@@ -48,7 +49,7 @@ export function useSuperAdminDashboard() {
     data: userStats = {},
     isLoading: isStatsLoading,
   } = useQuery({
-    queryKey: ['super-admin', 'user-stats'],
+    queryKey: queryKeys.superAdmin.userStats(),
     queryFn: async () => {
       const res = await api.get('/api/users/stats');
       return res.data?.data || {};
@@ -62,7 +63,7 @@ export function useSuperAdminDashboard() {
     data: rawAuditLogs = [],
     isLoading: isAuditLoading,
   } = useQuery({
-    queryKey: ['super-admin', 'audit-logs', 20],
+    queryKey: queryKeys.superAdmin.auditLogs(20),
     queryFn: async () => {
       const res = await api.get('/api/audit-logs?limit=20');
       const data = res.data?.data;
@@ -77,7 +78,7 @@ export function useSuperAdminDashboard() {
     data: rawJitGrants = [],
     isLoading: isJitLoading,
   } = useQuery({
-    queryKey: ['super-admin', 'access-requests'],
+    queryKey: queryKeys.superAdmin.accessRequests(),
     queryFn: async () => {
       const res = await api.get('/api/access-requests');
       const data = res.data?.data;
@@ -133,7 +134,7 @@ export function useSuperAdminDashboard() {
     if (!socket) return;
 
     const handleNewActivity = (newLog) => {
-      queryClient.setQueryData(['super-admin', 'audit-logs', 20], (prev = []) => {
+      queryClient.setQueryData(queryKeys.superAdmin.auditLogs(20), (prev = []) => {
         const id = newLog._id || newLog.id;
         const filtered = prev.filter((a) => (a._id || a.id) !== id);
         return [newLog, ...filtered].slice(0, 30);
@@ -149,14 +150,14 @@ export function useSuperAdminDashboard() {
   // Cache manipulation helpers for workspaces
   const createWorkspaceCache = useCallback(
     (newWs) => {
-      queryClient.setQueryData(['super-admin', 'workspaces'], (prev = []) => [newWs, ...prev]);
+      queryClient.setQueryData(queryKeys.superAdmin.workspaces(), (prev = []) => [newWs, ...prev]);
     },
     [queryClient]
   );
 
   const updateWorkspaceCache = useCallback(
     (updatedWs) => {
-      queryClient.setQueryData(['super-admin', 'workspaces'], (prev = []) =>
+      queryClient.setQueryData(queryKeys.superAdmin.workspaces(), (prev = []) =>
         prev.map((ws) => ((ws._id || ws.id) === (updatedWs._id || updatedWs.id) ? { ...ws, ...updatedWs } : ws))
       );
     },
@@ -165,7 +166,7 @@ export function useSuperAdminDashboard() {
 
   const archiveWorkspaceCache = useCallback(
     (workspaceId) => {
-      queryClient.setQueryData(['super-admin', 'workspaces'], (prev = []) =>
+      queryClient.setQueryData(queryKeys.superAdmin.workspaces(), (prev = []) =>
         prev.map((ws) =>
           (ws._id || ws.id) === workspaceId
             ? { ...ws, status: 'ARCHIVED', archivedAt: new Date().toISOString() }
@@ -178,7 +179,7 @@ export function useSuperAdminDashboard() {
 
   const restoreWorkspaceCache = useCallback(
     (workspaceId) => {
-      queryClient.setQueryData(['super-admin', 'workspaces'], (prev = []) =>
+      queryClient.setQueryData(queryKeys.superAdmin.workspaces(), (prev = []) =>
         prev.map((ws) =>
           (ws._id || ws.id) === workspaceId
             ? { ...ws, status: 'ACTIVE', archivedAt: null }

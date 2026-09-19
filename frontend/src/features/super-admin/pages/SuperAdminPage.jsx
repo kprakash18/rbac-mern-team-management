@@ -1,20 +1,29 @@
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { lazy, Suspense, useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useLocation, useParams } from 'react-router-dom';
 import SuperAdminSidebar from '../shell/SuperAdminSidebar';
 import SuperAdminTopbar from '../shell/SuperAdminTopbar';
 import PlatformMetricsCards from '../components/PlatformMetricsCards';
 import RecentActivityFeed from '../components/RecentActivityFeed';
 import ActiveWorkspacesWidget from '../components/ActiveWorkspacesWidget';
-import UsersAccessView from '../components/UsersAccessView';
-import TeamsView from '../components/TeamsView';
-import RolesView from '../components/RolesView';
-import JitAccessView from '../components/JitAccessView';
-import SystemBroadcastsView from '../components/SystemBroadcastsView';
-import SecurityAuditView from '../components/SecurityAuditView';
 import WorkspaceModal from '../components/WorkspaceModal';
-import { Toast } from '@/shared/components';
+import { SkeletonCard, Toast } from '@/shared/components';
 import { useToast } from '../../../lib/useToast';
 import { useSuperAdminDashboard } from '../hooks/useSuperAdminDashboard';
+
+const UsersAccessView = lazy(() => import('../components/UsersAccessView'));
+const TeamsView = lazy(() => import('../components/TeamsView'));
+const RolesView = lazy(() => import('../components/RolesView'));
+const JitAccessView = lazy(() => import('../components/JitAccessView'));
+const SystemBroadcastsView = lazy(() => import('../components/SystemBroadcastsView'));
+const SecurityAuditView = lazy(() => import('../components/SecurityAuditView'));
+
+function AdminViewFallback() {
+  return (
+    <div className="w-full p-xl">
+      <SkeletonCard lines={7} />
+    </div>
+  );
+}
 
 export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorkspace }) {
   const navigate = useNavigate();
@@ -166,37 +175,39 @@ export default function SuperAdminPage({ currentUser, onLogout, onJumpIntoWorksp
         />
 
         <main className="relative pt-16 w-full flex-1 overflow-x-hidden">
-          {activeNav === 'users-access' ? (
-            <UsersAccessView />
-          ) : activeNav === 'teams' ? (
-            <TeamsView onJumpIntoWorkspace={onJumpIntoWorkspace} createTrigger={createTeamTrigger} />
-          ) : activeNav === 'roles-rbac' || activeNav === 'roles' ? (
-            <RolesView />
-          ) : activeNav === 'jit-access' ? (
-            <JitAccessView />
-          ) : activeNav === 'system-broadcasts' ? (
-            <SystemBroadcastsView />
-          ) : activeNav === 'security-audit' ? (
-            <SecurityAuditView />
-          ) : (
-            <div className="flex flex-col w-full p-xl gap-xl">
-              <div className="flex flex-col gap-xs">
-                <h1 className="font-display-title text-on-surface">Dashboard</h1>
-                <p className="font-body-base text-on-surface-variant">Platform health and recent activity.</p>
+          <Suspense fallback={<AdminViewFallback />}>
+            {activeNav === 'users-access' ? (
+              <UsersAccessView />
+            ) : activeNav === 'teams' ? (
+              <TeamsView onJumpIntoWorkspace={onJumpIntoWorkspace} createTrigger={createTeamTrigger} />
+            ) : activeNav === 'roles-rbac' || activeNav === 'roles' ? (
+              <RolesView />
+            ) : activeNav === 'jit-access' ? (
+              <JitAccessView />
+            ) : activeNav === 'system-broadcasts' ? (
+              <SystemBroadcastsView />
+            ) : activeNav === 'security-audit' ? (
+              <SecurityAuditView />
+            ) : (
+              <div className="flex flex-col w-full p-xl gap-xl">
+                <div className="flex flex-col gap-xs">
+                  <h1 className="font-display-title text-on-surface">Dashboard</h1>
+                  <p className="font-body-base text-on-surface-variant">Platform health and recent activity.</p>
+                </div>
+                <PlatformMetricsCards metrics={metrics} />
+                <div className="flex flex-col lg:flex-row gap-xl w-full">
+                  <RecentActivityFeed activities={activities} loading={loading} />
+                  <ActiveWorkspacesWidget
+                    workspaces={workspaces}
+                    loading={loading}
+                    onCreateWorkspaceClick={() => setIsCreateWorkspaceModalOpen(true)}
+                    onEditWorkspaceClick={(ws) => setEditingWorkspace(ws)}
+                    onJumpInWorkspace={(ws) => onJumpIntoWorkspace?.(ws)}
+                  />
+                </div>
               </div>
-              <PlatformMetricsCards metrics={metrics} />
-              <div className="flex flex-col lg:flex-row gap-xl w-full">
-                <RecentActivityFeed activities={activities} loading={loading} />
-                <ActiveWorkspacesWidget
-                  workspaces={workspaces}
-                  loading={loading}
-                  onCreateWorkspaceClick={() => setIsCreateWorkspaceModalOpen(true)}
-                  onEditWorkspaceClick={(ws) => setEditingWorkspace(ws)}
-                  onJumpInWorkspace={(ws) => onJumpIntoWorkspace?.(ws)}
-                />
-              </div>
-            </div>
-          )}
+            )}
+          </Suspense>
         </main>
       </div>
 

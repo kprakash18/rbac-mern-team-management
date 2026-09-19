@@ -1,5 +1,6 @@
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
+import { queryKeys } from '@/lib/queryKeys';
 
 function formatTeam(t) {
   return {
@@ -17,7 +18,7 @@ function formatTeam(t) {
 
 export function useMyTeams({ isSuperAdmin, enabled = true }) {
   return useQuery({
-    queryKey: ['teams', isSuperAdmin ? 'all' : 'my-teams'],
+    queryKey: queryKeys.workspace.myTeams(isSuperAdmin),
     queryFn: async () => {
       const endpoint = isSuperAdmin ? '/api/teams' : '/api/teams/my-teams';
       const res = await api.get(endpoint);

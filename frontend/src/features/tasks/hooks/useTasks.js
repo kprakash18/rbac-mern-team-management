@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '@/lib/socket';
+import { queryKeys } from '@/lib/queryKeys';
 import * as tasksApi from '../api/tasksApi';
 
 export function useTasks({ teamId, currentUserId }) {
@@ -23,7 +24,7 @@ export function useTasks({ teamId, currentUserId }) {
     isFetching: isTasksFetching,
     refetch: refetchTasks,
   } = useQuery({
-    queryKey: ['tasks', teamId],
+    queryKey: queryKeys.tasks.list(teamId),
     queryFn: async () => {
       if (!teamId) return [];
       const raw = await tasksApi.getTasks(teamId);
@@ -39,7 +40,7 @@ export function useTasks({ teamId, currentUserId }) {
     data: teamMembers = [],
     isLoading: isMembersLoading,
   } = useQuery({
-    queryKey: ['team-members-list', teamId],
+    queryKey: queryKeys.team.memberList(teamId),
     queryFn: async () => {
       if (!teamId) return [];
       const rawMembers = await tasksApi.getTeamMembers(teamId, 100);
@@ -63,7 +64,7 @@ export function useTasks({ teamId, currentUserId }) {
   // 3. Setter helper for backward compatibility that synchronizes with TanStack cache
   const setTasks = useCallback(
     (updater) => {
-      queryClient.setQueryData(['tasks', teamId], (old = []) => {
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (old = []) => {
         if (typeof updater === 'function') {
           return updater(old);
         }
@@ -82,7 +83,7 @@ export function useTasks({ teamId, currentUserId }) {
     const handleTaskUpdated = ({ task }) => {
       if (!task) return;
       const normalized = normalizeTask(task);
-      queryClient.setQueryData(['tasks', teamId], (prev = []) => {
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (prev = []) => {
         const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
         if (exists) {
           return prev.map((t) =>
@@ -96,7 +97,7 @@ export function useTasks({ teamId, currentUserId }) {
     const handleTaskCreated = ({ task }) => {
       if (!task) return;
       const normalized = normalizeTask(task);
-      queryClient.setQueryData(['tasks', teamId], (prev = []) => {
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (prev = []) => {
         const exists = prev.some((t) => t.id === normalized.id || t._id === normalized._id);
         return exists ? prev : [normalized, ...prev];
       });
@@ -104,7 +105,7 @@ export function useTasks({ teamId, currentUserId }) {
 
     const handleTaskDeleted = ({ taskId }) => {
       if (!taskId) return;
-      queryClient.setQueryData(['tasks', teamId], (prev = []) =>
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (prev = []) =>
         prev.filter((t) => t.id !== taskId && t._id !== taskId)
       );
     };
@@ -124,42 +125,42 @@ export function useTasks({ teamId, currentUserId }) {
   const updateStatusMutation = useMutation({
     mutationFn: ({ taskId, newStatus }) => tasksApi.updateTask(teamId, taskId, { status: newStatus }),
     onMutate: async ({ taskId, newStatus }) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks', teamId] });
-      const previousTasks = queryClient.getQueryData(['tasks', teamId]);
-      queryClient.setQueryData(['tasks', teamId], (old = []) =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.tasks.list(teamId) });
+      const previousTasks = queryClient.getQueryData(queryKeys.tasks.list(teamId));
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (old = []) =>
         old.map((t) => (t.id === taskId || t._id === taskId ? { ...t, status: newStatus } : t))
       );
       return { previousTasks };
     },
     onError: (err, variables, context) => {
       if (context?.previousTasks) {
-        queryClient.setQueryData(['tasks', teamId], context.previousTasks);
+        queryClient.setQueryData(queryKeys.tasks.list(teamId), context.previousTasks);
       }
       alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to update task status.');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks', teamId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(teamId) });
     },
   });
 
   const deleteTaskMutation = useMutation({
     mutationFn: (taskId) => tasksApi.deleteTask(teamId, taskId),
     onMutate: async (taskId) => {
-      await queryClient.cancelQueries({ queryKey: ['tasks', teamId] });
-      const previousTasks = queryClient.getQueryData(['tasks', teamId]);
-      queryClient.setQueryData(['tasks', teamId], (old = []) =>
+      await queryClient.cancelQueries({ queryKey: queryKeys.tasks.list(teamId) });
+      const previousTasks = queryClient.getQueryData(queryKeys.tasks.list(teamId));
+      queryClient.setQueryData(queryKeys.tasks.list(teamId), (old = []) =>
         old.filter((t) => t.id !== taskId && t._id !== taskId)
       );
       return { previousTasks };
     },
     onError: (err, taskId, context) => {
       if (context?.previousTasks) {
-        queryClient.setQueryData(['tasks', teamId], context.previousTasks);
+        queryClient.setQueryData(queryKeys.tasks.list(teamId), context.previousTasks);
       }
       alert(err.response?.data?.error?.message || err.response?.data?.message || 'Failed to delete task.');
     },
     onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ['tasks', teamId] });
+      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.list(teamId) });
     },
   });
 
